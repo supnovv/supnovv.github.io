@@ -969,56 +969,6 @@ void ccsocknewconn(struct ccepoll* self, int connfd, struct ccwork* work) {
   sm->head.flag |= CCMSGFLAG_NEWCONN;
 }
 
-struct cceventnode {
-  struct cclinknext node;
-  _int timestamp;
-  int fd;
-  umedit events;
-  struct ccwork* ud;
-};
-
-struct cchashslot {
-  struct cclinknext node;
-};
-
-struct cceventpool {
-  _int size;
-  _int timestamp;
-  struct cchashslot slot[1];
-};
-
-void cclinknextinit(struct cclinknext* node) {
-  node->next = node;
-}
-
-void cclinknextinsert(struct cclinknext* node, struct cclinknext* newnode) {
-  newnode->next = node->next;
-  node->next = newnode;
-}
-
-struct cclinknext* cclinknextremove(struct cclinknext* node) {
-  struct cclinknext* p = node->next;
-  node->next = p->next;
-  return p;
-}
-
-struct cceventpool* cceventpollinit(_int size) {
-  struct cceventpool* p = 0;
-  if (size <= 0) size = 1;
-  p = (struct cceventpool*)ccrawalloc(sizeof(struct cceventpool) + size * sizeof(struct cchashslot));
-  p->size = size;
-  while (size > 0) {
-    cclinknextinit(&(p->slot[--size].node));
-  }
-  return p;
-}
-
-struct ccepollmgr {
-  struct cceventpool* pool;
-};
-
-void ccepollmgraddevent() {
-}
 
 void ccepolldispatch(struct ccepoll* self) {
   int i = 0, n = self->n;
@@ -1031,6 +981,40 @@ void ccepolldispatch(struct ccepoll* self) {
       ccsockaccept(self, e);
     }
   }
+}
+
+
+/** IO notification facility **/
+
+struct ccionf {
+  int epfd;
+  int n, maxlen;
+  struct epoll_event ready[CCIONF_MAX_WAIT_EVENTS];
+};
+
+struct ccionfevt {
+  int fd;
+  umedit events;
+  void* ud;
+};
+
+struct ccionfmsg {
+  struct ccmsghead head;
+  struct ccionfevt event;
+};
+
+bool ccionfevtvoid(struct ccionfevt* self) {
+  return (self->fd == -1);
+}
+
+struct ccionfmsg* ccionfmsgnew(struct ccionfevt* event) {
+  struct ccionfmsg* self = (struct ccionfmsg*)ccrawalloc(sizeof(struct ccionfmsg));
+  return ccionfmsgset(self, event);
+}
+
+struct ccionfmsg* ccionfmsgset(struct ccionfmsg* self, struct ccionfevt* event) {
+  self->event = *event;
+  return self;
 }
 
 void ccepollinit(struct ccepoll* self) {
@@ -2228,6 +2212,7 @@ void ccplattest() {
   ccassert(sizeof(struct ccmutex) >= sizeof(pthread_mutex_t));
   ccassert(sizeof(struct ccrwlock) >= sizeof(pthread_rwlock_t));
   ccassert(sizeof(struct cccondv) >= sizeof(pthread_cond_t));
+  ccassert(sizeof(int) <= sizeof(umedit)); /* test file descriptor size */
   cclogd("pthread_t %s-byte", ccutos(sizeof(pthread_t)));
   cclogd("pthread_mutext_t %s-byte", ccutos(sizeof(pthread_mutex_t)));
   cclogd("pthread_rwlock_t %s-byte", ccutos(sizeof(pthread_rwlock_t)));

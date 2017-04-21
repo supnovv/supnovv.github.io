@@ -150,7 +150,51 @@ CORE_API struct ccfrom ccfroms(const void* s);
 CORE_API struct ccfrom ccnext(struct ccfrom from, uint n);
 CORE_API struct ccdest ccdest(void* p, uint n);
 
+/** List and queue **/
+
+struct cclistnode {
+  struct cclistnode* next;
+  struct cclistnode* prev;
+};
+
+struct ccsmplnode {
+  struct ccsmplnode* next;
+};
+
+struct ccdqueue {
+  struct cclistnode head;
+};
+
+struct ccsqueue {
+  struct ccsmplnode head;
+  struct ccsmplnode* tail;
+};
+
+CORE_API void cclistinit(struct cclistnode* node);
+CORE_API bool cclistvoid(struct cclistnode* node);
+CORE_API void cclistadd(struct cclistnode* node, struct cclistnode* newnode);
+CORE_API struct cclistnode* cclistrem(struct cclistnode* node);
+CORE_API void ccslistinit(struct ccsmplnode* node);
+CORE_API bool ccslistvoid(struct ccsmplnode* node);
+CORE_API void ccslistadd(struct ccsmplnode* node, struct ccsmplnode* newnode);
+CORE_API struct ccsmplnode* ccslistrmn(struct ccsmplnode* node);
+CORE_API void ccsqueueinit(struct ccsqueue* queue);
+CORE_API void ccsqueueadd(struct ccsqueue* queue, struct ccsmplnode* newnode);
+CORE_API bool ccsqueuevoid(struct ccsqueue* queue);
+CORE_API struct ccsmplnode* ccsqueuerem(struct ccsqueue* queue);
+CORE_API void ccdqueueinit(struct ccdqueue* self);
+CORE_API void ccdqueueadd(struct ccdqueue* self, struct cclistnode* newnode);
+CORE_API bool ccdqueuevoid(struct ccdqueue* self);
+CORE_API struct cclistnode* ccdqueuerem(struct ccsqueue* self);
+
 /* Thread and synchronization */
+
+struct ccmsghead {
+  struct ccsmplnode node;
+  umedit size;
+  ushort type;
+  ushort flag;
+};
 
 struct cctlskey {
   union cctypeunit a[CCTLSKEY_NUNIT];
@@ -160,11 +204,6 @@ CORE_API bool cctlskeyinit(struct cctlskey* self);
 CORE_API void cctlskeyfree(struct cctlskey* self);
 CORE_API bool cctlskeyset(struct cctlskey* self, const void* data);
 CORE_API void* cctlskeyget(struct cctlskey* self);
-
-struct cclinknode {
-  void* prev;
-  void* next;
-};
 
 struct ccstate;
 
