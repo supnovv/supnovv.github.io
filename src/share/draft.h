@@ -1,4 +1,12 @@
-/** c compatibility with c++ **
+/** 事件数据传递过程 **
+EPOLL事件数据{int fd; uint32_t events; void* ud}
+事件数据加入事件等待队列中，该队列中的数据需要按照当前线程负载分配给不同的线程处理（或递交给已经处理该任务的线程处理），事件队列数据{node; int fd; uint32_t events; void* ud; _int timestamp;}
+将事件分配给线程处理，需要将将事件数据作为消息发送到对应线程的消息队列中
+ ** 事件队列的处理方式 **
+事件数据的一条链链入哈希桶，另一条链按到达顺序串联
+如果有事件时处理1/10的事件然后不等待看是否有数据到来，然后再处理1/10，知道没有事件后再无限等待
+分配自己线程的消息，先将等待的所有消息清除出来插入当前处理队列，每一次只处理所有这些消息，处理过程中到来的消息需等下一次处理
+ ** c compatibility with c++ **
 C compiler does not use mangling which c++ uses. So if you want to call c
 interfaces in the c++ program, you have to clearly declare these c interfaces
 as "extern c".
