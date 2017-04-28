@@ -602,68 +602,67 @@ struct ccstring* ccstraddif(struct ccstring* self, sint a, int fmt) {
 
 /** List and queue **/
 
-void cclistinit(struct cclistnode* self) {
-  self->next = self;
-  self->prev = self;
+void cclinknode_init(struct cclinknode* node) {
+  node->next = node->prev = node;
 }
 
-bool cclistvoid(struct cclistnode* self) {
-  if (self->next == self) {
-    ccassert(self->prev == self);
+bool cclinknode_isempty(struct cclinknode* node) {
+  if (node->next == node) {
+    ccassert(node->prev == node);
     return true;
   }
   return false;
 }
 
-void cclistadd(struct cclistnode* self, struct cclistnode* newnode) {
-  newnode->next = self->next;
-  self->next = newnode;
-  newnode->prev = self;
+void cclinknode_insertafter(struct cclinknode* node, struct cclinknode* newnode) {
+  newnode->next = node->next;
+  node->next = newnode;
+  newnode->prev = node;
   newnode->next->prev = newnode;
 }
 
-struct cclistnode* cclistrem(struct cclistnode* node) {
+struct cclinknode* cclinknode_remove(struct cclinknode* node) {
   node->prev->next = node->next;
   node->next->prev = node->prev;
   return node;
 }
 
-void ccslistinit(struct ccsmplnode* self) {
-  node->next = self;
+void ccsmplnode_init(struct ccsmplnode* node) {
+  node->next = node;
 }
 
-bool ccslistvoid(struct ccsmplnode* self) {
-  return node->next == self;
+bool ccsmplnode_isempty(struct ccsmplnode* node) {
+  return node->next == node;
 }
 
-void ccslistadd(struct ccsmplnode* self, struct ccsmplnode* newnode) {
-  newnode->next = self->next;
-  self->next = newnode;
+void ccsmplnode_insertafter(struct ccsmplnode* node, struct ccsmplnode* newnode) {
+  newnode->next = node->next;
+  node->next = newnode;
 }
 
-struct ccsmplnode* ccslistrmn(struct ccsmplnode* self) {
-  struct ccsmplnode* p = self->next;
-  self->next = p->next;
+struct ccsmplnode* ccsmplnode_removenext(struct ccsmplnode* node) {
+  struct ccsmplnode* p = node->next;
+  node->next = p->next;
   return p;
 }
 
-void ccsqueueinit(struct ccsqueue* self) {
-  ccslistinit(&self->list);
+void ccsqueue_init(struct ccsqueue* self) {
+  ccsmplnode_init(&self->list);
   self->tail = &self->list;
 }
 
-void ccsqueueadd(struct ccsqueue* self, struct ccsmplnode* newnode) {
-  ccslistadd(self->tail, newnode);
+void ccsqueue_push(struct ccsqueue* self, struct ccsmplnode* newnode) {
+  ccsmplnode_insertafter(self->tail, newnode);
   self->tail = newnode;
 }
 
-bool ccsqueuevoid(struct ccsqueue* self) {
+bool ccsqueue_isempty(struct ccsqueue* self) {
   return (self->list.next == &self->list);
 }
 
-struct ccsmplnode* ccsqueuerem(struct ccsqueue* self) {
+struct ccsmplnode* ccsqueue_pop(struct ccsqueue* self) {
   struct ccsmplnode* node = 0;
-  if (ccsqueuevoid(self)) {
+  if (ccsmplnode_isempty(self)) {
     return 0;
   }
   node = ccslistrmn(&self->list);
@@ -673,76 +672,77 @@ struct ccsmplnode* ccsqueuerem(struct ccsqueue* self) {
   return node;
 }
 
-void ccdqueueinit(struct ccdqueue* self) {
-  cclistinit(&self->head);
+
+void ccdqueue_init(struct ccdqueue* self) {
+  cclinknode_init(&self->head);
 }
 
-void ccdqueueadd(struct ccdqueue* self, struct cclistnode* newnode) {
-  cclistadd(&self->head, newnode);
+void ccdqueue_push(struct ccdqueue* self, struct cclinknode* newnode) {
+  cclinknode_insertafter(&self->head, newnode);
 }
 
-bool ccdqueuevoid(struct ccdqueue* self) {
-  return cclistvoid(&self->head);
+bool ccdqueue_isempty(struct ccdqueue* self) {
+  return cclinknode_isempty(&self->head);
 }
 
-struct cclistnode* ccdqueuerem(struct ccsqueue* self) {
-  if (ccdqueuevoid(self)) return 0;
-  return cclistrem(self->head.prev);
+struct cclinknode* ccdqueue_pop(struct ccdqueue* self) {
+  if (ccdequeue_isEmpty(self)) return 0;
+  return cclinknode_remove(self->head.prev);
 }
 
 /** IO notification facility **/
 
 struct ccionfslot {
-  umedit pendsize;
-  umedit freesize;
   struct ccsmplnode head;
 };
 
-struct ccionftbl {
-  umedit size; /* hash table need has a prime number size not near 2^n */
-  struct ccsmplnode freelist;
-  struct ccionfslot slot[1];
-};
-
 struct ccionfnode {
-  struct ccionfnode* tnext_dont_use_;
+  struct ccionfnode* bucket_next_dont_use_;
   struct ccionfnode* qnext; /* union with size/type/flag in ccmsghead */
 };
 
-struct cctqueue {
+struct ccpqueue {
   struct ccionfnode head;
   struct ccionfnode* tail;
 };
 
+struct ccionfpool {
+  umedit nslot; /* prime number size not near 2^n */
+  umedit nfreed, nbucket, qsize;
+  struct ccpqueue queue; /* chain all ccionfmsg fifo */
+  struct ccsmplnode freelist;
+  struct ccionfslot slot[1];
+};
+
 struct ccionfmgr {
-  struct cctqueue queue; /* chain all ccionfmsg fifo */
-  struct ccionftbl table; /* ccionfmsg are hashed in the table for quick search */
+  struct ccionfpool* pool;
 };
 
 struct ccionfevt;
 struct ccionfmsg;
 
-bool ccionfevtvoid(struct ccionfevt* self);
-struct ccionfmsg* ccionfmsgnew(struct ccionfevt* event);
-struct ccionfmsg* ccionfmsgset(struct ccionfmsg* self, struct ccionfevt* event);
+bool ccionfevt_isempty(struct ccionfevt* self);
+void ccionfevt_setempty(struct ccionfevt* self);
+struct ccionfmsg* ccionfmsg_new(struct ccionfevt* event);
+struct ccionfmsg* ccionfmsg_set(struct ccionfmsg* self, struct ccionfevet* event);
 
-void cctqueueinit(struct cctqueue* self) {
+void ccpqueue_init(struct ccpqueue* self) {
   self->head.qnext = self->tail = &self->head;
 }
 
-void cctqueueadd(struct cctqueue* self, struct ccionfnode* newnode) {
+void ccpqueue_push(struct ccpqueue* self, struct ccionfnode* newnode) {
   newnode->qnext = self->tail->qnext;
   self->tail->qnext = newnode;
   self->tail = newnode;
 }
 
-bool cctqueuevoid(struct cctqueue* self) {
+bool ccpqueue_isempty(struct ccpqueue* self) {
   return (self->head->qnext == &self->head);
 }
 
-struct ccionfnode* cctqueuerem(struct cctqueue* self) {
+struct ccionfnode* ccpqueue_pop(struct ccpqueue* self) {
   struct ccionfnode* node = 0;
-  if (cctqueuevoid(self)) {
+  if (ccpqueue_isempty(self)) {
     return 0;
   }
   node = self->head.qnext;
@@ -753,74 +753,85 @@ struct ccionfnode* cctqueuerem(struct cctqueue* self) {
   return node;
 }
 
-umedit llionftblhash(struct ccionftbl* self, umedit fd) {
+umedit llionfpool_hash(struct ccionftbl* self, umedit fd) {
   return fd % self->size; /* size should be prime number not near 2^n */
 }
 
-umedit llionftblsize(byte bits) {
+umedit llionfpool_size(byte bits) {
   /* cchashprime(bits) return a prime number < (1 << bits) */
   return cchashprime(bits);
 }
 
-void llionftbl_add_to_free_list(struct ccionftbl* self, struct ccsmplnode* node) {
-  ccslistadd(&self->freelist, node);
+void llionfpool_addtofreelist(struct ccionftbl* self, struct ccsmplnode* node) {
+  ccsmplnode_insertafter(&self->freelist, node);
+  self->nfreed += 1;
 }
 
-struct ccionfmsg* llionftbl_get_from_free_list(struct ccionftbl* self, struct ccionfevt* event) {
+struct ccionfmsg* llionfpool_getfromfreelist(struct ccionftbl* self, struct ccionfevt* event) {
   struct ccionfmsg* p = 0;
-  if (((p = struct ccionfmsg*)ccslitrmn(&self->freelist)) == 0) {
+  if (((p = struct ccionfmsg*)ccsmplnode_removenext(&self->freelist)) == 0) {
     return 0;
   }
-  return llionfmsgset(p, event);
-}
-
-struct ccioftable* ccionftblnew(byte sizenumbits) {
-  struct ccionftbl* table = 0;
-  _int size = llionftblsize(sizenumbits);
-  table = (struct ccionftbl*)ccrawalloc(sizeof(struct ccionftbl) + size * sizeof(struct ccionfslot));
-  table->size = size;
-  while (size > 0) {
-    ccslinkinit(&(table->slot[--size].head));
+  if (self->nfreed > 0) {
+    self->nfreed -= 1;
+  } else {
+    ccloge("ccionfpool freelist size invalid");
   }
-  ccslistinit(&table->freelist);
-  return table;
+  return llionfmsg_set(p, event);
 }
 
-struct ccsmplnode* ccionftbladd(struct ccionftbl* self, struct ccionfevt* newevent) {
+struct ccionfpool* ccionfpool_new(byte sizenumbits) {
+  struct ccionfpool* pool = 0;
+  _int size = llionfpool_size(sizenumbits);
+  pool = (struct ccionfpool*)ccrawalloc(sizeof(struct ccionfpool) + size * sizeof(struct ccionfslot));
+  pool->nslot = size;
+  while (size > 0) {
+    ccsmplnode_init(&(pool->slot[--size].head));
+  }
+  ccsmplnode_init(&pool->freelist);
+  ccpqueue_init(&pool->queue);
+  pool->nfreed = pool->nbucket = pool->qsize = 0;
+  return pool;
+}
+
+struct ccsmplnode* ccionfpool_addevent(struct ccionfpool* self, struct ccionfevt* newevent) {
   struct ccionfmsg* msg = 0;
   struct ccionfslot* slot = 0;
-  if (llionfevtvoid(newevent)) {
-    ccloge("ccionftbladd invalid fd");
+  struct ccsmplnode* head = 0;
+  struct ccsmplnode* cur = 0;
+  if (llionfevt_isempty(newevent)) {
+    ccloge("addEvent invalid event");
     return 0;
   }
-  slot = self->slot + ccionftblhash(self, (umedit)newevent->fd);
-  if (slot->pendsize > 0) {
-    struct ccsmplnode* head = &slot->head;
-    struct ccsmplnode* cur = head;
-    for (; cur->next != head; cur = cur->next) {
-      msg = (struct ccionfmsg*)cur->next;
-      if (llionfevtvoid(&msg->event)) {
-        llionftbl_add_to_free_list(self, ccslistrmn(cur));
-        if (slot->freesize > 0) {
-          slot->freesize -= 1;
-        } else {
-          cclogw("ccionftbladd invalid freesize");
-        }
-        continue;
+  slot = self->slot + ccionfpool_hash(self, (umedit)newevent->fd);
+  for (head = &slot->head, cur = head; cur->next != head; cur = cur->next) {
+    msg = (struct ccionfmsg*)cur->next;
+    /* if current event is new, than it will lead all empty nodes freed */
+    if (llionfevt_isempty(&msg->event)) {
+      llionfpool_addtofreelist(self, ccsmplnode_removenext(cur));
+      if (self->nbucket > 0) {
+        self->nbucket -= 1;
+      } else {
+        ccloge("ccionfpool bucket size invalid");
       }
-      if (msg->event.fd == newevent->fd) {
-        msg->event.events |= newevent->events;
-        return 0;
-      }
+      continue;
+    }
+    if (msg->event.fd == newevent->fd) {
+      msg->event.events |= newevent->events;
+      return 0;
     }
   }
-  if ((msg = llionftbl_get_from_free_list(self, newevent)) == 0) {
-    msg = ccepollmsginit(newevent);
+  if ((msg = llionfpool_getfromfreelist(self, newevent)) == 0) {
+    msg = ccepollmsg_new(newevent);
   }
-  ccslistadd(&slot->node, (struct ccsmplnode*)msg);
-  slot->pendsize += 1;
+  ccsmplnode_insertafter(&slot->node, (struct ccsmplnode*)msg);
+  self->nbucket += 1;
+  ccpqueue_push(&self->queue, msg);
+  self->qsize += 1;
   return msg;
 }
+
+
 
 /** Thread and synchronization **/
 
