@@ -921,9 +921,13 @@ void ccthattest() {
   ccassert(sizeof(float) == 4);
   ccassert(sizeof(double) == 8);
   ccassert(sizeof(freal) == 4 || sizeof(freal) == 8);
-  ccassert(sizeof(struct ccheap) == 16);
-  ccassert(sizeof(struct ccstring) == 32);
-  ccassert(sizeof(union cctypeunit) == 8);
+  ccassert(sizeof(struct ccstring) == CCSTRING_SIZEOF);
+  ccassert(sizeof(union cceight) == 8);
+  ccassert(sizeof(struct ccmutex) >= CC_MUTEX_BYTES);
+  ccassert(sizeof(struct ccrwlock) >= CC_RWLOCK_BYTES);
+  ccassert(sizeof(struct cccondv) >= CC_CONDV_BYTES);
+  ccassert(sizeof(struct ccthrkey) >= CC_THKEY_BYTES);
+  ccassert(sizeof(struct ccthread) >= CC_THRID_BYTES);
   /* value ranges */
   ccassert(CC_BYTE_MAX == 255);
   ccassert(CC_INT8_MAX == 127);
