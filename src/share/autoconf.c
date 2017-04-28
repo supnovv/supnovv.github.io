@@ -1,14 +1,5 @@
 #define _CRT_SECURE_NO_WARNINGS
-#include <stdio.h>
-#include <string.h>
-#include <errno.h>
-#include <stdarg.h>
-#include <time.h>
-#include <stdlib.h>
-#include <stddef.h>
 #include "ccprefix.h"
-#define byte unsigned char
-
 #if defined(CC_OS_WINDOWS)
 #define UNICODE
 #define _UNICODE
@@ -18,10 +9,25 @@
 #else
 #define _POSIX_C_SOURCE 200809L
 #include <pthread.h>
+#endif
+
+#include <stdio.h>
+#include <string.h>
+#include <errno.h>
+#include <stdarg.h>
+#include <time.h>
+#include <stdlib.h>
+#include <stddef.h>
+#define byte unsigned char
+
+#if defined(CC_OS_WINDOWS)
+/* window platform */
+#else
 int ccmutexbytes = sizeof(pthread_mutex_t);
 int ccrwlockbytes = sizeof(pthread_rwlock_t);
 int cccondvbytes = sizeof(pthread_cond_t);
-int ccunitbytes = sizeof(union cctypeunit);
+int ccthkeybytes = sizeof(pthread_key_t);
+int ccthridbytes = sizeof(pthread_t);
 #endif
 
 static void ccloge(const void* fmt, ...) {
@@ -62,39 +68,43 @@ int main(void) {
   FILE* file = fopen("autoconf.h", "wb");
   if (!file) { ccloge("fopen autoconf.h %s", strerror(errno)); return 1; }
   ccwriteline(file, "#ifndef LIBC_AUTOCONF_H_%s#define LIBC_AUTOCONF_H_", CCNEWLINE);
-  ccwriteline(file, "#define _CRT_SECURE_NO_WARNINGS");
-  ccwriteline(file, "/* platform and byteorder */");
-  ccwriteline(file, "#undef CC32BITPLAT");
-  ccwriteline(file, "#undef CC64BITPLAT");
+  ccwriteline(file, "#define _CRT_SECURE_NO_WARNINGS%s", CCNEWLINE);
+
+  ccwriteline(file, "/* platform bits */");
+  ccwriteline(file, "#undef CC_PLAT_32BIT");
+  ccwriteline(file, "#undef CC_PLAT_64BIT");
   if (sizeof(void*) == 4) {
-    ccwriteline(file, "#define CC32BITPLAT");
+    ccwriteline(file, "#define CC_PLAT_32BIT");
   } else if (sizeof(void*) == 8) {
-    ccwriteline(file, "#define CC64BITPLAT");
+    ccwriteline(file, "#define CC_PLAT_64BIT");
   } else {
     ccwriteline(file, "/* unsupported %d-bit platform */", sizeof(void*)*8);
   }
+
+  ccwriteline(file, "%s/* byteorder */", CCNEWLINE);
   if (sizeof(unsigned long) < 4) {
     ccloge("the size of long is less than 4-byte");
     ccwriteline(file, "#error \"the size of long is less than 4-byte\"");
   }
-  ccwriteline(file, "#undef CCLITENDIAN /* lower byte is stored at lower address */");
-  ccwriteline(file, "#undef CCBIGENDIAN /* lower byte is stored at higher address */");
+  ccwriteline(file, "#undef CC_LIT_ENDIAN /* lower byte is stored at lower address */");
+  ccwriteline(file, "#undef CC_BIG_ENDIAN /* lower byte is stored at higher address */");
   data.i = 0xabcdef;
   if (data.c[0] == 0xef) {
-    ccwriteline(file, "#define CCLITENDIAN");
+    ccwriteline(file, "#define CC_LIT_ENDIAN");
     if (data.c[1] != 0xcd || data.c[2] != 0xab || data.c[3] != 0x00) {
       ccloge("little endian test failed");
       ccwriteline(file, "#error \"little endian test failed\"");
     }
   }
   else {
-    ccwriteline(file, "#define CCBIGENDIAN");
+    ccwriteline(file, "#define CC_BIG_ENDIAN");
     if (data.c[0] != 0x00 || data.c[1] != 0xab || data.c[2] != 0xcd || data.c[3] != 0xef) {
       ccloge("big endian test failed");
       ccwriteline(file, "#error \"big endian test failed\"");
     }
   }
-  ccwriteline(file, "/* null false true bool byte int8 */");
+
+  ccwriteline(file, "%s/* null false true bool byte int8 */", CCNEWLINE);
   ccwriteline(file, "#undef null");
   ccwriteline(file, "#undef false");
   ccwriteline(file, "#undef true");
@@ -113,7 +123,8 @@ int main(void) {
     ccloge("the size of char shall be 1-byte");
     ccwriteline(file, "#error \"the size of char shall be 1-byte\"");
   }
-  ccwriteline(file, "/* _short ushort - 16-bit */");
+
+  ccwriteline(file, "%s/* _short ushort - 16-bit */", CCNEWLINE);
   ccwriteline(file, "#undef _short");
   ccwriteline(file, "#undef ushort");
   if (sizeof(unsigned short) == 2 && sizeof(short) == 2) {
@@ -128,7 +139,8 @@ int main(void) {
     ccloge("no 16-bit integer type found");
     ccwriteline(file, "#error \"no 16-bit integer type found\"");
   }
-  ccwriteline(file, "/* _medit umedit - 32-bit */");
+
+  ccwriteline(file, "%s/* _medit umedit - 32-bit */", CCNEWLINE);
   ccwriteline(file, "#undef _medit");
   ccwriteline(file, "#undef umedit");
   if (sizeof(unsigned int) == 4 && sizeof(int) == 4) {
@@ -143,7 +155,8 @@ int main(void) {
     ccloge("no 32-bit integer type found");
     ccwriteline(file, "#error \"no 32-bit integer type found\"");
   }
-  ccwriteline(file, "/* _int uint - 64-bit */");
+
+  ccwriteline(file, "%s/* _int uint - 64-bit */", CCNEWLINE);
   ccwriteline(file, "#undef _int");
   ccwriteline(file, "#undef uint");
   if (sizeof(unsigned long) == 8 && sizeof(long) == 8) {
@@ -158,31 +171,40 @@ int main(void) {
     ccloge("no 64-bit integer type found");
     ccwriteline(file, "#error \"no 64-bit integer type found\"");
   }
-  ccwriteline(file, "/* _large ularge - 128-bit */");
-  ccwriteline(file, "/* float point */");
+
+  ccwriteline(file, "%s/* _long ulong - 128-bit */", CCNEWLINE);
+
+  ccwriteline(file, "%s/* float point */", CCNEWLINE);
   ccwriteline(file, "#undef freal");
   ccwriteline(file, "#define freal double");
-  ccwriteline(file, "/* platform specific */");
-  ccwriteline(file, "#undef CCMUTEX_NUNIT");
-  ccwriteline(file, "#undef CCRWLOCK_NUNIT");
-  ccwriteline(file, "#undef CCCONDV_NUNIT");
-  ccwriteline(file, "#define CCMUTEX_NUNIT %d", (ccmutexbytes + ccunitbytes - 1) / ccunitbytes);
-  ccwriteline(file, "#define CCRWLOCK_NUNIT %d", (ccrwlockbytes + ccunitbytes - 1) / ccunitbytes);
-  ccwriteline(file, "#define CCCONDV_NUNIT %d", (cccondvbytes + ccunitbytes - 1) / ccunitbytes);
-  ccwriteline(file, "/* void* %.0f-bit */", (double)sizeof(void*)*8);
-  ccwriteline(file, "/* size_t %.0f-bit */", (double)sizeof(size_t)*8);
-  ccwriteline(file, "/* ptrdiff_t %.0f-bit */", (double)sizeof(ptrdiff_t)*8);
-  ccwriteline(file, "/* BUFSIZ %.0f */", (double)BUFSIZ);
-  ccwriteline(file, "/* EOF %.0f */", (double)EOF);
-  ccwriteline(file, "/* FILENAME_MAX %.0f */", (double)FILENAME_MAX);
-  ccwriteline(file, "/* FOPEN_MAX %.0f */", (double)FOPEN_MAX);
-  ccwriteline(file, "/* TMP_MAX %.0f */", (double)TMP_MAX);
-  ccwriteline(file, "/* L_tmpnam %.0f */", (double)L_tmpnam);
-  ccwriteline(file, "/* RAND_MAX %.0f */", (double)RAND_MAX);
-  ccwriteline(file, "/* CLOCKS_PER_SEC %.0f */", (double)CLOCKS_PER_SEC);
-  ccwriteline(file, "/* clock_t %.0f-bit */", (double)sizeof(clock_t)*8);
-  ccwriteline(file, "/* time_t %.0f-bit */", (double)sizeof(time_t)*8);
-  ccwriteline(file, "#endif /* LIBC_AUTOCONF_H_ */");
+
+  ccwriteline(file, "%s/* platform specific */", CCNEWLINE);
+  ccwriteline(file, "#undef CC_MUTEX_BYTES");
+  ccwriteline(file, "#undef CC_RWLOCK_BYTES");
+  ccwriteline(file, "#undef CC_CONDV_BYTES");
+  ccwriteline(file, "#undef CC_THKEY_BYTES");
+  ccwriteline(file, "#undef CC_THRID_BYTES");
+  ccwriteline(file, "#define CC_MUTEX_BYTES %d", ccmutexbytes);
+  ccwriteline(file, "#define CC_RWLOCK_BYTES %d", ccrwlockbytes);
+  ccwriteline(file, "#define CC_CONDV_BYTES %d", cccondvbytes);
+  ccwriteline(file, "#define CC_THKEY_BYTES %d", ccthkeybytes);
+  ccwriteline(file, "#define CC_THRID_BYTES %d", ccthridbytes);
+
+  ccwriteline(file, "%s/* void* %d-bit */", CCNEWLINE, sizeof(void*)*8);
+  ccwriteline(file, "/* size_t %d-bit */", sizeof(size_t)*8);
+  ccwriteline(file, "/* ptrdiff_t %d-bit */", sizeof(ptrdiff_t)*8);
+  ccwriteline(file, "/* BUFSIZ %d */", BUFSIZ);
+  ccwriteline(file, "/* EOF %d */", EOF);
+  ccwriteline(file, "/* FILENAME_MAX %d */", FILENAME_MAX);
+  ccwriteline(file, "/* FOPEN_MAX %d */", FOPEN_MAX);
+  ccwriteline(file, "/* TMP_MAX %d */", TMP_MAX);
+  ccwriteline(file, "/* L_tmpnam %d */", L_tmpnam);
+  ccwriteline(file, "/* RAND_MAX %d */", RAND_MAX);
+  ccwriteline(file, "/* CLOCKS_PER_SEC %d */", CLOCKS_PER_SEC);
+  ccwriteline(file, "/* clock_t %d-bit */", sizeof(clock_t)*8);
+  ccwriteline(file, "/* time_t %d-bit */", sizeof(time_t)*8);
+
+  ccwriteline(file, "%s#endif /* LIBC_AUTOCONF_H_ */", CCNEWLINE);
   fclose(file);
   return 0;
 }
