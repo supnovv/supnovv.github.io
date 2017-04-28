@@ -21,7 +21,7 @@
 int ccmutexbytes = sizeof(pthread_mutex_t);
 int ccrwlockbytes = sizeof(pthread_rwlock_t);
 int cccondvbytes = sizeof(pthread_cond_t);
-int ccunitbytes = sizeof(struct cctypeunit);
+int ccunitbytes = sizeof(union cctypeunit);
 #endif
 
 static void ccloge(const void* fmt, ...) {
@@ -113,51 +113,52 @@ int main(void) {
     ccloge("the size of char shall be 1-byte");
     ccwriteline(file, "#error \"the size of char shall be 1-byte\"");
   }
-  ccwriteline(file, "/* sshort ushort - 16-bit */");
-  ccwriteline(file, "#undef sshort");
+  ccwriteline(file, "/* _short ushort - 16-bit */");
+  ccwriteline(file, "#undef _short");
   ccwriteline(file, "#undef ushort");
   if (sizeof(unsigned short) == 2 && sizeof(short) == 2) {
-    ccwriteline(file, "#define sshort short");
+    ccwriteline(file, "#define _short short");
     ccwriteline(file, "#define ushort unsigned short");
   }
   else if (sizeof(unsigned int) == 2 && sizeof(int) == 2) {
-    ccwriteline(file, "#define sshort int");
+    ccwriteline(file, "#define _short int");
     ccwriteline(file, "#define ushort unsigned int");
   }
   else {
     ccloge("no 16-bit integer type found");
     ccwriteline(file, "#error \"no 16-bit integer type found\"");
   }
-  ccwriteline(file, "/* smedit umedit - 32-bit */");
-  ccwriteline(file, "#undef smedit");
+  ccwriteline(file, "/* _medit umedit - 32-bit */");
+  ccwriteline(file, "#undef _medit");
   ccwriteline(file, "#undef umedit");
   if (sizeof(unsigned int) == 4 && sizeof(int) == 4) {
-    ccwriteline(file, "#define smedit int");
+    ccwriteline(file, "#define _medit int");
     ccwriteline(file, "#define umedit unsigned int");
   }
   else if (sizeof(unsigned long) == 4 && sizeof(long) == 4) {
-    ccwriteline(file, "#define smedit long");
+    ccwriteline(file, "#define _medit long");
     ccwriteline(file, "#define umedit unsigned long");
   }
   else {
     ccloge("no 32-bit integer type found");
     ccwriteline(file, "#error \"no 32-bit integer type found\"");
   }
-  ccwriteline(file, "/* sint uint - 64-bit */");
-  ccwriteline(file, "#undef sint");
+  ccwriteline(file, "/* _int uint - 64-bit */");
+  ccwriteline(file, "#undef _int");
   ccwriteline(file, "#undef uint");
   if (sizeof(unsigned long) == 8 && sizeof(long) == 8) {
-    ccwriteline(file, "#define sint long");
+    ccwriteline(file, "#define _int long");
     ccwriteline(file, "#define uint unsigned long");
   }
   else if (sizeof(unsigned long long) == 8 && sizeof(long long) == 8) {
-    ccwriteline(file, "#define sint long long");
+    ccwriteline(file, "#define _int long long");
     ccwriteline(file, "#define uint unsigned long long");
   }
   else {
     ccloge("no 64-bit integer type found");
     ccwriteline(file, "#error \"no 64-bit integer type found\"");
   }
+  ccwriteline(file, "/* _large ularge - 128-bit */");
   ccwriteline(file, "/* float point */");
   ccwriteline(file, "#undef freal");
   ccwriteline(file, "#define freal double");
