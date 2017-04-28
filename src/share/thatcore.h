@@ -152,9 +152,9 @@ CORE_API struct ccdest ccdest(void* p, uint n);
 
 /** List and queue **/
 
-struct cclistnode {
-  struct cclistnode* next;
-  struct cclistnode* prev;
+struct cclinknode {
+  struct cclinknode* next;
+  struct cclinknode* prev;
 };
 
 struct ccsmplnode {
@@ -162,7 +162,7 @@ struct ccsmplnode {
 };
 
 struct ccdqueue {
-  struct cclistnode head;
+  struct cclinknode head;
 };
 
 struct ccsqueue {
@@ -170,22 +170,22 @@ struct ccsqueue {
   struct ccsmplnode* tail;
 };
 
-CORE_API void cclistinit(struct cclistnode* node);
-CORE_API bool cclistvoid(struct cclistnode* node);
-CORE_API void cclistadd(struct cclistnode* node, struct cclistnode* newnode);
-CORE_API struct cclistnode* cclistrem(struct cclistnode* node);
-CORE_API void ccslistinit(struct ccsmplnode* node);
-CORE_API bool ccslistvoid(struct ccsmplnode* node);
-CORE_API void ccslistadd(struct ccsmplnode* node, struct ccsmplnode* newnode);
-CORE_API struct ccsmplnode* ccslistrmn(struct ccsmplnode* node);
-CORE_API void ccsqueueinit(struct ccsqueue* queue);
-CORE_API void ccsqueueadd(struct ccsqueue* queue, struct ccsmplnode* newnode);
-CORE_API bool ccsqueuevoid(struct ccsqueue* queue);
-CORE_API struct ccsmplnode* ccsqueuerem(struct ccsqueue* queue);
-CORE_API void ccdqueueinit(struct ccdqueue* self);
-CORE_API void ccdqueueadd(struct ccdqueue* self, struct cclistnode* newnode);
-CORE_API bool ccdqueuevoid(struct ccdqueue* self);
-CORE_API struct cclistnode* ccdqueuerem(struct ccsqueue* self);
+CORE_API void cclinknode_init(struct cclinknode* node);
+CORE_API bool cclinknode_isempty(struct cclinknode* node);
+CORE_API void cclinknode_insertafter(struct cclinknode* node, struct cclinknode* newnode);
+CORE_API void ccsmplnode_init(struct ccsmplnode* node);
+CORE_API bool ccsmplnode_isempty(struct ccsmplnode* node);
+CORE_API void ccsmplnode_insertafter(struct ccsmplnode* node, struct ccsmplnode* newnode);
+CORE_API void ccsqueue_init(struct ccsqueue* self);
+CORE_API void ccsqueue_push(struct ccsqueue* self, struct ccsmplnode* newnode);
+CORE_API bool ccsqueue_isempty(struct ccsqueue* self);
+CORE_API void ccdqueue_init(struct ccdqueue* self);
+CORE_API void ccdqueue_push(struct ccdqueue* self, struct cclinknode* newnode);
+CORE_API bool ccdqueue_isempty(struct ccdqueue* self);
+CORE_API struct cclinknode* cclinknode_remove(struct cclinknode* node);
+CORE_API struct ccsmplnode* ccsmplnode_removenext(struct ccsmplnode* node);
+CORE_API struct ccsmplnode* ccsqueue_pop(struct ccsqueue* self);
+CORE_API struct cclinknode* ccdqueue_pop(struct ccdqueue* self);
 
 /* Thread and synchronization */
 
