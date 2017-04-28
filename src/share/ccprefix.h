@@ -70,11 +70,4 @@ TARGET_IPHONE_SIMULATOR 0        0        1 */
 #define CCNLSIZE 1
 #endif
 
-union cctypeunit {
-  double dval;
-  long lval;
-  char c[8];
-  void* vptr;
-};
-
 #endif /* LIBC_CCPREFIX_H_ */
