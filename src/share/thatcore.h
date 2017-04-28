@@ -24,14 +24,14 @@
 #define CC_INT8_MAX ((int8)0x7F) /* 127 */
 #define CC_INT8_MIN ((int8)(-127-1)) /* 128 0x80 */
 #define CC_USHT_MAX ((ushort)0xFFFF) /* 65535 */
-#define CC_SSHT_MAX ((sshort)0x7FFF) /* 32767 */
-#define CC_SSHT_MIN ((sshort)-32767-1) /* 32768 0x8000 */
+#define CC_SSHT_MAX ((_short)0x7FFF) /* 32767 */
+#define CC_SSHT_MIN ((_short)-32767-1) /* 32768 0x8000 */
 #define CC_UMED_MAX ((umedit)0xFFFFFFFF) /* 4294967295 */
-#define CC_SMED_MAX ((smedit)0x7FFFFFFF) /* 2147483647 */
-#define CC_SMED_MIN ((smedit)-2147483647-1) /* 2147483648 0x80000000 */
+#define CC_SMED_MAX ((_medit)0x7FFFFFFF) /* 2147483647 */
+#define CC_SMED_MIN ((_medit)-2147483647-1) /* 2147483648 0x80000000 */
 #define CC_UINT_MAX ((uint)0xFFFFFFFFFFFFFFFF) /* 18446744073709551615 */
-#define CC_SINT_MAX ((sint)0x7FFFFFFFFFFFFFFF) /* 9223372036854775807 */
-#define CC_SINT_MIN ((sint)-9223372036854775807-1) /* 9223372036854775808 0x8000000000000000 */
+#define CC_SINT_MAX ((_int)0x7FFFFFFFFFFFFFFF) /* 9223372036854775807 */
+#define CC_SINT_MIN ((_int)-9223372036854775807-1) /* 9223372036854775808 0x8000000000000000 */
 
 struct ccheap {
   byte* start;
@@ -48,14 +48,15 @@ struct ccdest {
   byte* beyond;
 };
 
+#define CCSTRING_SIZEOF 32
+#define CCSTRING_STATIC_CHARS 30
+
 struct ccstring {
   struct ccheap heap;
-  sint len;
-  byte a[sizeof(struct string)-sizeof(struct ccheap)-sizeof(sint)-1];
+  _int len;
+  byte a[CCSTRING_SIZEOF-sizeof(struct ccheap)-sizeof(_int)-1];
   byte flag; /* flag==0xFF ? heap-string : stack-string */
 }; /* a sequence of bytes with zero terminated */ 
-
-#define CCSTRING_STATIC_CHARS 30
 
 /** Time and date **
 The 64-bit signed integer's biggest value is 9223372036854775807.
@@ -66,7 +67,7 @@ For seconds/milliseconds/microseconds/nanoseconds, it can
 represent more than 67-year/24-day/35-min/2-sec. */
 
 struct cctime {
-  sint sec;
+  _int sec;
   umedit nsec;
 };
 
@@ -84,29 +85,17 @@ struct ccdate {
 };
 
 struct ccattr {
-  sint fsize;
-  sint ctime;
-  sint atime;
-  sint mtime;
-  sint gid;
-  sint uid;
-  sint mode;
+  _int fsize;
+  _int ctime;
+  _int atime;
+  _int mtime;
+  _int gid;
+  _int uid;
+  _int mode;
   bool isfile;
   bool isdir;
   bool islink;
 }; /* creation, last access, last modify (UTC) */
-
-struct ccmutex {
-  union cctypeunit a[CCMUTEX_NUNIT];
-};
-
-struct ccrwlock {
-  union cctypeunit a[CCRWLOCK_NUNIT];
-};
-
-struct cccondv {
-  union cctypeunit a[CCCONDV_NUNIT];
-};
 
 /** Debugger and logger **/
 
@@ -129,14 +118,14 @@ struct cccondv {
 
 CORE_API void ccxassert(bool pass, const char* expr, const char* fileline);
 CORE_API void ccxlogger(const char* tag, const void* fmt, ...);
-CORE_API void ccsetlevel(sint loglevel);
-CORE_API sint ccloglevel();
+CORE_API void ccsetlevel(_int loglevel);
+CORE_API _int ccloglevel();
 CORE_API void ccexit();
 
 /** Memory operation **/
 
-CORE_API struct ccheap ccalloc(sint size);
-CORE_API struct ccheap ccallocs(sint size, struct ccfrom s);
+CORE_API struct ccheap ccalloc(_int size);
+CORE_API struct ccheap ccallocs(_int size, struct ccfrom s);
 CORE_API bool ccrelloc(struct ccheap* self, uint size);
 CORE_API void ccfree(struct ccheap* self);
 CORE_API void cczero(void* p, uint bytes);
@@ -196,29 +185,52 @@ struct ccmsghead {
   ushort flag;
 };
 
-struct cctlskey {
-  union cctypeunit a[CCTLSKEY_NUNIT];
+union cceight {
+  _int ival;
+  double dval;
+  void* pval;
+  byte b[8];
 };
 
-CORE_API bool cctlskeyinit(struct cctlskey* self);
-CORE_API void cctlskeyfree(struct cctlskey* self);
-CORE_API bool cctlskeyset(struct cctlskey* self, const void* data);
-CORE_API void* cctlskeyget(struct cctlskey* self);
+struct ccmutex {
+  union cceight a[(CC_MUTEX_BYTES - 1) / sizeof(union cceight) + 1];
+};
+
+struct ccrwlock {
+  union cceight a[(CC_RWLOCK_BYTES - 1) / sizeof(union cceight) + 1];
+};
+
+struct cccondv {
+  union cceight a[(CC_CONDV_BYTES - 1) / sizeof(union cceight) + 1];
+};
+
+struct ccthread {
+  union cceight a[(CC_THRID_BYTES - 1) / sizeof(union cceight) + 1];
+};
+
+struct ccthrkey {
+  union cceight a[(CC_THKEY_BYTES - 1) / sizeof(union cceight) + 1];
+};
+
+CORE_API bool ccthrkey_init(struct ccthrkey* self);
+CORE_API void ccthrkey_free(struct ccthrkey* self);
+CORE_API bool ccthrkey_setdata(struct ccthrkey* self, const void* data);
+CORE_API void* ccthrkey_getdata(struct ccthrkey* self);
 
 struct ccstate;
+struct ccionf;
 
 struct ccglobal {
   struct ccstate* master;
-  struct ccepoll epoll;
+  struct ccionf* ionf;
   struct ccmutex mutex;
-  umedit indexseed;
 };
 
 struct ccstate {
   struct cclinknode node;
   struct ccglobal* g;
   void* lstate;
-  struct ccthread thread;
+  struct ccthread thrid;
   umedit index, weight;
   struct ccmutex mutex;
   struct cccondv condv;
