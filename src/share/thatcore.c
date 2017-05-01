@@ -9,54 +9,54 @@
 
 /** Debugger and logger **/
 
-void ccxassert(bool pass, const char* expr, const char* fileline) {
+void cc_assert_func(bool pass, const char* expr, const char* fileline) {
   if (pass) {
     cclogd("assert pass: %s", expr);
   } else {
-    ccxlogger("0[E] ", "assert fail: %s at %s", expr, fileline);
+    cc_logger_func("0[E] ", "assert fail: %s at %s", expr, fileline);
   }
 }
 
-static sint ccloglevel = 2;
+static _int ccloglevel = 2;
 
-sint ccxlogger(const char* tag, const void* fmt, ...) {
-  sint n = 0, level = tag[0] - '0';
+_int cc_logger_func(const char* tag, const void* fmt, ...) {
+  _int n = 0, level = tag[0] - '0';
   const byte* p = (const byte*)fmt;
   int printed = 0;
   if (level > ccloglevel) return 0;
   for (; *p; ++p) {
     if (*p != '%') continue;
     if (*(p+1) == 0) {
-      ccloge("ccxlogger invalid (1) %s", fmt);
+      ccloge("cc_logger_func invalid (1) %s", fmt);
       return 0;
     }
     p += 1;
     if (*p == '%' || *p == 's') continue;
-    ccloge("ccxlogger invalid (2) %s", fmt);
+    ccloge("cc_logger_func invalid (2) %s", fmt);
     return 0;
   }
-  if ((n = (sint)fprintf(stdout, tag + 1)) < 0) {
+  if ((n = (_int)fprintf(stdout, "%s", tag + 1)) < 0) {
     n = 0;
   }
   if (fmt) {
     va_list args;
     va_start(args, fmt);
     if ((printed = vfprintf(stdout, (const char*)fmt, args)) > 0) {
-      n += (sint)printed;
+      n += (_int)printed;
     }
     va_end(args);
   }
   if ((printed = fprintf(stdout, CCNEWLINE)) > 0) {
-    n += (sint)printed;
+    n += (_int)printed;
   }
   return n;
 }
 
-void ccsetloglevel(sint level) {
+void ccsetloglevel(_int level) {
   ccloglevel = level;
 }
 
-sint ccgetloglevel() {
+_int ccgetloglevel() {
   return ccloglevel;
 }
 
@@ -68,11 +68,17 @@ void ccexit() {
 
 static uint ccmultof(uint n, uint orig) {
   /* ((orig + n - 1) / n) * n = ((orig - 1) / n + 1) * n */
-  return ((n == 0 || orig == 0) ? (n | orig) : ((orig - 1) / n + 1) * n));
+  return ((n == 0 || orig == 0) ? (n | orig) : ((orig - 1) / n + 1) * n);
 }
 
 static uint ccmultofpow2(byte bits, uint orig) {
   return (orig == 0 ? (1 << bits) : ((((orig - 1) >> bits) + 1) << bits));
+}
+
+void* ccrawalloc(void* mem, _int newsize) {
+  size_t size = 0;
+  if (newsize <= 0) newsize = 1;
+  size = (size_t)(newsize = ccmultofpow2(3, newsize)); 
 }
 
 static uint llalloc(struct ccheap* self, uint bytes) {
@@ -87,14 +93,14 @@ static uint llalloc(struct ccheap* self, uint bytes) {
   return (uint)size;
 }
 
-struct ccheap ccalloc(uint size) {
+struct ccheap ccheap_alloc(uint size) {
   struct ccheap heap;
   llalloc(&heap, size);
   cczerob(heap.start, heap.beyond);
   return heap;
 }
 
-struct ccheap ccallocfrom(uint size, struct ccfrom from) {
+struct ccheap ccheap_allocfrom(uint size, struct ccfrom from) {
   struct ccheap heap;
   if ((size = llalloc(&heap, size))) {
     uint copied = ccopyn(from, heap.start, size);
@@ -450,11 +456,11 @@ struct ccstring ccstrfromuf(uint a, int fmt) {
   return *llstrsetlen(&s, llutos(a, fmt, &s));
 }
 
-struct ccstring ccstrfromi(sint a) {
+struct ccstring ccstrfromi(_int a) {
   return ccstrfromif(a, 0);
 }
 
-struct ccstring ccstrfromif(sint a, int fmt) {
+struct ccstring ccstrfromif(_int a, int fmt) {
   return ccstrfromuf(a < 0 ? (-a) : a, a < 0 ? (LLNSIGN | fmt) : fmt);
 }
 
@@ -550,11 +556,11 @@ struct ccstring* ccstrsetuf(struct ccstring* self, uint a, int fmt) {
   return llstrsetlen(self, llutos(a, fmt, llstrenlarge(self, CCSTRING_STATIC_CHARS)));
 }
 
-struct ccstring* ccstrseti(struct ccstring* self, sint a) {
+struct ccstring* ccstrseti(struct ccstring* self, _int a) {
   return ccstrsetif(self, a, 0);
 }
 
-struct ccstring* ccstrsetif(struct ccstring* self, sint a, int fmt) {
+struct ccstring* ccstrsetif(struct ccstring* self, _int a, int fmt) {
   return llstrsetlen(self, llutos(a < 0 ? (-a) : a, (a < 0 ? (fmt | LLNSIGN) : fmt), llstrenlarge(self, CCSTRING_STATIC_CHARS)));
 }
 
@@ -592,11 +598,11 @@ struct ccstring* ccstradduf(struct ccstring* self, uint a, int fmt) {
   return llstradds(self, &ccstrfromuf(a, fmt));
 }
 
-struct ccstring* ccstraddi(struct ccstring* self, sint a) {
+struct ccstring* ccstraddi(struct ccstring* self, _int a) {
   return ccstraddif(self, a, 0);
 }
 
-struct ccstring* ccstraddif(struct ccstring* self, sint a, int fmt) {
+struct ccstring* ccstraddif(struct ccstring* self, _int a, int fmt) {
   return llstradds(self, &ccstrfromif(a, fmt);
 }
 
@@ -857,7 +863,7 @@ struct ccfrom ccgetcmdline(struct ccfrom name) {
 /** Other functions **/
 
 bool ccisprime(umedit n) {
-  sint i = 0;
+  _int i = 0;
   if (n == 2) return true;
   if (n == 1 || (n % 2) == 0) return false; 
   for (i = 3; i*i <= n; i += 2) {
@@ -908,14 +914,15 @@ void ccthattest() {
   ccassert(ainit[1] == 0);
   ccassert(ainit[2] == 0);
   ccassert(ainit[3] == 0);
+  ccassert(strlen(0) == 0);
   /* basic types */
   ccassert(sizeof(byte) == 1);
   ccassert(sizeof(int8) == 1);
-  ccassert(sizeof(sshort) == 2);
+  ccassert(sizeof(_short) == 2);
   ccassert(sizeof(ushort) == 2);
-  ccassert(sizeof(smedit) == 4);
+  ccassert(sizeof(_medit) == 4);
   ccassert(sizeof(umedit) == 4);
-  ccassert(sizeof(sint) == 8);
+  ccassert(sizeof(_int) == 8);
   ccassert(sizeof(uint) == 8);
   ccassert(sizeof(uint) >= sizeof(size_t));
   ccassert(sizeof(float) == 4);

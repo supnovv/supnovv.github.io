@@ -4,8 +4,9 @@
 #include "autoconf.h"
 
 #undef CORE_API
-#undef CLUA_API
 #define CORE_API extern
+
+#undef CLUA_API
 #if defined(CCLUASHARED)
   #if defined(__GNUC__)
     #define CLUA_API extern
@@ -84,7 +85,7 @@ struct ccdate {
   umedit nsec;    /* nanoseconds that less than 1 sec */
 };
 
-struct ccattr {
+struct ccfileattr {
   _int fsize;
   _int ctime;
   _int atime;
@@ -100,9 +101,9 @@ struct ccattr {
 /** Debugger and logger **/
 
 #ifdef CCDEBUG
-#define ccdebug(...) { __VA_ARGS__ } 
+#define CC_DEBUG_ZONE(...) { __VA_ARGS__ } 
 #else
-#define ccdebug(...) { ((void)0) }
+#define CC_DEBUG_ZONE(...) { ((void)0); }
 #endif
 
 #define CCXMKSTR(a) #a
@@ -110,34 +111,38 @@ struct ccattr {
 #define CCFILELINESTR __FILE__ " line " CCMKSTR(__LINE__)
 #define CCLOGTAGSTR __FILE__ " (" CCMKSTR(__LINE__) ") "
 
-#define ccassert(e) ccxassert((e), (#e), CCFILELINESTR)                        /* 0:assert */
-#define ccloge(fmt, ...) ccxlogger("1[E] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 1:error */
-#define cclogw(fmt, ...) ccxlogger("2[W] " CCLOGTAGSTR, (fmt), ##　__VA_ARGS__) /* 2:warning */
-#define cclogi(fmt, ...) ccxlogger("3[I] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 3:important */
-#define cclogd(fmt, ...) ccxlogger("4[D] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 4:debug */
+#define ccassert(e) cc_assert_func((e), (#e), CCFILELINESTR)                        /* 0:assert */
+#define ccloge(fmt, ...) cc_logger_func("1[E] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 1:error */
+#define cclogw(fmt, ...) cc_logger_func("2[W] " CCLOGTAGSTR, (fmt), ##　__VA_ARGS__) /* 2:warning */
+#define cclogi(fmt, ...) cc_logger_func("3[I] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 3:important */
+#define cclogd(fmt, ...) cc_logger_func("4[D] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 4:debug */
 
-CORE_API void ccxassert(bool pass, const char* expr, const char* fileline);
-CORE_API void ccxlogger(const char* tag, const void* fmt, ...);
-CORE_API void ccsetlevel(_int loglevel);
-CORE_API _int ccloglevel();
+CORE_API void cc_assert_func(bool pass, const char* expr, const char* fileline);
+CORE_API _int cc_logger_func(const char* tag, const void* fmt, ...);
+CORE_API void ccsetloglevel(_int loglevel);
+CORE_API _int ccgetloglevel();
 CORE_API void ccexit();
 
 /** Memory operation **/
 
-CORE_API struct ccheap ccalloc(_int size);
-CORE_API struct ccheap ccallocs(_int size, struct ccfrom s);
-CORE_API bool ccrelloc(struct ccheap* self, uint size);
-CORE_API void ccfree(struct ccheap* self);
-CORE_API void cczero(void* p, uint bytes);
-CORE_API void cczerob(void* start, const void* beyond);
-CORE_API void cccopy(struct ccfrom from, void* to);
-CORE_API void cccopyn(struct ccfrom from, uint n, void* to);
-CORE_API void cccopyr(struct ccfrom from, void* to);
-CORE_API void cccopyrn(struct ccfrom from, uint n, void* to);
-CORE_API struct ccfrom ccfrom(const void* p, uint n);
-CORE_API struct ccfrom ccfroms(const void* s);
-CORE_API struct ccfrom ccnext(struct ccfrom from, uint n);
-CORE_API struct ccdest ccdest(void* p, uint n);
+CORE_API void* ccrawalloc(_int size);
+CORE_API void* ccrawrealloc(void* buffer, _int newsize);
+CORE_API void ccrawfree(void* buffer);
+
+CORE_API struct ccheap ccheap_alloc(_int size);
+CORE_API struct ccheap ccheap_allocrawbuffer(_int size);
+CORE_API struct ccheap ccheap_allocfrom(_int size, struct ccfrom from);
+CORE_API void ccheap_realloc(struct ccheap* self, _int newsize);
+CORE_API void ccheap_free(struct ccheap* self);
+
+CORE_API _int cczero(void* p, _int bytes);
+CORE_API _int cczerodest(struct ccdest dest);
+CORE_API _int cccopy(struct ccfrom from, void* to);
+CORE_API _int cccopyn(struct ccfrom from, _int n, void* to);
+CORE_API _int cccopyr(struct ccfrom from, void* to);
+CORE_API _int cccopyrn(struct ccfrom from, _int n, void* to);
+CORE_API struct ccfrom ccfrom(const void* p, _int bytes);
+CORE_API struct ccfrom ccfromcstr(const void* cstr);
 
 /** List and queue **/
 
