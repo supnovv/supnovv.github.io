@@ -1,5 +1,5 @@
-#ifndef LIBC_THATCORE_H_
-#define LIBC_THATCORE_H_
+#ifndef CCLIB_THATCORE_H_
+#define CCLIB_THATCORE_H_
 #include "ccprefix.h"
 #include "autoconf.h"
 
@@ -11,7 +11,7 @@
   #if defined(__GNUC__)
     #define CLUA_API extern
   #else
-  #if defined(WINDOWS_CORE_LIB) || defined(THATCORE_LIB)
+  #if defined(CCLIB_CORE_WINOS) || defined(CCLIB_THATCORE)
     #define CLUA_API __declspec(dllexport)
   #else
     #define CLUA_API __declspec(dllimport)
@@ -34,9 +34,11 @@
 #define CC_SINT_MAX ((_int)0x7FFFFFFFFFFFFFFF) /* 9223372036854775807 */
 #define CC_SINT_MIN ((_int)-9223372036854775807-1) /* 9223372036854775808 0x8000000000000000 */
 
-struct ccheap {
-  byte* start;
-  byte* beyond;
+union cceight {
+  _int ival;
+  double dval;
+  void* pval;
+  byte b[8];
 };
 
 struct ccfrom {
@@ -45,6 +47,11 @@ struct ccfrom {
 };
 
 struct ccdest {
+  byte* start;
+  byte* beyond;
+};
+
+struct ccheap {
   byte* start;
   byte* beyond;
 };
@@ -98,6 +105,17 @@ struct ccfileattr {
   bool islink;
 }; /* creation, last access, last modify (UTC) */
 
+struct ccdirstream {
+  void* stream;
+};
+
+CORE_API struct cctime ccsystime();
+CORE_API struct cctime ccinctime();
+CORE_API struct ccdate ccgetdate();
+CORE_API _int ccfilesize(struct ccfrom name);
+CORE_API struct ccfileattr ccgetfileattr(struct ccfrom name);
+
+
 /** Debugger and logger **/
 
 #ifdef CCDEBUG
@@ -108,12 +126,12 @@ struct ccfileattr {
 
 #define CCXMKSTR(a) #a
 #define CCMKSTR(a) CCXMKSTR(a)
-#define CCFILELINESTR __FILE__ " line " CCMKSTR(__LINE__)
+#define CCFILELINESTR __FILE__ " (" CCMKSTR(__LINE__) ") "
 #define CCLOGTAGSTR __FILE__ " (" CCMKSTR(__LINE__) ") "
 
 #define ccassert(e) cc_assert_func((e), (#e), CCFILELINESTR)                        /* 0:assert */
 #define ccloge(fmt, ...) cc_logger_func("1[E] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 1:error */
-#define cclogw(fmt, ...) cc_logger_func("2[W] " CCLOGTAGSTR, (fmt), ##　__VA_ARGS__) /* 2:warning */
+#define cclogw(fmt, ...) cc_logger_func("2[W] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 2:warning */
 #define cclogi(fmt, ...) cc_logger_func("3[I] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 3:important */
 #define cclogd(fmt, ...) cc_logger_func("4[D] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 4:debug */
 
@@ -126,23 +144,45 @@ CORE_API void ccexit();
 /** Memory operation **/
 
 CORE_API void* ccrawalloc(_int size);
-CORE_API void* ccrawrealloc(void* buffer, _int newsize);
+CORE_API void* ccrawrelloc(void* buffer, _int size);
 CORE_API void ccrawfree(void* buffer);
 
 CORE_API struct ccheap ccheap_alloc(_int size);
 CORE_API struct ccheap ccheap_allocrawbuffer(_int size);
 CORE_API struct ccheap ccheap_allocfrom(_int size, struct ccfrom from);
-CORE_API void ccheap_realloc(struct ccheap* self, _int newsize);
+CORE_API void ccheap_relloc(struct ccheap* self, _int newsize);
 CORE_API void ccheap_free(struct ccheap* self);
 
-CORE_API _int cczero(void* p, _int bytes);
-CORE_API _int cczerodest(struct ccdest dest);
-CORE_API _int cccopy(struct ccfrom from, void* to);
-CORE_API _int cccopyn(struct ccfrom from, _int n, void* to);
-CORE_API _int cccopyr(struct ccfrom from, void* to);
-CORE_API _int cccopyrn(struct ccfrom from, _int n, void* to);
-CORE_API struct ccfrom ccfrom(const void* p, _int bytes);
+CORE_API _int cczero(void* start, _int bytes);
+CORE_API _int cczerorange(void* start, const void* beyond);
+
+CORE_API _int cccopy(const struct ccfrom* from, void* dest);
+CORE_API _int cccopytodest(const struct ccfrom* from, const struct ccdest* dest);
+CORE_API _int ccrcopy(const struct ccfrom* from, void* dest);
+CORE_API _int ccrcopytodest(const struct ccfrom* from, const struct ccdest* dest);
+
+CORE_API struct ccfrom ccfrom(const void* start, _int bytes);
 CORE_API struct ccfrom ccfromcstr(const void* cstr);
+CORE_API struct ccfrom ccfromrange(const void* start, const void* beyond);
+CORE_API struct ccdest ccdest(void* start, _int bytes);
+CORE_API struct ccdest ccdestrange(void* start, void* beyond);
+
+CORE_API struct ccfrom* ccsetfrom(struct ccfrom* self, const void* start, _int bytes);
+CORE_API struct ccfrom* ccsetfromcstr(struct ccfrom* self, const void* cstr);
+CORE_API struct ccfrom* ccsetfromrange(struct ccfrom* self, const void* start, const void* beyond);
+CORE_API struct ccdest* ccsetdest(struct ccdest* self, void* start, _int bytes);
+CORE_API struct ccdest* ccsetdestrange(struct ccdest* self, void* start, void* beyond);
+CORE_API const struct ccdest* ccdestheap(const struct ccheap* heap);
+
+/** String **/
+
+CORE_API const char* ccutos(uint a);
+CORE_API const char* ccitos(_int a);
+CORE_API struct ccstring ccemptystr();
+CORE_API struct ccstring ccstrfromu(uint a);
+CORE_API struct ccstring ccstrfromuf(uint a, _int fmt);
+CORE_API struct ccstring ccstrfromi(_int a);
+CORE_API struct ccstring ccstrfromif(_int a, _int fmt);
 
 /** List and queue **/
 
@@ -172,30 +212,18 @@ CORE_API bool ccsmplnode_isempty(struct ccsmplnode* node);
 CORE_API void ccsmplnode_insertafter(struct ccsmplnode* node, struct ccsmplnode* newnode);
 CORE_API void ccsqueue_init(struct ccsqueue* self);
 CORE_API void ccsqueue_push(struct ccsqueue* self, struct ccsmplnode* newnode);
+CORE_API void ccsqueue_pushqueue(struct ccsqueue* self, struct ccsqueue* queue);
 CORE_API bool ccsqueue_isempty(struct ccsqueue* self);
 CORE_API void ccdqueue_init(struct ccdqueue* self);
 CORE_API void ccdqueue_push(struct ccdqueue* self, struct cclinknode* newnode);
+CORE_API void ccdqueue_pushqueue(struct ccdqueue* self, struct ccdqueue* queue);
 CORE_API bool ccdqueue_isempty(struct ccdqueue* self);
 CORE_API struct cclinknode* cclinknode_remove(struct cclinknode* node);
 CORE_API struct ccsmplnode* ccsmplnode_removenext(struct ccsmplnode* node);
 CORE_API struct ccsmplnode* ccsqueue_pop(struct ccsqueue* self);
 CORE_API struct cclinknode* ccdqueue_pop(struct ccdqueue* self);
 
-/* Thread and synchronization */
-
-struct ccmsghead {
-  struct ccsmplnode node;
-  umedit size;
-  ushort type;
-  ushort flag;
-};
-
-union cceight {
-  _int ival;
-  double dval;
-  void* pval;
-  byte b[8];
-};
+/** Thread and synchronization **/
 
 struct ccmutex {
   union cceight a[(CC_MUTEX_BYTES - 1) / sizeof(union cceight) + 1];
@@ -209,7 +237,7 @@ struct cccondv {
   union cceight a[(CC_CONDV_BYTES - 1) / sizeof(union cceight) + 1];
 };
 
-struct ccthread {
+struct ccthrid {
   union cceight a[(CC_THRID_BYTES - 1) / sizeof(union cceight) + 1];
 };
 
@@ -217,57 +245,137 @@ struct ccthrkey {
   union cceight a[(CC_THKEY_BYTES - 1) / sizeof(union cceight) + 1];
 };
 
+/**
+ * thread-specific data key
+ */
+
 CORE_API bool ccthrkey_init(struct ccthrkey* self);
 CORE_API void ccthrkey_free(struct ccthrkey* self);
 CORE_API bool ccthrkey_setdata(struct ccthrkey* self, const void* data);
 CORE_API void* ccthrkey_getdata(struct ccthrkey* self);
 
-struct ccstate;
-struct ccionf;
+/**
+ * mutex
+ */
 
-struct ccglobal {
-  struct ccstate* master;
-  struct ccionf* ionf;
-  struct ccmutex mutex;
-};
+CORE_API bool ccmutex_init(struct ccmutex* self);
+CORE_API void ccmutex_free(struct ccmutex* self);
+CORE_API bool ccmutex_lock(struct ccmutex* self);
+CORE_API void ccmutex_unlock(struct ccmutex* self);
+CORE_API bool ccmutex_trylock(struct ccmutex* self);
 
-struct ccstate {
+/**
+ * read/write lock
+ */
+
+CORE_API bool ccrwlock_init(struct ccrwlock* self);
+CORE_API void ccrwlock_free(struct ccrwlock* self);
+CORE_API bool ccrwlock_read(struct ccrwlock* self);
+CORE_API bool ccrwlock_write(struct ccrwlock* self);
+CORE_API bool ccrwlock_tryread(struct ccrwlock* self);
+CORE_API bool ccrwlock_trywrite(struct ccrwlock* self);
+CORE_API void ccrwlock_unlock(struct ccrwlock* self);
+
+/**
+ * condition variable
+ */
+
+CORE_API bool cccondv_init(struct cccondv* self);
+CORE_API void cccondv_free(struct cccondv* self);
+CORE_API bool cccondv_wait(struct cccondv* self, struct ccmutex* mutex);
+CORE_API bool cccondv_timedwait(struct cccondv* self, struct ccmutex* mutex, struct cctime time);
+CORE_API void cccondv_signal(struct cccondv* self);
+CORE_API void cccondv_broadcast(struct cccondv* self);
+
+/**
+ * thread
+ */
+
+CORE_API struct ccthrid ccplat_selfthread();
+CORE_API bool ccplat_createthread(struct ccthrid* thrid, void* (*start)(void*), void* para);
+CORE_API void ccplat_threadsleep(uint us);
+CORE_API void ccplat_threadexit();
+CORE_API int ccplat_threadjoin(struct ccthrid* thrid);
+
+#define CCRUNSTATUS_SLEEP 0x01
+#define CCRUNSTATUS_RUNNING 0x02
+#define CCRUNSTATUS_WAKEUP_TRIGGERED 0x04
+
+struct ccthread {
+  /* access by master only */
   struct cclinknode node;
-  struct ccglobal* g;
-  void* lstate;
-  struct ccthread thrid;
-  umedit index, weight;
+  umedit weight;
+  /* shared with master */
+  umedit runstatus;
+  struct ccdqueue workrxq;
   struct ccmutex mutex;
   struct cccondv condv;
+  /* free access */
+  umedit index;
+  struct ccthrid id;
+  /* thread own use */
+  struct lua_State* L;
+  int (*start)();
+  struct ccdqueue workq;
+  struct ccsqueue msgq;
+  struct ccsqueue freeco;
+  struct ccstring defstr;
 };
 
-CORE_API int mainentry();
-CORE_API _int ccthreadindex();
-CORE_API void ccsetthreaddata(void* data);
-CORE_API void* ccgetthreaddata();
-CORE_API void ccsetcmdline(int argc, char** argv);
-CORE_API struct ccfrom ccgetcmdline(struct ccfrom name);
-CORE_API struct ccthread* ccthreadstart(void* (*start)(void*), void* para); /* platform-specific */
-CORE_API struct ccthread* ccthreadself(); /* platform-specific */
-CORE_API void ccthreadsleep(uint us); /* platform-specific */
-CORE_API void ccthreadexit(); /* platform-specific */
-CORE_API void* ccthreadjoin(struct ccthread* thread); /* platform-specific */
-CORE_API struct ccmutex ccmutexcreate(); /* platform-specific */
-CORE_API void ccmutexdestroy(struct ccmutex* self); /* platform-specific */
-CORE_API bool ccmutexlock(struct ccmutex* self); /* platform-specific */
-CORE_API bool ccmutextrylock(struct ccmutex* self); /* platform-specific */
-CORE_API void ccmutexunlock(struct ccmutex* self); /* platform-specific */
-CORE_API struct ccrwlock ccrwlockcreate(); /* platform-specific */
-CORE_API void ccrwlockdestroy(struct ccrwlock* self); /* platform-specific */
-CORE_API bool ccrwlockread(struct ccrwlock* self); /* platform-specific */
-CORE_API bool ccrwlocktryread(struct ccrwlock* self); /* platform-specific */
-CORE_API bool ccrwlockwrite(struct ccrwlock* self); /* platform-specific */
-CORE_API bool ccrwlocktrywrite(struct ccrwlock* self); /* platform-specific */
-CORE_API void ccrwlockunlock(struct ccrwlock* self); /* platform-specific */
+CORE_API struct ccthread* ccthread_getself();
+CORE_API struct ccthread* ccthread_getmaster();
+CORE_API void ccthread_init(struct ccthread* self);
+CORE_API void ccthread_free(struct ccthread* self);
+CORE_API bool ccthread_start(struct ccthread* self, int (*start)());
+CORE_API void ccthread_sleep(uint us);
+CORE_API void ccthread_exit();
+CORE_API int ccthread_join(struct ccthread* self);
 
-/* Core test */
+/**
+ * message
+ */
+
+#define CCMSGTYPE_REMOTE 0x01
+#define CCMSGTYPE_MASTER 0x02
+
+struct ccmsghead {
+  struct ccsmplnode node;
+  void* extra;
+  umedit svid;
+  umedit data;
+};
+
+CORE_API void ccservice_sendmsg(struct ccmsghead* msg);
+
+/**
+ * service
+ */
+
+#define CCSVFLAG_DONE 0x01
+#define CCSVTYPE_REGULARC 0x01
+#define CCSVTYPE_CSERVICE 0x02
+#define CCSVTYPE_LSERVICE 0x03
+
+struct ccservice {
+  struct cclinknode node;
+  struct ccthread* thrd; /* modify by master only */
+  struct ccsqueue rxmq;
+  ushort oflag; /* shared with master */
+  ushort iflag; /* internal use */
+  umedit svid;
+  void* udata;
+  struct ccluaco* co;
+  union {
+  int (*func)(void* udata, void* msg);
+  int (*cofunc)(struct ccluaco*);
+  } u;
+};
+
+
+
+/** Core test **/
 
 CORE_API void ccthattest();
-CORE_API void ccplattest(); /* platfrom-specific */
+CORE_API void ccplattest();
 
-#endif /* LIBC_THATCORE_H_ */
+#endif /* CCLIB_THATCORE_H_ */

@@ -118,8 +118,7 @@ int main(void) {
     ccwriteline(file, "#define bool unsigned char");
     ccwriteline(file, "#define byte unsigned char");
     ccwriteline(file, "#define int8 signed char");
-  }
-  else {
+  } else {
     ccloge("the size of char shall be 1-byte");
     ccwriteline(file, "#error \"the size of char shall be 1-byte\"");
   }
@@ -130,12 +129,10 @@ int main(void) {
   if (sizeof(unsigned short) == 2 && sizeof(short) == 2) {
     ccwriteline(file, "#define _short short");
     ccwriteline(file, "#define ushort unsigned short");
-  }
-  else if (sizeof(unsigned int) == 2 && sizeof(int) == 2) {
+  } else if (sizeof(unsigned int) == 2 && sizeof(int) == 2) {
     ccwriteline(file, "#define _short int");
     ccwriteline(file, "#define ushort unsigned int");
-  }
-  else {
+  } else {
     ccloge("no 16-bit integer type found");
     ccwriteline(file, "#error \"no 16-bit integer type found\"");
   }
@@ -146,12 +143,10 @@ int main(void) {
   if (sizeof(unsigned int) == 4 && sizeof(int) == 4) {
     ccwriteline(file, "#define _medit int");
     ccwriteline(file, "#define umedit unsigned int");
-  }
-  else if (sizeof(unsigned long) == 4 && sizeof(long) == 4) {
+  } else if (sizeof(unsigned long) == 4 && sizeof(long) == 4) {
     ccwriteline(file, "#define _medit long");
     ccwriteline(file, "#define umedit unsigned long");
-  }
-  else {
+  } else {
     ccloge("no 32-bit integer type found");
     ccwriteline(file, "#error \"no 32-bit integer type found\"");
   }
@@ -162,14 +157,32 @@ int main(void) {
   if (sizeof(unsigned long) == 8 && sizeof(long) == 8) {
     ccwriteline(file, "#define _int long");
     ccwriteline(file, "#define uint unsigned long");
-  }
-  else if (sizeof(unsigned long long) == 8 && sizeof(long long) == 8) {
+  } else if (sizeof(unsigned long long) == 8 && sizeof(long long) == 8) {
     ccwriteline(file, "#define _int long long");
     ccwriteline(file, "#define uint unsigned long long");
-  }
-  else {
+  } else {
     ccloge("no 64-bit integer type found");
     ccwriteline(file, "#error \"no 64-bit integer type found\"");
+  }
+
+  ccwriteline(file, "%s/* _intptr uintptr - pointer-size integer */", CCNEWLINE);
+  ccwriteline(file, "#undef _intptr");
+  ccwriteline(file, "#undef uintptr");
+  if (sizeof(short) == sizeof(void*)) {
+    ccwriteline(file, "#define _intptr short");
+    ccwriteline(file, "#define uintptr unsigned short");
+  } else if (sizeof(int) == sizeof(void*)) {
+    ccwriteline(file, "#define _intptr int");
+    ccwriteline(file, "#define uintptr unsigned int");
+  } else if (sizeof(long) == sizeof(void*)) {
+    ccwriteline(file, "#define _intptr long");
+    ccwriteline(file, "#define uintptr unsigned long");
+  } else if (sizeof(long long) == sizeof(void*)) {
+    ccwriteline(file, "#define _intptr long long");
+    ccwriteline(file, "#define uintptr unsigned long long");
+  } else {
+    ccloge("no pointer-size integer type found");
+    ccwriteline(file, "#error \"no pointer-size integer type found\"");
   }
 
   ccwriteline(file, "%s/* _long ulong - 128-bit */", CCNEWLINE);
@@ -190,9 +203,17 @@ int main(void) {
   ccwriteline(file, "#define CC_THKEY_BYTES %d", ccthkeybytes);
   ccwriteline(file, "#define CC_THRID_BYTES %d", ccthridbytes);
 
-  ccwriteline(file, "%s/* void* %d-bit */", CCNEWLINE, sizeof(void*)*8);
+  ccwriteline(file, "%s/* char %d-bit */", CCNEWLINE, sizeof(char)*8);
+  ccwriteline(file, "/* short %d-bit */", sizeof(short)*8);
+  ccwriteline(file, "/* int %d-bit */", sizeof(int)*8);
+  ccwriteline(file, "/* long %d-bit */", sizeof(long)*8);
+  ccwriteline(file, "/* long long %d-bit */", sizeof(long long)*8);
+  ccwriteline(file, "/* void* %d-bit */", sizeof(void*)*8);
   ccwriteline(file, "/* size_t %d-bit */", sizeof(size_t)*8);
+  ccwriteline(file, "/* time_t %d-bit */", sizeof(time_t)*8);
+  ccwriteline(file, "/* clock_t %d-bit */", sizeof(clock_t)*8);
   ccwriteline(file, "/* ptrdiff_t %d-bit */", sizeof(ptrdiff_t)*8);
+  ccwriteline(file, "/* CLOCKS_PER_SEC %d */", CLOCKS_PER_SEC);
   ccwriteline(file, "/* BUFSIZ %d */", BUFSIZ);
   ccwriteline(file, "/* EOF %d */", EOF);
   ccwriteline(file, "/* FILENAME_MAX %d */", FILENAME_MAX);
@@ -200,9 +221,6 @@ int main(void) {
   ccwriteline(file, "/* TMP_MAX %d */", TMP_MAX);
   ccwriteline(file, "/* L_tmpnam %d */", L_tmpnam);
   ccwriteline(file, "/* RAND_MAX %d */", RAND_MAX);
-  ccwriteline(file, "/* CLOCKS_PER_SEC %d */", CLOCKS_PER_SEC);
-  ccwriteline(file, "/* clock_t %d-bit */", sizeof(clock_t)*8);
-  ccwriteline(file, "/* time_t %d-bit */", sizeof(time_t)*8);
 
   ccwriteline(file, "%s#endif /* LIBC_AUTOCONF_H_ */", CCNEWLINE);
   fclose(file);

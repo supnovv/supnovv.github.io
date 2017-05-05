@@ -8,7 +8,7 @@
    _WIN32 is also defined on 64-bit platform for backward compatibility
    _M_IX86/_M_X64/_M_IA64: for x86/x64/(intel itanium) architecture */
 #include <windows.h>
-#define WINDOWS_CORE_LIB
+#define CCLIB_CORE_WINOS
 #include "thatcore.h"
 #if !defined(_WIN32) && !defined(_WIN64)
 #error "_WIN32/_WIN64 should be defined"

@@ -8,7 +8,7 @@ LDPATH =
 LDLIBS =
 SHARED =
 
-CC = gcc -std=c89
+CC = gcc-6 -std=c89
 CWARNS = -Wall -Wextra -Werror
 CMACRO = $(MACRO)
 POSINDEPCODE = -fPIC # position independent code
@@ -46,7 +46,7 @@ AUTOCONF = $(BUILD_DIR)autoconf$(E)
 CORETEST = $(BUILD_DIR)thattest$(E)
 AUTOOBJ = $(BUILD_DIR)autoconf$(O)
 MAINOBJ = $(BUILD_DIR)mainentry$(O)
-COREOBJ = $(BUILD_DIR)thattest$(O) $(BUILD_DIR)linuxcore$(O) $(BUILD_DIR)thatcore$(O)
+COREOBJ = $(BUILD_DIR)thatcore$(O) $(BUILD_DIR)linuxcore$(O) $(BUILD_DIR)thattest$(O)
 ALLOBJS = $(AUTOOBJ) $(MAINOBJ) $(COREOBJ)
 
 ifeq ($(PLAT), none)

@@ -1,3 +1,17 @@
+/*
+各任务可以生成新的子任务，新生成的任务挂接在空闲任务列表中。
+主线程负责对任务进行分配，每个任务由一个唯一的id来表示，可以跨越网络进行通信。
+当有对应任务的消息到来时，如果这个任务还没有分配线程处理，则根据负载为其分配一个线程；
+任务分配到线程后，相当于变成线程数据的一部分，借助线程的mutex将消息插入到任务的消息队列中；
+
+1. 任务拥有自己的消息队列，任务可以该任意其他任务发送消息，任务可以跨越网络存在
+2. 一个任务在另一个任务发送消息时，先看目标任务是本地任务还是远端任务，远端任务需要先进行网络操作
+3. 如果是本地任务，先看这个任务有没有分配线程（如果保证这个变量访问的一致性？只能由主线程去进行分配），
+　　所以将消息插入主线程的rxq中，然后触发主线程分配这个消息，如何触发？哪些fd可以在epoll中使用？
+4. 主线程给任务分配线程后，一条链接链入任务消息队列，一条链接链入线程rxq中，线程按顺序处理完消息后要将消息标记未已处理，主线程在插入任务消息队列或任务执行完时好将消息移到空闲消息队列
+5. 线程如何知道哪些任务正在由自己处理？
+*/
+
 /** 事件数据传递过程 **
 EPOLL事件数据{int fd; uint32_t events; void* ud}
 事件数据加入事件等待队列中，该队列中的数据需要按照当前线程负载分配给不同的线程处理（或递交给已经处理该任务的线程处理），事件队列数据{node; int fd; uint32_t events; void* ud; _int timestamp;}
@@ -176,6 +190,298 @@ CORE_API uint ccstrzmax(const struct ccstrz* self);
 CORE_API void ccstrzfree(struct ccstrz* self);
 CORE_API bool ccisemptystrz(const struct ccstrz* self);
 CORE_API bool ccstrzequal(struct ccfrom a, struct ccfrom b);
+
+static struct ccstring* llsfmt(struct ccfrom* s, int minlen, struct ccstring* (*func)(struct ccstring*, struct ccfrom), struct ccstring* self) {
+  byte buffer[CCSTRING_STATIC_CHARS+1] = {0};
+  byte* a = buffer;
+  unsigned int flag = (minlen & 0x7f00);
+  int blanks = 0;
+  minlen = (minlen & 0xff);
+  if (minlen > CCSTRING_STATIC_CHARS) minlen = CCSTRING_STATIC_CHARS;
+  if (s->start < s->beyond) {
+    const byte* beg = s->start;
+    byte* end = a + minlen;
+    if (s->beyond - s->start >= minlen) return self;
+    if (flag & CCJUSTL) {
+      while (beg < s->beyond) *a++ = *beg++;
+      while (beg < end) *a++ = ' ';
+    } else {
+      blanks = minlen - (s->beyond - s->start);
+      beg = a + blanks;
+      while (blanks--) *a++ = ' ';
+      while (beg < end) *a++ = *(s->start);
+    }
+  } else {
+    blanks = minlen;
+    while (blanks--) *a++ = ' ';
+  }
+  s->start = a;
+  s->beyond = a + minlen;
+  return func(self, *s);
+}
+
+union lldouble {
+  double d;
+  uint u;
+};
+
+static int llrtos(double n, int minlen, struct ccstring* dstr) {
+  byte a[CCSTRING_STATIC_CHARS+1] = {0};
+  byte* dest = (byte*)to;
+  int i = 0, printed = 0;
+  bool negative = false;
+  uint exponent = 0;
+  uint fraction = 0;
+  union lldouble d;
+  if (dest == 0) return 0;
+  d.d = n;
+  negative = (d.u & 0x8000000000000000) != 0;
+  exponent = (d.u & 0x7FF0000000000000) >> 52;
+  fraction = (d.u & 0x000FFFFFFFFFFFFF);
+  if (exponent == 0 && fraction == 0) {
+    if (negative) a[i++] = '-';
+    else if (flag & LLFMTFLAG_PSIGN) a[i++] = '+';
+    else if (flag & LLFMTFLAG_ESIGN) a[i++] = ' ';
+    a[i++] = '0'; a[i++] = '.'; a[i++] = '0';
+  } else if (exponent == 0x00000000000007FF) {
+    if (fraction == 0) {
+      if (negative) a[i++] = '-';
+      else if (flag & LLFMTFLAG_PSIGN) a[i++] = '+';
+      else if (flag & LLFMTFLAG_ESIGN) a[i++] = ' ';
+      a[i++] = 'I'; a[i++] = 'n'; a[i++] = 'f'; a[i++] = 'i';
+      a[i++] = 'n'; a[i++] = 'i'; a[i++] = 't'; a[i++] = 'y';
+    } else {
+      a[i++] = 'N'; a[i++] = 'a'; a[i++] = 'N';
+    }
+  } else {
+    if (negative) a[i++] = '-';
+    else if (flag & LLFMTFLAG_PSIGN) a[i++] = '+';
+    else if (flag & LLFMTFLAG_ESIGN) a[i++] = ' ';
+    /* printed does not include the additional null char */
+    if ((printed = snprintf((char*)(a+i), CCSTRING_STATIC_CHARS+1-i, "%#g", n)) < 0) {
+      ccloge("ccrtos snprintf fail %s", strerror(errno));
+      return 0;
+    }
+    if ((i += printed) > CCSTRING_STATIC_CHARS) {
+      i = CCSTRING_STATIC_CHARS;
+    }
+  }
+  a[i] = 0;
+  return llsfmt(ccfrom(a, i), flag, minlen, to);
+}
+
+static uint llrtos(double dval, struct ccstring* dstr) {
+  byte a[CCSTRING_STATIC_CHARS+1] = {0};
+  byte* p = a;
+  bool negative = false;
+  uint exponent = 0;
+  uint fraction = 0;
+  uint len = 0;
+  union llfloat d;
+  d.f = dval;
+  negative = (d.u & 0x8000000000000000) != 0;
+  exponent = (d.u & 0x7FF0000000000000) >> 52;
+  fraction = (d.u & 0x000FFFFFFFFFFFFF);
+  if (exponent == 0 && fraction == 0) {
+    if (negative) *p++ = '-';
+    *p++ = '0'; *p++ = '.'; *p++ = '0';
+  } else if (exponent == 0x00000000000007FF) {
+    if (fraction == 0) {
+      if (negative) *p++ = '-';
+      *p++ = 'I'; *p++ = 'n'; *p++ = 'f'; *p++ = 'i'; *p++ = 'n'; *p++ = 'i'; *p++ = 't'; *p++ = 'y';
+    } else {
+      *p++ = 'N'; *p++ = 'a'; *p++ = 'N';
+    }
+  } else {
+    /* on success, the total number of characters written is returned.
+    this count does not include the additional null-character
+    automatically appended at the end of the string. */
+    int n = snprintf((char*)a, 32, "%#f", dval);
+    if (n > 0 && n <= CCSTRING_STATIC_CHARS) {
+      p += n;
+    } else {
+      *p++ = '0'; *p++ = '.'; *p++ = '0';
+      ccloge("ccrtos convert fail");
+    }
+  }
+  len = p - a;
+  cccopy(ccfrom(a, len+1), to);
+  return len;
+}
+
+const char* ccutos(uint a) {
+
+}
+
+const char* ccitos(_int a) {
+
+}
+
+const char* ccrtos(double a) {
+
+}
+
+struct ccstring ccemptystr = {{0}, 0, {0}, 0};
+
+struct ccstring ccstrfromu(uint a) {
+  return ccstrfromuf(a, 0);
+}
+
+struct ccstring ccstrfromuf(uint a, int fmt) {
+  struct ccstring s = ccemptystr;
+  return *llstrsetlen(&s, llutos(a, fmt, &s));
+}
+
+struct ccstring ccstrfromi(_int a) {
+  return ccstrfromif(a, 0);
+}
+
+struct ccstring ccstrfromif(_int a, int fmt) {
+  return ccstrfromuf(a < 0 ? (-a) : a, a < 0 ? (LLNSIGN | fmt) : fmt);
+}
+
+void ccstrfree(struct ccstring* self) {
+  if (self->flag == 0xFF) {
+    ccfree(&self->heap);
+    self->len = 0;
+  }
+  self->flag = 0;
+}
+
+bool ccstrequal(struct ccfrom a, struct ccfrom b) {
+  if (a.beyond - a.start != b.beyond - b.start) return false;
+  while (a.start < a.beyond) {
+    if (*(a.start++) != *(b.start++)) return false;
+  }
+  return true;
+}
+
+uint ccstrlen(const struct ccstring* self) {
+  return (self->flag == 0xFF ? self->len : self->flag);
+}
+
+void ccstrisempty(struct ccstring* self) {
+  return ccstrlen(self) == 0;
+}
+
+uint ccstrcap(const struct ccstring* self) {
+  if (self->flag == 0xFF) {
+    struct ccheap* heap = &self->heap;
+    return (heap->start < heap->beyond) ? (heap->beyond - heap->start - 1) : 0;
+  }
+  return CCSTRING_STATIC_CHARS;
+}
+
+const byte* ccstocstr(const struct ccstring* self) {
+  return (self->flag == 0xFF ? self->heap.start : (const byte*)self);
+}
+
+struct ccfrom ccfroms(const struct ccstring* s) {
+  return ccfrom(ccstocstr(s), ccstrlen(s));
+}
+
+byte* llstrenlarge(struct ccstring* self, uint bytes) {
+  if (ccstrcap(self) < bytes) {
+    uint len = 2 * ccstrlen(self); /* 1-byte for zero terminal */
+    bytes = len >= (bytes+1) ? len : (bytes+1);
+    if (self->flag == 0xFF) {
+      return (ccrelloc(&self->heap, bytes) ? self->heap.start : 0;
+    }
+    if ((self->heap = ccallocfrom(bytes, ccfroms(self))).start == 0) {
+      return 0;
+    }
+    self->len = self->flag;
+    self->flag = 0xFF;
+    return self->heap.start;
+  }
+  return (byte*)ccstocstr(self);
+}
+
+struct ccstring* llstrsetlen(struct ccstring* self, uint len) {
+  (self->flag == 0xFF) ? (self->len = len) : (self->flag = (byte)len);
+  return self;
+}
+
+struct ccstring* ccstrsets(struct ccstring* self, struct ccfrom s) {
+  uint n = 0;
+  if (from.start >= from.beyond) return self;
+  n = from.beyond - from.start;
+  if (!llstrenlarge(self, n) || ccstrcap(self) < n) {
+    ccloge("ccstrsets too large %s", ccutos(n));
+    return self;
+  }
+  if (self->flag == 0xFF) {
+    self->len = cccopy(from, self->heap.start);
+    *(self->heap.start + self->len) = 0;
+  } else {
+    self->flag = (byte)cccopy(from, (byte*)self);
+    *(((byte*)self) + self->flag) = 0;
+  }
+  return self;
+}
+
+struct ccstring* ccstrsetsf(struct ccstring* self, struct ccfrom s, int fmt) {
+  return llsfmt(&s, fmt, ccstrsets, self);
+}
+
+struct ccstring* ccstrsetu(struct ccstring* self, uint a) {
+  return ccstrsetuf(self, a, 0);
+}
+
+struct ccstring* ccstrsetuf(struct ccstring* self, uint a, int fmt) {
+  return llstrsetlen(self, llutos(a, fmt, llstrenlarge(self, CCSTRING_STATIC_CHARS)));
+}
+
+struct ccstring* ccstrseti(struct ccstring* self, _int a) {
+  return ccstrsetif(self, a, 0);
+}
+
+struct ccstring* ccstrsetif(struct ccstring* self, _int a, int fmt) {
+  return llstrsetlen(self, llutos(a < 0 ? (-a) : a, (a < 0 ? (fmt | LLNSIGN) : fmt), llstrenlarge(self, CCSTRING_STATIC_CHARS)));
+}
+
+struct ccstring* llstradds(struct ccstring* self, struct ccstring* s) {
+  return ccstradds(self, ccfromstr(s));
+}
+
+struct ccstring* ccstradds(struct ccstring* self, struct ccfrom s) {
+  uint nstr = ccstrlen(self), total = 0;
+  if (from.start <= from.beyond) return self;
+  total = nstr + (from.start - from.beyond);
+  if (!llstrenlarge(self, total) || ccstrcap(self) < total) {
+    ccloge("ccstradd too large %s", ccutos(total));
+    return self;
+  }
+  if (self->flag == 0xFF) {
+    self->len = nstr + cccopy(from, self->heap.start + nstr);
+    *(self->heap.start + self->len) = 0;
+  } else {
+    self->flag = (byte)(nstr + cccopy(from, ((byte*)self) + nstr));
+    *(((byte*)self) + self->falg) = 0;
+  }
+  return self;
+}
+
+struct ccstring* ccstraddsf(struct ccstring* self, struct ccfrom s, int fmt) {
+  return llsfmt(&s, fmt, ccstradds, self);
+}
+
+struct ccstring* ccstraddu(struct ccstring* self, uint a) {
+  return ccstradduf(self, a, 0);
+}
+
+struct ccstring* ccstradduf(struct ccstring* self, uint a, int fmt) {
+  return llstradds(self, &ccstrfromuf(a, fmt));
+}
+
+struct ccstring* ccstraddi(struct ccstring* self, _int a) {
+  return ccstraddif(self, a, 0);
+}
+
+struct ccstring* ccstraddif(struct ccstring* self, _int a, int fmt) {
+  return llstradds(self, &ccstrfromif(a, fmt);
+}
+
 /* unicode */
 CORE_API uint cccharstride(byte ch);
 CORE_API uint ccwcharstride(ushort ch);
@@ -1235,3 +1541,166 @@ void ccthattest() {
   cclogd("max. chars %s", ccutos(ccstrzmax(&s)));
   ccstrzfree(&s);
 }
+
+
+
+typedef struct {
+  void* (*start)(void*);
+  void* para;
+  corethread_t* thread;
+} threadargs_t;
+#define MAX_THREADPOOL_SIZE 128
+static corethread_t threadpool[MAX_THREADPOOL_SIZE];
+static uint threadpoolindex = 0;
+static pthread_key_t pthread_tls_key;
+static bool tlskey_created = false;
+static pthread_t themainthread;
+static corethread_t* gettopthread() {
+  corethread_t* p = 0;
+  if (threadpoolindex >= MAX_THREADPOOL_SIZE) {
+    core_loge("thread reach limit %s", core_utos(MAX_THREADPOOL_SIZE));
+    return 0;
+  }
+  p = threadpool + threadpoolindex++;
+  p->index = 0;
+  p->func = p->para = 0;
+  core_zero(&p->impl_, sizeof(corehide_t));
+  return p;
+}
+static void freetopthread() {
+  if (threadpoolindex) threadpoolindex -= 1;
+}
+static pthread_t* getpthreadaddr(corethread_t* self) {
+  return (pthread_t*)&(self->impl_);
+}
+static pthread_key_t getthreadkey() {
+  if (!tlskey_created) core_loge("getthreadkey unavailable");
+  return pthread_tls_key;
+}
+static void createthreadkey() {
+  int errnum = 0;
+  if (tlskey_created) return;
+  errnum = pthread_key_create(&pthread_tls_key, 0);
+  if (errnum == 0) { tlskey_created = true; return; }
+  core_loge("createthreadkey fail: %s", strerror(errnum));
+  core_zero(&pthread_tls_key, sizeof(pthread_key_t));
+}
+static void deletethreadkey() {
+  int errnum = 0;
+  if (!tlskey_created) return;
+  errnum = pthread_key_delete(pthread_tls_key);
+  if (errnum != 0) core_loge("deletethreadkey fail: %s", strerror(errnum));
+  tlskey_created = false;
+}
+#define CCRECORDEDSTATENUM 80 
+struct ccroutine {
+  lua_State* lthread;
+  lua_Function lfunc;
+  ccrptoto proto;
+};
+struct ccstate {
+  _int index;
+  struct ccglobal* g;
+  lua_State* lstate;
+  struct cclist rlist;
+  pthread_t thread;
+};
+struct ccstatepool {
+  struct ccstate s[CCRECORDEDSTATENUM];
+};
+struct ccglobal {
+  struct ccstate* state;
+  _int nstate;
+  int iofd;
+};
+struct ccthread* ccgetmainthread(struct ccstate* s) {
+  return &s->g->a[0]->thread;
+}
+void ccattachstate(struct ccstate* s) {
+  if (s->index > 0 && s->index < CCRECORDEDSTATENUM) {
+    s->g->a[s->index] = s;
+  }
+}
+void ccdetachstate(struct ccstate* s) {
+  if (s->index > 0 && s->index < CCRECORDEDSTATENUM) {
+    s->g->a[s->index] = 0;
+  }
+}
+static bool llcreatethreadkey(pthread_key_t* key) {
+  /* int pthread_key_create(pthread_key_t* key, void (*destructor)(void*));
+  although the same key may be used by different threads, the values bound
+  to the key are maintained on a per-thread basis and persist for the life
+  of the calling thread
+  an optional destructor function may be associated with each key value, at
+  thread exit, if both the destructor and the value of the key are non-null,
+  this destructor is called and the value of the key is set to null
+  this function should called one time for one key, and it is the responsibility
+  of the programmer to ensure that it is called exactly once per key before
+  use of it, a typically way is to call it in the main thread */
+  int n = pthread_key_create(key, 0);
+  if (n != 0) { ccloge("llcreatethreadkey %s", strerror(n)); return false; }
+  return true;
+}
+static void lldeletethreadkey(pthread_key_t key) {
+  int n = pthread_key_delete(key);
+  if (n != 0) { ccloge("lldeletethreadkey %s", strerror(n)); }
+}
+static void* llgetthreadspecific(pthread_key_t key) {
+  return pthread_getspecific(key);
+}
+static void llsetthreadspecific(pthread_key_t key, const void* value) {
+  /* different threads may bind different values to the same key, the value
+  is typically a pointer to blocks of dynamically allocated memory that have
+  been reserved for use by the calling thread */
+  int n = pthread_setspecific(key, value);
+  if (n != 0) { ccloge("llsetthreadspecific %s", strerror(n)); }
+}
+static void sscreatethreadkey(struct ccglobal* g) {
+  if (g->keycreated) return;
+  if (llgetthreadspecific(&g->key)) { g->keycreated = true; }
+}
+static void ssdeletethreadkey(struct ccglobal* g) {
+  if (!g->keycreated) return;
+  lldeletethreadkey(g->key);
+  g->keycreated = false;
+}
+static int ssgetthreadspecific(struct ccglobal* g) {
+  return (int)llgetthreadspecific(g->key);
+}
+static void sssetthreadspecific(struct ccglobal* g, int n) {
+  llsetthreadspecific(g->key, (const void*)n); /* valid n is non-zero */
+}
+
+bool cctlskeyinit(struct cctlskey* self) {
+  int n = pthread_key_create((pthread_key_t*)self, 0);
+  if (n != 0) {
+    ccloge("pthread_key_create %s", strerror(n));
+  }
+  return (n == 0);
+}
+
+void cctlskeyfree(struct cctlskey* self) {
+  int n = pthread_key_delete((pthread_key_t*)self);
+  if (n != 0) {
+    ccloge("pthread_key_delete %s", strerror(n));
+  }
+}
+
+bool cctlskeyset(struct cctlskey* self, const void* data) {
+  /* different threads may bind different values to the same key, the value
+  is typically a pointer to blocks of dynamically allocated memory that have
+  been reserved for use by the calling thread.
+  ENOMEM - insufficient memory exists to associate the value with the key.
+  EINVAL - the key value is invalid. */
+  int n = pthread_setspecific((pthread_key_t*)self, data);
+  if (n != 0) {
+    ccloge("pthread_setspecific %s", strerror(n));
+  }
+  return (n == 0);
+}
+
+void* cctlskeyget(struct cctlskey* self) {
+  /* no errors are returned from pthread_getspecific() */
+  return pthread_getspecific((pthread_key_t*)self);
+}
+
