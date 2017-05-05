@@ -8,7 +8,7 @@ LDPATH =
 LDLIBS =
 SHARED =
 
-CC = gcc-6 -std=c89
+CC = gcc -std=c89
 CWARNS = -Wall -Wextra -Werror
 CMACRO = $(MACRO)
 POSINDEPCODE = -fPIC # position independent code
