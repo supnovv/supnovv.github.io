@@ -21,39 +21,32 @@
   #define CLUA_API extern
 #endif
 
-#define CC_BYTE_MAX ((byte)0xFF) /* 255 */
-#define CC_INT8_MAX ((int8)0x7F) /* 127 */
-#define CC_INT8_MIN ((int8)(-127-1)) /* 128 0x80 */
-#define CC_USHT_MAX ((ushort)0xFFFF) /* 65535 */
-#define CC_SSHT_MAX ((_short)0x7FFF) /* 32767 */
-#define CC_SSHT_MIN ((_short)-32767-1) /* 32768 0x8000 */
-#define CC_UMED_MAX ((umedit)0xFFFFFFFF) /* 4294967295 */
-#define CC_SMED_MAX ((_medit)0x7FFFFFFF) /* 2147483647 */
-#define CC_SMED_MIN ((_medit)-2147483647-1) /* 2147483648 0x80000000 */
-#define CC_UINT_MAX ((uint)0xFFFFFFFFFFFFFFFF) /* 18446744073709551615 */
-#define CC_SINT_MAX ((_int)0x7FFFFFFFFFFFFFFF) /* 9223372036854775807 */
-#define CC_SINT_MIN ((_int)-9223372036854775807-1) /* 9223372036854775808 0x8000000000000000 */
-
-union cceight {
-  _int ival;
-  double dval;
-  void* pval;
-  byte b[8];
-};
+#define CC_UBYT_MAX ((uoctet_int)0xFF) /* 255 */
+#define CC_SBYT_MAX ((soctet_int)0x7F) /* 127 */
+#define CC_SBYT_MIN ((soctet_int)(-127-1)) /* 128 0x80 */
+#define CC_USHT_MAX ((ushort_int)0xFFFF) /* 65535 */
+#define CC_SSHT_MAX ((sshort_int)0x7FFF) /* 32767 */
+#define CC_SSHT_MIN ((sshort_int)-32767-1) /* 32768 0x8000 */
+#define CC_UMED_MAX ((umedit_int)0xFFFFFFFF) /* 4294967295 */
+#define CC_SMED_MAX ((smedit_int)0x7FFFFFFF) /* 2147483647 */
+#define CC_SMED_MIN ((smedit_int)-2147483647-1) /* 2147483648 0x80000000 */
+#define CC_UINT_MAX ((uright_int)0xFFFFFFFFFFFFFFFF) /* 18446744073709551615 */
+#define CC_SINT_MAX ((sright_int)0x7FFFFFFFFFFFFFFF) /* 9223372036854775807 */
+#define CC_SINT_MIN ((sright_int)-9223372036854775807-1) /* 9223372036854775808 0x8000000000000000 */
 
 struct ccfrom {
-  const byte* start;
-  const byte* beyond;
+  const uoctet_int* start;
+  const uoctet_int* beyond;
 };
 
 struct ccdest {
-  byte* start;
-  byte* beyond;
+  uoctet_int* start;
+  uoctet_int* beyond;
 };
 
 struct ccheap {
-  byte* start;
-  byte* beyond;
+  uoctet_int* start;
+  uoctet_int* beyond;
 };
 
 #define CCSTRING_SIZEOF 32
@@ -61,9 +54,9 @@ struct ccheap {
 
 struct ccstring {
   struct ccheap heap;
-  _int len;
-  byte a[CCSTRING_SIZEOF-sizeof(struct ccheap)-sizeof(_int)-1];
-  byte flag; /* flag==0xFF ? heap-string : stack-string */
+  sright_int len;
+  uoctet_int a[CCSTRING_SIZEOF-sizeof(struct ccheap)-sizeof(sright_int)-1];
+  uoctet_int flag; /* flag==0xFF ? heap-string : stack-string */
 }; /* a sequence of bytes with zero terminated */ 
 
 /** Time and date **
@@ -75,34 +68,34 @@ For seconds/milliseconds/microseconds/nanoseconds, it can
 represent more than 67-year/24-day/35-min/2-sec. */
 
 struct cctime {
-  _int sec;
-  umedit nsec;
+  sright_int sec;
+  umedit_int nsec;
 };
 
 struct ccdate {
-  umedit yearlow; /* 38-bit, can represent 274877906943 years */
-  byte high;      /* high 6-bit are extra bits for year */
-  byte ydaylow;   /* 1~366 */
-  byte month;     /* 1~12 */
-  byte day;       /* 1~31 */
-  byte wday;      /* 0~6, 0 is sunday */
-  byte hour;      /* 0~23 */
-  byte min;       /* 0~59 */
-  byte sec;       /* 0~61, 60 and 61 are the leap seconds */
-  umedit nsec;    /* nanoseconds that less than 1 sec */
+  umedit_int yearlow; /* 38-bit, can represent 274877906943 years */
+  uoctet_int high;      /* high 6-bit are extra bits for year */
+  uoctet_int ydaylow;   /* 1~366 */
+  uoctet_int month;     /* 1~12 */
+  uoctet_int day;       /* 1~31 */
+  uoctet_int wday;      /* 0~6, 0 is sunday */
+  uoctet_int hour;      /* 0~23 */
+  uoctet_int min;       /* 0~59 */
+  uoctet_int sec;       /* 0~61, 60 and 61 are the leap seconds */
+  umedit_int nsec;    /* nanoseconds that less than 1 sec */
 };
 
 struct ccfileattr {
-  _int fsize;
-  _int ctime;
-  _int atime;
-  _int mtime;
-  _int gid;
-  _int uid;
-  _int mode;
-  bool isfile;
-  bool isdir;
-  bool islink;
+  sright_int fsize;
+  sright_int ctime;
+  sright_int atime;
+  sright_int mtime;
+  sright_int gid;
+  sright_int uid;
+  sright_int mode;
+  nauty_bool isfile;
+  nauty_bool isdir;
+  nauty_bool islink;
 }; /* creation, last access, last modify (UTC) */
 
 struct ccdirstream {
@@ -112,7 +105,7 @@ struct ccdirstream {
 CORE_API struct cctime ccsystime();
 CORE_API struct cctime ccinctime();
 CORE_API struct ccdate ccgetdate();
-CORE_API _int ccfilesize(struct ccfrom name);
+CORE_API sright_int ccfilesize(struct ccfrom name);
 CORE_API struct ccfileattr ccgetfileattr(struct ccfrom name);
 
 
@@ -135,54 +128,54 @@ CORE_API struct ccfileattr ccgetfileattr(struct ccfrom name);
 #define cclogi(fmt, ...) cc_logger_func("3[I] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 3:important */
 #define cclogd(fmt, ...) cc_logger_func("4[D] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 4:debug */
 
-CORE_API void cc_assert_func(bool pass, const char* expr, const char* fileline);
-CORE_API _int cc_logger_func(const char* tag, const void* fmt, ...);
-CORE_API void ccsetloglevel(_int loglevel);
-CORE_API _int ccgetloglevel();
+CORE_API void cc_assert_func(nauty_bool pass, const char* expr, const char* fileline);
+CORE_API sright_int cc_logger_func(const char* tag, const void* fmt, ...);
+CORE_API void ccsetloglevel(sright_int loglevel);
+CORE_API sright_int ccgetloglevel();
 CORE_API void ccexit();
 
 /** Memory operation **/
 
-CORE_API void* ccrawalloc(_int size);
-CORE_API void* ccrawrelloc(void* buffer, _int size);
+CORE_API void* ccrawalloc(sright_int size);
+CORE_API void* ccrawrelloc(void* buffer, sright_int size);
 CORE_API void ccrawfree(void* buffer);
 
-CORE_API struct ccheap ccheap_alloc(_int size);
-CORE_API struct ccheap ccheap_allocrawbuffer(_int size);
-CORE_API struct ccheap ccheap_allocfrom(_int size, struct ccfrom from);
-CORE_API void ccheap_relloc(struct ccheap* self, _int newsize);
+CORE_API struct ccheap ccheap_alloc(sright_int size);
+CORE_API struct ccheap ccheap_allocrawbuffer(sright_int size);
+CORE_API struct ccheap ccheap_allocfrom(sright_int size, struct ccfrom from);
+CORE_API void ccheap_relloc(struct ccheap* self, sright_int newsize);
 CORE_API void ccheap_free(struct ccheap* self);
 
-CORE_API _int cczero(void* start, _int bytes);
-CORE_API _int cczerorange(void* start, const void* beyond);
+CORE_API sright_int cczero(void* start, sright_int bytes);
+CORE_API sright_int cczerorange(void* start, const void* beyond);
 
-CORE_API _int cccopy(const struct ccfrom* from, void* dest);
-CORE_API _int cccopytodest(const struct ccfrom* from, const struct ccdest* dest);
-CORE_API _int ccrcopy(const struct ccfrom* from, void* dest);
-CORE_API _int ccrcopytodest(const struct ccfrom* from, const struct ccdest* dest);
+CORE_API sright_int cccopy(const struct ccfrom* from, void* dest);
+CORE_API sright_int cccopytodest(const struct ccfrom* from, const struct ccdest* dest);
+CORE_API sright_int ccrcopy(const struct ccfrom* from, void* dest);
+CORE_API sright_int ccrcopytodest(const struct ccfrom* from, const struct ccdest* dest);
 
-CORE_API struct ccfrom ccfrom(const void* start, _int bytes);
+CORE_API struct ccfrom ccfrom(const void* start, sright_int bytes);
 CORE_API struct ccfrom ccfromcstr(const void* cstr);
 CORE_API struct ccfrom ccfromrange(const void* start, const void* beyond);
-CORE_API struct ccdest ccdest(void* start, _int bytes);
+CORE_API struct ccdest ccdest(void* start, sright_int bytes);
 CORE_API struct ccdest ccdestrange(void* start, void* beyond);
 
-CORE_API struct ccfrom* ccsetfrom(struct ccfrom* self, const void* start, _int bytes);
+CORE_API struct ccfrom* ccsetfrom(struct ccfrom* self, const void* start, sright_int bytes);
 CORE_API struct ccfrom* ccsetfromcstr(struct ccfrom* self, const void* cstr);
 CORE_API struct ccfrom* ccsetfromrange(struct ccfrom* self, const void* start, const void* beyond);
-CORE_API struct ccdest* ccsetdest(struct ccdest* self, void* start, _int bytes);
+CORE_API struct ccdest* ccsetdest(struct ccdest* self, void* start, sright_int bytes);
 CORE_API struct ccdest* ccsetdestrange(struct ccdest* self, void* start, void* beyond);
 CORE_API const struct ccdest* ccdestheap(const struct ccheap* heap);
 
 /** String **/
 
-CORE_API const char* ccutos(uint a);
-CORE_API const char* ccitos(_int a);
+CORE_API const char* ccutos(uright_int a);
+CORE_API const char* ccitos(sright_int a);
 CORE_API struct ccstring ccemptystr();
-CORE_API struct ccstring ccstrfromu(uint a);
-CORE_API struct ccstring ccstrfromuf(uint a, _int fmt);
-CORE_API struct ccstring ccstrfromi(_int a);
-CORE_API struct ccstring ccstrfromif(_int a, _int fmt);
+CORE_API struct ccstring ccstrfromu(uright_int a);
+CORE_API struct ccstring ccstrfromuf(uright_int a, sright_int fmt);
+CORE_API struct ccstring ccstrfromi(sright_int a);
+CORE_API struct ccstring ccstrfromif(sright_int a, sright_int fmt);
 
 /** List and queue **/
 
@@ -205,19 +198,19 @@ struct ccsqueue {
 };
 
 CORE_API void cclinknode_init(struct cclinknode* node);
-CORE_API bool cclinknode_isempty(struct cclinknode* node);
+CORE_API nauty_bool cclinknode_isempty(struct cclinknode* node);
 CORE_API void cclinknode_insertafter(struct cclinknode* node, struct cclinknode* newnode);
 CORE_API void ccsmplnode_init(struct ccsmplnode* node);
-CORE_API bool ccsmplnode_isempty(struct ccsmplnode* node);
+CORE_API nauty_bool ccsmplnode_isempty(struct ccsmplnode* node);
 CORE_API void ccsmplnode_insertafter(struct ccsmplnode* node, struct ccsmplnode* newnode);
 CORE_API void ccsqueue_init(struct ccsqueue* self);
 CORE_API void ccsqueue_push(struct ccsqueue* self, struct ccsmplnode* newnode);
 CORE_API void ccsqueue_pushqueue(struct ccsqueue* self, struct ccsqueue* queue);
-CORE_API bool ccsqueue_isempty(struct ccsqueue* self);
+CORE_API nauty_bool ccsqueue_isempty(struct ccsqueue* self);
 CORE_API void ccdqueue_init(struct ccdqueue* self);
 CORE_API void ccdqueue_push(struct ccdqueue* self, struct cclinknode* newnode);
 CORE_API void ccdqueue_pushqueue(struct ccdqueue* self, struct ccdqueue* queue);
-CORE_API bool ccdqueue_isempty(struct ccdqueue* self);
+CORE_API nauty_bool ccdqueue_isempty(struct ccdqueue* self);
 CORE_API struct cclinknode* cclinknode_remove(struct cclinknode* node);
 CORE_API struct ccsmplnode* ccsmplnode_removenext(struct ccsmplnode* node);
 CORE_API struct ccsmplnode* ccsqueue_pop(struct ccsqueue* self);
@@ -226,64 +219,64 @@ CORE_API struct cclinknode* ccdqueue_pop(struct ccdqueue* self);
 /** Thread and synchronization **/
 
 struct ccmutex {
-  union cceight a[(CC_MUTEX_BYTES - 1) / sizeof(union cceight) + 1];
+  CCPLAT_IMPL_SIZE(CC_MUTEX_BYTES);
 };
 
 struct ccrwlock {
-  union cceight a[(CC_RWLOCK_BYTES - 1) / sizeof(union cceight) + 1];
+  CCPLAT_IMPL_SIZE(CC_RWLOCK_BYTES);
 };
 
 struct cccondv {
-  union cceight a[(CC_CONDV_BYTES - 1) / sizeof(union cceight) + 1];
+  CCPLAT_IMPL_SIZE(CC_CONDV_BYTES);
 };
 
 struct ccthrid {
-  union cceight a[(CC_THRID_BYTES - 1) / sizeof(union cceight) + 1];
+  CCPLAT_IMPL_SIZE(CC_THRID_BYTES);
 };
 
 struct ccthrkey {
-  union cceight a[(CC_THKEY_BYTES - 1) / sizeof(union cceight) + 1];
+  CCPLAT_IMPL_SIZE(CC_THKEY_BYTES);
 };
 
 /**
  * thread-specific data key
  */
 
-CORE_API bool ccthrkey_init(struct ccthrkey* self);
+CORE_API nauty_bool ccthrkey_init(struct ccthrkey* self);
 CORE_API void ccthrkey_free(struct ccthrkey* self);
-CORE_API bool ccthrkey_setdata(struct ccthrkey* self, const void* data);
+CORE_API nauty_bool ccthrkey_setdata(struct ccthrkey* self, const void* data);
 CORE_API void* ccthrkey_getdata(struct ccthrkey* self);
 
 /**
  * mutex
  */
 
-CORE_API bool ccmutex_init(struct ccmutex* self);
+CORE_API nauty_bool ccmutex_init(struct ccmutex* self);
 CORE_API void ccmutex_free(struct ccmutex* self);
-CORE_API bool ccmutex_lock(struct ccmutex* self);
+CORE_API nauty_bool ccmutex_lock(struct ccmutex* self);
 CORE_API void ccmutex_unlock(struct ccmutex* self);
-CORE_API bool ccmutex_trylock(struct ccmutex* self);
+CORE_API nauty_bool ccmutex_trylock(struct ccmutex* self);
 
 /**
  * read/write lock
  */
 
-CORE_API bool ccrwlock_init(struct ccrwlock* self);
+CORE_API nauty_bool ccrwlock_init(struct ccrwlock* self);
 CORE_API void ccrwlock_free(struct ccrwlock* self);
-CORE_API bool ccrwlock_read(struct ccrwlock* self);
-CORE_API bool ccrwlock_write(struct ccrwlock* self);
-CORE_API bool ccrwlock_tryread(struct ccrwlock* self);
-CORE_API bool ccrwlock_trywrite(struct ccrwlock* self);
+CORE_API nauty_bool ccrwlock_read(struct ccrwlock* self);
+CORE_API nauty_bool ccrwlock_write(struct ccrwlock* self);
+CORE_API nauty_bool ccrwlock_tryread(struct ccrwlock* self);
+CORE_API nauty_bool ccrwlock_trywrite(struct ccrwlock* self);
 CORE_API void ccrwlock_unlock(struct ccrwlock* self);
 
 /**
  * condition variable
  */
 
-CORE_API bool cccondv_init(struct cccondv* self);
+CORE_API nauty_bool cccondv_init(struct cccondv* self);
 CORE_API void cccondv_free(struct cccondv* self);
-CORE_API bool cccondv_wait(struct cccondv* self, struct ccmutex* mutex);
-CORE_API bool cccondv_timedwait(struct cccondv* self, struct ccmutex* mutex, struct cctime time);
+CORE_API nauty_bool cccondv_wait(struct cccondv* self, struct ccmutex* mutex);
+CORE_API nauty_bool cccondv_timedwait(struct cccondv* self, struct ccmutex* mutex, struct cctime time);
 CORE_API void cccondv_signal(struct cccondv* self);
 CORE_API void cccondv_broadcast(struct cccondv* self);
 
@@ -292,8 +285,8 @@ CORE_API void cccondv_broadcast(struct cccondv* self);
  */
 
 CORE_API struct ccthrid ccplat_selfthread();
-CORE_API bool ccplat_createthread(struct ccthrid* thrid, void* (*start)(void*), void* para);
-CORE_API void ccplat_threadsleep(uint us);
+CORE_API nauty_bool ccplat_createthread(struct ccthrid* thrid, void* (*start)(void*), void* para);
+CORE_API void ccplat_threadsleep(uright_int us);
 CORE_API void ccplat_threadexit();
 CORE_API int ccplat_threadjoin(struct ccthrid* thrid);
 
@@ -304,14 +297,14 @@ CORE_API int ccplat_threadjoin(struct ccthrid* thrid);
 struct ccthread {
   /* access by master only */
   struct cclinknode node;
-  umedit weight;
+  umedit_int weight;
   /* shared with master */
-  umedit runstatus;
+  umedit_int runstatus;
   struct ccdqueue workrxq;
   struct ccmutex mutex;
   struct cccondv condv;
   /* free access */
-  umedit index;
+  umedit_int index;
   struct ccthrid id;
   /* thread own use */
   struct lua_State* L;
@@ -326,8 +319,8 @@ CORE_API struct ccthread* ccthread_getself();
 CORE_API struct ccthread* ccthread_getmaster();
 CORE_API void ccthread_init(struct ccthread* self);
 CORE_API void ccthread_free(struct ccthread* self);
-CORE_API bool ccthread_start(struct ccthread* self, int (*start)());
-CORE_API void ccthread_sleep(uint us);
+CORE_API nauty_bool ccthread_start(struct ccthread* self, int (*start)());
+CORE_API void ccthread_sleep(uright_int us);
 CORE_API void ccthread_exit();
 CORE_API int ccthread_join(struct ccthread* self);
 
@@ -341,8 +334,8 @@ CORE_API int ccthread_join(struct ccthread* self);
 struct ccmsghead {
   struct ccsmplnode node;
   void* extra;
-  umedit svid;
-  umedit data;
+  umedit_int svid;
+  umedit_int data;
 };
 
 CORE_API void ccservice_sendmsg(struct ccmsghead* msg);
@@ -360,9 +353,9 @@ struct ccservice {
   struct cclinknode node;
   struct ccthread* thrd; /* modify by master only */
   struct ccsqueue rxmq;
-  ushort oflag; /* shared with master */
-  ushort iflag; /* internal use */
-  umedit svid;
+  ushort_int oflag; /* shared with master */
+  ushort_int iflag; /* internal use */
+  umedit_int svid;
   void* udata;
   struct ccluaco* co;
   union {

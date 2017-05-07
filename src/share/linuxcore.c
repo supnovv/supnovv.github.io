@@ -118,7 +118,7 @@ static struct cctime llsystime() {
     ccloge("gettimeofday %s", strerror(errno));
     return (struct cctime){0};
   }
-  return (struct cctime){(_int)tv.tv_sec, (umedit)tv.tv_usec*1000};
+  return (struct cctime){(sright_int)tv.tv_sec, (umedit_int)tv.tv_usec*1000};
 }
 #else
 static struct cctime llgettime(clockid_t id) {
@@ -127,7 +127,7 @@ static struct cctime llgettime(clockid_t id) {
     ccloge("clock_gettime %d %s", id, strerror(errno));
     return (struct cctime){0};
   }
-  return (struct cctime){(_int)spec.tv_sec, (umedit)spec.tv_nsec};
+  return (struct cctime){(sright_int)spec.tv_sec, (umedit_int)spec.tv_nsec};
 }
 
 struct cctime ccthreadtime() {
@@ -138,20 +138,20 @@ struct cctime ccprocesstime() {
   return llgettime(CLOCK_PROCESS_CPUTIME_ID);
 }
 
-static _int llgetres(clockid_t id) {
+static sright_int llgetres(clockid_t id) {
   struct timespec spec = {0};
   if (clock_getres(id, &spec) != 0) {
     ccloge("clock_getres %s", strerror(errno));
     return 0;
   }
-  return ((_int)spec.tv_sec)*1000000000LL + (_int)spec.tv_nsec;
+  return ((sright_int)spec.tv_sec)*1000000000LL + (sright_int)spec.tv_nsec;
 }
 
-_int ccgetsres() {
+sright_int ccgetsres() {
   return llgetres(CLOCK_REALTIME);
 }
 
-_int ccgetbres() {
+sright_int ccgetbres() {
   clockid_t id = CLOCK_MONOTONIC;
 #ifdef CC_OS_LINUX
   id = CLOCK_BOOTTIME;
@@ -159,11 +159,11 @@ _int ccgetbres() {
   return llgetres(id);
 }
 
-_int ccgettres() {
+sright_int ccgettres() {
   return llgetres(CLOCK_THREAD_CPUTIME_ID);
 }
 
-_int ccgetpres() {
+sright_int ccgetpres() {
   return llgetres(CLOCK_PROCESS_CPUTIME_ID);
 }
 #endif
@@ -176,16 +176,16 @@ struct cctime ccsystime() {
 #endif
 }
 
-static void llsetyear(struct ccdate* date, _int year, _int yday) {
-  byte sign = 0;
+static void llsetyear(struct ccdate* date, sright_int year, sright_int yday) {
+  uoctet_int sign = 0;
   if (year < 0) { year = -year; sign = 2; }
   if (yday < 1 || yday > 366) {
     yday = (yday < 1 ? 1 : 366);
     ccloge("tm_yday invalid %s", ccitos(yday));
   }
-  date->yearlow = (umedit)(year & 0xFFFFFFFF);
-  date->ydaylow = (byte)(yday & 0xFF);
-  date->high = (((byte)((year >> 30) & 0xFC)) | sign | ((byte)((yday >> 8) & 0x01)));
+  date->yearlow = (umedit_int)(year & 0xFFFFFFFF);
+  date->ydaylow = (uoctet_int)(yday & 0xFF);
+  date->high = (((uoctet_int)((year >> 30) & 0xFC)) | sign | ((uoctet_int)((yday >> 8) & 0x01)));
 }
 
 static struct ccdate llgetdate(time_t secs) {
@@ -201,16 +201,16 @@ static struct ccdate llgetdate(time_t secs) {
   }
   /* tm_year - number of years since 1900, tm_yday - from 0 to 365 */
   llsetyear(&date, st.tm_year + 1900, st.tm_yday + 1);
-  date.month = (int8)(st.tm_mon + 1); /* tm_mon - from 0 to 11 */
-  date.wday = (int8)st.tm_wday; /* tm_wday - from 0 to 6, 0 is Sunday */
+  date.month = (soctet_int)(st.tm_mon + 1); /* tm_mon - from 0 to 11 */
+  date.wday = (soctet_int)st.tm_wday; /* tm_wday - from 0 to 6, 0 is Sunday */
   /* in many implementations, including glibc, a 0 in tm_mday is
   interpreted as meaning the last day of the preceding month.
   这里的意思是，在将分解结构tm转换成time_t时（例如mktime），如果将
   tm_mday设为0则表示当前天数是前一个月的最后一天 */
-  date.day = (int8)st.tm_mday; /* tm_mday - from 1 to 31 */
-  date.hour = (int8)st.tm_hour; /* tm_hour - from 0 to 23 */
-  date.min = (int8)st.tm_min; /* tm_min - from 0 to 59 */
-  date.sec = (int8)st.tm_sec; /* tm_sec - from 0 to 60, 60 can be leap second */
+  date.day = (soctet_int)st.tm_mday; /* tm_mday - from 1 to 31 */
+  date.hour = (soctet_int)st.tm_hour; /* tm_hour - from 0 to 23 */
+  date.min = (soctet_int)st.tm_min; /* tm_min - from 0 to 59 */
+  date.sec = (soctet_int)st.tm_sec; /* tm_sec - from 0 to 60, 60 can be leap second */
   /* Single UNIX Specification 的以前版本允许双闰秒，于是tm_sec值的有效范围是
   0到61。但是UTC的正式定义不允许双闰秒，所以现在tm_sec值的有效范围是0到60。*/
   if (st.tm_isdst > 0) {
@@ -221,17 +221,17 @@ static struct ccdate llgetdate(time_t secs) {
   return date;
 }
 
-_int ccgetyear(struct ccdate* date) {
-  _int year = (((_int)(date->high >> 2)) << 32) | ((_int)date->yearlow);
+sright_int ccgetyear(struct ccdate* date) {
+  sright_int year = (((sright_int)(date->high >> 2)) << 32) | ((sright_int)date->yearlow);
   if (date->high & 0x02) { year = -year; }
   return year;
 }
 
-_int ccgetyday(struct ccdate* date) {
-  return (((_int)(date->high & 0x01)) << 8) | ((_int)date->ydaylow);
+sright_int ccgetyday(struct ccdate* date) {
+  return (((sright_int)(date->high & 0x01)) << 8) | ((sright_int)date->ydaylow);
 }
 
-struct ccdate ccdatefromi(_int utcsecs) {
+struct ccdate ccdatefromi(sright_int utcsecs) {
   return llgetdate(utcsecs);
 }
 
@@ -281,7 +281,7 @@ struct cctime ccinctime() {
 
 /** File and attribute */
 
-_int ccfilesize(struct ccfrom name) {
+sright_int ccfilesize(struct ccfrom name) {
   /** lstat **
   #include <sys/types.h>
   #include <sys/stat.h>
@@ -341,7 +341,7 @@ _int ccfilesize(struct ccfrom name) {
     ccloge("lstat %s %s", strerror(errno), name.start);
     return 0;
   }
-  return (_int)st.st_size;
+  return (sright_int)st.st_size;
 }
 
 struct ccfileattr ccgetfileattr(struct ccfrom name) {
@@ -353,13 +353,13 @@ struct ccfileattr ccgetfileattr(struct ccfrom name) {
     ccloge("lstat %s %s", strerror(errno), name.start);
     return fa;
   } /* the time stored in stat is measured in seconds since 00:00:00 UTC, January 1, 1970 */
-  fa.fsize = (_int)st.st_size;
-  fa.ctime = (_int)st.st_ctime;
-  fa.atime = (_int)st.st_atime;
-  fa.mtime = (_int)st.st_mtime;
-  fa.gid = (_int)st.st_gid;
-  fa.uid = (_int)st.st_uid;
-  fa.mode = (_int)st.st_mode;
+  fa.fsize = (sright_int)st.st_size;
+  fa.ctime = (sright_int)st.st_ctime;
+  fa.atime = (sright_int)st.st_atime;
+  fa.mtime = (sright_int)st.st_mtime;
+  fa.gid = (sright_int)st.st_gid;
+  fa.uid = (sright_int)st.st_uid;
+  fa.mode = (sright_int)st.st_mode;
   fa.isfile = S_ISREG(st.st_mode);
   fa.isdir = S_ISDIR(st.st_mode);
   fa.islink = S_ISLNK(st.st_mode);
@@ -440,7 +440,7 @@ struct ccfrom ccreaddir(struct ccdirstream* d) {
     if (errno != 0) { ccloge("readdir %s", strerror(errno)); }
     return s;
   }
-  s.start = (byte*)entry->d_name;
+  s.start = (uoctet_int*)entry->d_name;
   s.beyond = s.start + strlen(entry->d_name);
   return s;
 }
@@ -451,7 +451,7 @@ struct ccfrom ccreaddir(struct ccdirstream* d) {
  * thread-specific data key
  */
 
-bool ccthrkey_init(struct ccthrkey* self) {
+nauty_bool ccthrkey_init(struct ccthrkey* self) {
   /** pthread_key_create - thread-specific data key creation **
   #include <pthread.h>
   int pthread_key_create(pthread_key_t* key, void (*destructor)(void*));
@@ -487,7 +487,7 @@ void* ccthrkey_getdata(struct ccthrkey* self) {
   return pthread_getspecific(*(pthread_key_t*)self);
 }
 
-bool ccthrkey_setdata(struct ccthrkey* self, const void* data) {
+nauty_bool ccthrkey_setdata(struct ccthrkey* self, const void* data) {
   /* different threads may bind different values to the same key, the value
   is typically a pointer to blocks of dynamically allocated memory that have
   been reserved for use by the calling thread. */
@@ -503,7 +503,7 @@ bool ccthrkey_setdata(struct ccthrkey* self, const void* data) {
  * mutex
  */
 
-bool ccmutex_init(struct ccmutex* self) {
+nauty_bool ccmutex_init(struct ccmutex* self) {
   pthread_mutex_t* mutex = (pthread_mutex_t*)self;
   int n = pthread_mutex_init(mutex, 0);
   if (n != 0) {
@@ -521,7 +521,7 @@ void ccmutex_free(struct ccmutex* self) {
   }
 }
 
-bool ccmutex_lock(struct ccmutex* self) {
+nauty_bool ccmutex_lock(struct ccmutex* self) {
   pthread_mutex_t* mutex = (pthread_mutex_t*)self;
   int n = pthread_mutex_lock(mutex);
   if (n != 0) {
@@ -539,7 +539,7 @@ void ccmutex_unlock(struct ccmutex* self) {
   }
 }
 
-bool ccmutex_trylock(struct ccmutex* self) {
+nauty_bool ccmutex_trylock(struct ccmutex* self) {
   pthread_mutex_t* mutex = (pthread_mutex_t*)self;
   int n = pthread_mutex_trylock(mutex);
   if (n == 0) {
@@ -555,7 +555,7 @@ bool ccmutex_trylock(struct ccmutex* self) {
  * read/write lock
  */
 
-bool ccrwlock_init(struct ccrwlock* self) {
+nauty_bool ccrwlock_init(struct ccrwlock* self) {
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_init(lock, 0);
   if (n != 0) {
@@ -573,7 +573,7 @@ void ccrwlock_free(struct ccrwlock* self) {
   }
 }
 
-bool ccrwlock_read(struct ccrwlock* self) {
+nauty_bool ccrwlock_read(struct ccrwlock* self) {
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_rdlock(lock);
   if (n != 0) {
@@ -583,7 +583,7 @@ bool ccrwlock_read(struct ccrwlock* self) {
   return true;
 }
 
-bool ccrwlock_write(struct ccrwlock* self) {
+nauty_bool ccrwlock_write(struct ccrwlock* self) {
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_wrlock(lock);
   if (n != 0) {
@@ -593,7 +593,7 @@ bool ccrwlock_write(struct ccrwlock* self) {
   return true;
 }
 
-bool ccrwlock_tryread(struct ccrwlock* self) {
+nauty_bool ccrwlock_tryread(struct ccrwlock* self) {
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_tryrdlock(lock);
   if (n != 0) {
@@ -603,7 +603,7 @@ bool ccrwlock_tryread(struct ccrwlock* self) {
   return true;
 }
 
-bool ccrwlock_trywrite(struct ccrwlock* self) {
+nauty_bool ccrwlock_trywrite(struct ccrwlock* self) {
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_trywrlock(lock);
   if (n != 0) {
@@ -625,7 +625,7 @@ void ccrwlock_unlock(struct ccrwlock* self) {
  * condition variable
  */
 
-bool cccondv_init(struct cccondv* self) {
+nauty_bool cccondv_init(struct cccondv* self) {
   pthread_cond_t* cond = (pthread_cond_t*)self;
   int n = pthread_cond_init(cond, 0);
   if (n != 0) {
@@ -643,7 +643,7 @@ void cccondv_free(struct cccondv* self) {
   }
 }
 
-bool cccondv_wait(struct cccondv* self, struct ccmutex* mutex) {
+nauty_bool cccondv_wait(struct cccondv* self, struct ccmutex* mutex) {
   pthread_cond_t* c = (pthread_cond_t*)self;
   pthread_mutex_t* m = (pthread_mutex_t*)mutex;
   int n = pthread_cond_wait(c, m);
@@ -654,7 +654,7 @@ bool cccondv_wait(struct cccondv* self, struct ccmutex* mutex) {
   return true;
 }
 
-bool cccondv_timedwait(struct cccondv* self, struct ccmutex* mutex, struct cctime time) {
+nauty_bool cccondv_timedwait(struct cccondv* self, struct ccmutex* mutex, struct cctime time) {
   pthread_cond_t* c = (pthread_cond_t*)self;
   pthread_mutex_t* m = (pthread_mutex_t*)mutex;
   struct timespec tm;
@@ -697,7 +697,7 @@ struct ccthrid ccplat_selfthread() {
   return thrid;
 }
 
-bool ccplat_createthread(struct ccthrid* thrid, void* (*start)(void*), void* para) {
+nauty_bool ccplat_createthread(struct ccthrid* thrid, void* (*start)(void*), void* para) {
   pthread_t* thread = (pthread_t*)thrid;
   int n = pthread_create(thread, 0, start, para);
   if (n != 0) {
@@ -707,7 +707,7 @@ bool ccplat_createthread(struct ccthrid* thrid, void* (*start)(void*), void* par
   return true;
 }
 
-void ccplat_sleep(uint us) {
+void ccplat_sleep(uright_int us) {
   struct timespec req;
   req.tv_sec = (time_t)(us/1000000);
   req.tv_nsec = (long)(us%1000000*1000);
@@ -732,7 +732,7 @@ int ccplat_threadjoin(struct ccthrid* thrid) {
   if ((n = pthread_join(*thread, &exitcode)) != 0) {
     ccloge("pthread_join %s", strerror(n));
   }
-  return (int)(_intptr)exitcode;
+  return (int)(signed_ptr)exitcode;
 }
 
 /** Linux core test **/
@@ -741,7 +741,7 @@ void ccplattest() {
   ccassert(sizeof(struct ccmutex) >= sizeof(pthread_mutex_t));
   ccassert(sizeof(struct ccrwlock) >= sizeof(pthread_rwlock_t));
   ccassert(sizeof(struct cccondv) >= sizeof(pthread_cond_t));
-  ccassert(sizeof(int) <= sizeof(umedit)); /* test file descriptor size */
+  ccassert(sizeof(int) <= sizeof(umedit_int)); /* test file descriptor size */
   cclogd("pthread_t %s-byte", ccutos(sizeof(pthread_t)));
   cclogd("pthread_mutext_t %s-byte", ccutos(sizeof(pthread_mutex_t)));
   cclogd("pthread_rwlock_t %s-byte", ccutos(sizeof(pthread_rwlock_t)));

@@ -1,3 +1,5 @@
+#include <string.h>
+#include <errno.h>
 #include "ionotify.h"
 #include "linuxpoll.h"
 
@@ -92,12 +94,6 @@ example, FreeBSD has kqueue, and Solaris has /dev/poll.
 The set of fds that is being monitored via an epoll fd can be viewed the entry for the
 epoll fd in the process's /proc/[pid]/fdinfo directory. */
 
-struct llepollmgr {
-  int epfd;
-  int n, maxlen;
-  struct epoll_event ready[CCPOLL_WIAT_MAX_EVENTS];
-};
-
 static int llepollmgr_create() {
   /** epoll_create **
   #include <sys/epoll.h>
@@ -144,7 +140,7 @@ static void llepollmgr_close(int epfd) {
   }
 }
 
-static bool llepollmgr_ctl(int epfd, int op, int fd, struct epoll_event* event) {
+static nauty_bool llepollmgr_ctl(int epfd, int op, int fd, struct epoll_event* event) {
   if (epfd == -1 || fd == -1 || epfd == fd) {
     ccloge("llepollmgr_ctl invalid fd");
     return false;
@@ -186,7 +182,7 @@ static bool llepollmgr_ctl(int epfd, int op, int fd, struct epoll_event* event) 
   return (epoll_ctl(epfd, op, fd, event) != 0);
 }
 
-static bool llepollmgr_add(int epfd, int fd, struct epoll_event* event) {
+static nauty_bool llepollmgr_add(int epfd, int fd, struct epoll_event* event) {
   if (!llepollmgr_ctl(epfd, EPOLL_CTL_ADD, fd, event)) {
     if (errno != EEXIST || !llepollmgr_ctl(epfd, EPOLL_CTL_MOD, fd, event)) {
       ccloge("llepollmgr_add %s", strerror(errno));
@@ -196,7 +192,7 @@ static bool llepollmgr_add(int epfd, int fd, struct epoll_event* event) {
   return true;
 }
 
-static bool llepollmgr_mod(int epfd, int fd, struct epoll_event* event) {
+static nauty_bool llepollmgr_mod(int epfd, int fd, struct epoll_event* event) {
   if (!llepollmgr_ctl(epfd, EPOLL_CTL_MOD, fd, event)) {
     ccloge("llepollmgr_mod %s", strerror(errno));
     return false;
@@ -204,7 +200,7 @@ static bool llepollmgr_mod(int epfd, int fd, struct epoll_event* event) {
   return true;
 }
 
-static bool llepollmgr_del(int epfd, int fd) {
+static nauty_bool llepollmgr_del(int epfd, int fd) {
   /* In kernel versions before 2.6.9, the EPOLL_CTL_DEL
   operation required a non-null pointer in event, even
   though this argument is ignored. Since Linux 2.6.9, event
@@ -273,7 +269,7 @@ static void llepollmgr_wait(struct llepollmgr* self, int ms) {
   }
 }
 
-bool ccionfmgr_init(struct ccionfmgr* self) {
+nauty_bool ccionfmgr_init(struct ccionfmgr* self) {
   struct llepollmgr* mgr = (struct llepollmgr*)self;
   cczero(mgr, sizeof(struct llepollmgr));
   if ((mgr->epfd = llepollmgr_create()) == -1) {
@@ -311,19 +307,19 @@ static uint32_t llepollmasks[] = {
   /* 0x11 */ 0
 };
 
-static umedit llionfrd[] = {0, CCIONFRD};
-static umedit llionfwr[] = {0, CCIONFWR};
-static umedit llionfpri[] = {0, CCIONFPRI};
-static umedit llionfrdh[] = {0, CCIONFRDH};
-static umedit llionfhup[] = {0, CCIONFHUP};
-static umedit llionferr[] = {0, CCIONFERR};
+static umedit_int llionfrd[] = {0, CCIONFRD};
+static umedit_int llionfwr[] = {0, CCIONFWR};
+static umedit_int llionfpri[] = {0, CCIONFPRI};
+static umedit_int llionfrdh[] = {0, CCIONFRDH};
+static umedit_int llionfhup[] = {0, CCIONFHUP};
+static umedit_int llionferr[] = {0, CCIONFERR};
 
 static uint32_t llgetepollmasks(struct ccionfevt* event) {
   return (llepollmasks[event->masks & CCIONFRD] | llepollmasks[event->masks & CCIONFWR] |
     llepollmasks[event->masks & CCIONFPRI] | llepollmasks[event->masks & CCIONFRDH]);
 }
 
-static umedit llgetionfmasks(struct epoll_event* event) {
+static umedit_int llgetionfmasks(struct epoll_event* event) {
   uint32_t masks = event->events;
   return (llionfrd[(masks&EPOLLIN)!=0] | llionfwr[(masks&EPOLLOUT)!=0] | llionfpri[(masks&EPOLLPRI)!=0] |
     llionfrdh[(masks&EPOLLRDHUP)!=0] | llionfhup[(masks&EPOLLHUP)!=0] | llionferr[(masks&CCIONFERR)!=0]);
@@ -335,16 +331,16 @@ static uint64_t llgetepolludata(struct ccionfevt* event) {
   return ((udata << 32) | hdl);
 }
 
-static cchandle llgetionfhandle(struct epoll_event* event) {
+static handle_int llgetionfhandle(struct epoll_event* event) {
   uint32_t hdl = (uint32_t)(event->data.u64 & 0xFFFFFFFF);
-  return (cchandle)hdl;
+  return (handle_int)hdl;
 }
 
-static umedit llgetionfudata(struct epoll_event* event) {
-  return (umedit)(event->data.u64 >> 32);
+static umedit_int llgetionfudata(struct epoll_event* event) {
+  return (umedit_int)(event->data.u64 >> 32);
 }
 
-bool ccionfmgr_add(struct ccionfmgr* self, struct ccionfevt* event) {
+nauty_bool ccionfmgr_add(struct ccionfmgr* self, struct ccionfevt* event) {
   /** event masks **
   The bit masks can be composed using the following event types:
   EPOLLIN - The associated file is available for read operations.
@@ -414,7 +410,7 @@ bool ccionfmgr_add(struct ccionfmgr* self, struct ccionfevt* event) {
   return llepollmgr_add(mgr->epfd, (int)event->hdl, &e);
 }
 
-bool ccionfmgr_mod(struct ccionfmgr* self, struct ccionfevt* event) {
+nauty_bool ccionfmgr_mod(struct ccionfmgr* self, struct ccionfevt* event) {
   struct llepollmgr* mgr = (struct llepollmgr*)self;
   struct epoll_event e;
   e.events = (EPOLLHUP | EPOLLERR | llgetepollmasks(event));
@@ -422,7 +418,7 @@ bool ccionfmgr_mod(struct ccionfmgr* self, struct ccionfevt* event) {
   return llepollmgr_mod(mgr->epfd, (int)event->hdl, &e);
 }
 
-bool ccionfmgr_del(struct ccionfmgr* self, struct ccionfevt* event) {
+nauty_bool ccionfmgr_del(struct ccionfmgr* self, struct ccionfevt* event) {
   struct llepollmgr* mgr = (struct llepollmgr*)self;
   return llepollmgr_del(mgr->epfd, (int)event->hdl);
 }
@@ -489,7 +485,7 @@ void ccepollinit(struct ccepoll* self) {
   cczero(self, sizeof(struct ccepoll));
 }
 
-bool ccepollcreate(struct ccepoll* self) {
+nauty_bool ccepollcreate(struct ccepoll* self) {
   ccarrayinit(&self->fdset, sizeof(struct pollfd), CCEPOLLINITFDSIZE);
   cchashtblinit(&self->fdud, CCEPOLLINITFDBITS);
   return true;
@@ -506,7 +502,7 @@ void ccepollclose(struct ccepoll* self) {
 #define CCEPOLLERR (POLLERR | POLLNVAL)
 #define CCEPOLLHUP POLLHUP
 
-bool ccepolladd(struct ccepoll* self, int fd, char flag) {
+nauty_bool ccepolladd(struct ccepoll* self, int fd, char flag) {
   struct pollfd event;
   event.fd = fd;
   event.revents = 0;
@@ -523,7 +519,7 @@ bool ccepolladd(struct ccepoll* self, int fd, char flag) {
   return ccarrayadd(&self->fdset, &event);
 }
 
-bool ccepollmod(struct ccepoll* self, int fd, char flag) {
+nauty_bool ccepollmod(struct ccepoll* self, int fd, char flag) {
   struct pollfd event = {0};
   event.fd = fd;
   struct pollfd* p = ccarrayfind(&self->fdset, fd, ccepollequalfunc);
@@ -560,4 +556,8 @@ void ccepollwaitms(struct ccepoll* self, int ms) {
 
 #endif
 #endif
+
+void cclinuxpolltest() {
+  ccassert(sizeof(handle_int) <= 4);
+}
 

@@ -1,5 +1,7 @@
+#define CCLIB_AUTOCONF_TOOL
 #define _CRT_SECURE_NO_WARNINGS
 #include "ccprefix.h"
+#include "linuxpoll.h"
 #if defined(CC_OS_WINDOWS)
 #define UNICODE
 #define _UNICODE
@@ -67,7 +69,7 @@ int main(void) {
   union ccbyteorder data;
   FILE* file = fopen("autoconf.h", "wb");
   if (!file) { ccloge("fopen autoconf.h %s", strerror(errno)); return 1; }
-  ccwriteline(file, "#ifndef LIBC_AUTOCONF_H_%s#define LIBC_AUTOCONF_H_", CCNEWLINE);
+  ccwriteline(file, "#ifndef CCLIB_AUTOCONF_H_%s#define CCLIB_AUTOCONF_H_", CCNEWLINE);
   ccwriteline(file, "#define _CRT_SECURE_NO_WARNINGS%s", CCNEWLINE);
 
   ccwriteline(file, "/* platform bits */");
@@ -104,92 +106,113 @@ int main(void) {
     }
   }
 
-  ccwriteline(file, "%s/* null false true bool byte int8 */", CCNEWLINE);
-  ccwriteline(file, "#undef null");
+  ccwriteline(file, "%s/* false true nauty_bool nauty_char uoctet_int soctet_int */", CCNEWLINE);
   ccwriteline(file, "#undef false");
   ccwriteline(file, "#undef true");
-  ccwriteline(file, "#undef bool");
-  ccwriteline(file, "#undef byte");
-  ccwriteline(file, "#undef int8");
-  ccwriteline(file, "#define null 0");
+  ccwriteline(file, "#undef nauty_bool");
+  ccwriteline(file, "#undef nauty_char");
+  ccwriteline(file, "#undef uoctet_int");
+  ccwriteline(file, "#undef soctet_int");
   ccwriteline(file, "#define false 0");
   ccwriteline(file, "#define true 1");
   if (sizeof(unsigned char) == 1 && sizeof(signed char) == 1) {
-    ccwriteline(file, "#define bool unsigned char");
-    ccwriteline(file, "#define byte unsigned char");
-    ccwriteline(file, "#define int8 signed char");
+    ccwriteline(file, "#define nauty_bool unsigned char");
+    ccwriteline(file, "#define nauty_char unsigned char");
+    ccwriteline(file, "#define uoctet_int unsigned char");
+    ccwriteline(file, "#define soctet_int signed char");
   } else {
     ccloge("the size of char shall be 1-byte");
     ccwriteline(file, "#error \"the size of char shall be 1-byte\"");
   }
 
-  ccwriteline(file, "%s/* _short ushort - 16-bit */", CCNEWLINE);
-  ccwriteline(file, "#undef _short");
-  ccwriteline(file, "#undef ushort");
+  ccwriteline(file, "%s/* sshort_int ushort_int - 16-bit */", CCNEWLINE);
+  ccwriteline(file, "#undef sshort_int");
+  ccwriteline(file, "#undef ushort_int");
   if (sizeof(unsigned short) == 2 && sizeof(short) == 2) {
-    ccwriteline(file, "#define _short short");
-    ccwriteline(file, "#define ushort unsigned short");
+    ccwriteline(file, "#define sshort_int short");
+    ccwriteline(file, "#define ushort_int unsigned short");
   } else if (sizeof(unsigned int) == 2 && sizeof(int) == 2) {
-    ccwriteline(file, "#define _short int");
-    ccwriteline(file, "#define ushort unsigned int");
+    ccwriteline(file, "#define sshort_int int");
+    ccwriteline(file, "#define ushort_int unsigned int");
   } else {
     ccloge("no 16-bit integer type found");
     ccwriteline(file, "#error \"no 16-bit integer type found\"");
   }
 
-  ccwriteline(file, "%s/* _medit umedit - 32-bit */", CCNEWLINE);
-  ccwriteline(file, "#undef _medit");
-  ccwriteline(file, "#undef umedit");
+  ccwriteline(file, "%s/* smedit_int umedit_int - 32-bit */", CCNEWLINE);
+  ccwriteline(file, "#undef smedit_int");
+  ccwriteline(file, "#undef umedit_int");
   if (sizeof(unsigned int) == 4 && sizeof(int) == 4) {
-    ccwriteline(file, "#define _medit int");
-    ccwriteline(file, "#define umedit unsigned int");
+    ccwriteline(file, "#define smedit_int int");
+    ccwriteline(file, "#define umedit_int unsigned int");
   } else if (sizeof(unsigned long) == 4 && sizeof(long) == 4) {
-    ccwriteline(file, "#define _medit long");
-    ccwriteline(file, "#define umedit unsigned long");
+    ccwriteline(file, "#define smedit_int long");
+    ccwriteline(file, "#define umedit_int unsigned long");
   } else {
     ccloge("no 32-bit integer type found");
     ccwriteline(file, "#error \"no 32-bit integer type found\"");
   }
 
-  ccwriteline(file, "%s/* _int uint - 64-bit */", CCNEWLINE);
-  ccwriteline(file, "#undef _int");
-  ccwriteline(file, "#undef uint");
+  ccwriteline(file, "%s/* sright_int uright_int - 64-bit */", CCNEWLINE);
+  ccwriteline(file, "#undef sright_int");
+  ccwriteline(file, "#undef uright_int");
   if (sizeof(unsigned long) == 8 && sizeof(long) == 8) {
-    ccwriteline(file, "#define _int long");
-    ccwriteline(file, "#define uint unsigned long");
+    ccwriteline(file, "#define sright_int long");
+    ccwriteline(file, "#define uright_int unsigned long");
   } else if (sizeof(unsigned long long) == 8 && sizeof(long long) == 8) {
-    ccwriteline(file, "#define _int long long");
-    ccwriteline(file, "#define uint unsigned long long");
+    ccwriteline(file, "#define sright_int long long");
+    ccwriteline(file, "#define uright_int unsigned long long");
   } else {
     ccloge("no 64-bit integer type found");
     ccwriteline(file, "#error \"no 64-bit integer type found\"");
   }
 
-  ccwriteline(file, "%s/* _intptr uintptr - pointer-size integer */", CCNEWLINE);
-  ccwriteline(file, "#undef _intptr");
-  ccwriteline(file, "#undef uintptr");
+  ccwriteline(file, "%s/* signed_ptr unsign_ptr - pointer-size integer */", CCNEWLINE);
+  ccwriteline(file, "#undef signed_ptr");
+  ccwriteline(file, "#undef unsign_ptr");
   if (sizeof(short) == sizeof(void*)) {
-    ccwriteline(file, "#define _intptr short");
-    ccwriteline(file, "#define uintptr unsigned short");
+    ccwriteline(file, "#define signed_ptr short");
+    ccwriteline(file, "#define unsign_ptr unsigned short");
   } else if (sizeof(int) == sizeof(void*)) {
-    ccwriteline(file, "#define _intptr int");
-    ccwriteline(file, "#define uintptr unsigned int");
+    ccwriteline(file, "#define signed_ptr int");
+    ccwriteline(file, "#define unsign_ptr unsigned int");
   } else if (sizeof(long) == sizeof(void*)) {
-    ccwriteline(file, "#define _intptr long");
-    ccwriteline(file, "#define uintptr unsigned long");
+    ccwriteline(file, "#define signed_ptr long");
+    ccwriteline(file, "#define unsign_ptr unsigned long");
   } else if (sizeof(long long) == sizeof(void*)) {
-    ccwriteline(file, "#define _intptr long long");
-    ccwriteline(file, "#define uintptr unsigned long long");
+    ccwriteline(file, "#define signed_ptr long long");
+    ccwriteline(file, "#define unsign_ptr unsigned long long");
   } else {
     ccloge("no pointer-size integer type found");
     ccwriteline(file, "#error \"no pointer-size integer type found\"");
   }
 
-  ccwriteline(file, "%s/* _long ulong - 128-bit */", CCNEWLINE);
+  ccwriteline(file, "%s/* handle_int */", CCNEWLINE);
+  ccwriteline(file, "#undef handle_int");
+  if (LLIONFHDL_TYPE_BYTES == sizeof(short)) {
+    ccwriteline(file, "#define handle_int %s", LLIONFHDL_TYPE_IS_SIGNED ? "short" : "unsigned short");
+  } else if (LLIONFHDL_TYPE_BYTES == sizeof(int)) {
+    ccwriteline(file, "#define handle_int %s", LLIONFHDL_TYPE_IS_SIGNED ? "int" : "unsigned int");
+  } else if (LLIONFHDL_TYPE_BYTES == sizeof(long)) {
+    ccwriteline(file, "#define handle_int %s", LLIONFHDL_TYPE_IS_SIGNED ? "long" : "unsigned long");
+  } else if (LLIONFHDL_TYPE_BYTES == sizeof(long long)) {
+    ccwriteline(file, "#define handle_int %s", LLIONFHDL_TYPE_IS_SIGNED ? "long long" : "unsigned long long");
+  } else {
+    ccloge("no handle-size integer type found");
+    ccwriteline(file, "#error \"no handle-size integer type found\"");
+  }
+
+  ccwriteline(file, "%s/* slarge_int ularge_int - 128-bit */", CCNEWLINE);
 
   ccwriteline(file, "%s/* float point */", CCNEWLINE);
-  ccwriteline(file, "#undef freal");
-  ccwriteline(file, "#define freal double");
+  ccwriteline(file, "#undef speed_real");
+  ccwriteline(file, "#undef short_real");
+  ccwriteline(file, "#undef right_real");
+  ccwriteline(file, "#undef large_real");
+  ccwriteline(file, "#define speed_real float");
+  ccwriteline(file, "#define short_real float");
+  ccwriteline(file, "#define right_real double");
+  ccwriteline(file, "#define large_real long double");
 
   ccwriteline(file, "%s/* platform specific */", CCNEWLINE);
   ccwriteline(file, "#undef CC_MUTEX_BYTES");
@@ -202,6 +225,7 @@ int main(void) {
   ccwriteline(file, "#define CC_CONDV_BYTES %d", cccondvbytes);
   ccwriteline(file, "#define CC_THKEY_BYTES %d", ccthkeybytes);
   ccwriteline(file, "#define CC_THRID_BYTES %d", ccthridbytes);
+  ccwriteline(file, "#define CC_IONFMGR_BYTES %d", LLIONFMGR_TYPE_BYTES);
 
   ccwriteline(file, "%s/* char %d-bit */", CCNEWLINE, sizeof(char)*8);
   ccwriteline(file, "/* short %d-bit */", sizeof(short)*8);
@@ -222,7 +246,7 @@ int main(void) {
   ccwriteline(file, "/* L_tmpnam %d */", L_tmpnam);
   ccwriteline(file, "/* RAND_MAX %d */", RAND_MAX);
 
-  ccwriteline(file, "%s#endif /* LIBC_AUTOCONF_H_ */", CCNEWLINE);
+  ccwriteline(file, "%s#endif /* CCLIB_AUTOCONF_H_ */", CCNEWLINE);
   fclose(file);
   return 0;
 }

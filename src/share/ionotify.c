@@ -10,7 +10,7 @@
 #define CCMSGFLAG_NEWCONN 0x0100
 #define CCMSGFLAG_CONNEST 0x0200
 
-struct ccsockmsg* ccnewsockmsg(int sockfd, umedit events, void* ud) {
+struct ccsockmsg* ccnewsockmsg(int sockfd, umedit_int events, void* ud) {
   struct ccsockmsg* sm = (struct ccsockmsg*)ccrawalloc(sizeof(struct ccsockmsg));
   sm->head.size = sizeof(struct ccsockmsg);
   sm->head.type = CCMSGTYPE_SOCKMSG;
@@ -32,7 +32,7 @@ void ccepolldispatch(struct ccepoll* self) {
   struct ccevent* e = 0;
   for (; i < n; ++i) {
     e = (struct ccevent*)ready[i].data.ptr;
-    e->revents = (umedit)ready[i].events;
+    e->revents = (umedit_int)ready[i].events;
     if ((e->revents | CCEPOLLIN) && (e->waitop & CCSOCK_ACCEPT)) {
       ccsockaccept(self, e);
     }
@@ -47,7 +47,7 @@ struct ccionf {
 
 struct ccionfevt {
   int fd;
-  umedit events;
+  umedit_int events;
   void* ud;
 };
 
@@ -56,7 +56,7 @@ struct ccionfmsg {
   struct ccionfevt event;
 };
 
-bool ccionfevtvoid(struct ccionfevt* self) {
+nauty_bool ccionfevtvoid(struct ccionfevt* self) {
   return (self->fd == -1);
 }
 
@@ -71,11 +71,11 @@ struct ccionfmsg* ccionfmsgset(struct ccionfmsg* self, struct ccionfevt* event) 
 }
 
 
-umedit llionfpool_hash(struct ccionftbl* self, umedit fd) {
+umedit_int llionfpool_hash(struct ccionftbl* self, umedit_int fd) {
   return fd % self->size; /* size should be prime number not near 2^n */
 }
 
-umedit llionfpool_size(byte bits) {
+umedit_int llionfpool_size(uoctect_int bits) {
   /* cchashprime(bits) return a prime number < (1 << bits) */
   return cchashprime(bits);
 }
@@ -98,9 +98,9 @@ struct ccionfmsg* llionfpool_getfromfreelist(struct ccionftbl* self, struct ccio
   return llionfmsg_set(p, event);
 }
 
-struct ccionfpool* ccionfpool_new(byte sizenumbits) {
+struct ccionfpool* ccionfpool_new(uoctect_int sizenumbits) {
   struct ccionfpool* pool = 0;
-  _int size = llionfpool_size(sizenumbits);
+  sright_int size = llionfpool_size(sizenumbits);
   pool = (struct ccionfpool*)ccrawalloc(sizeof(struct ccionfpool) + size * sizeof(struct ccionfslot));
   pool->nslot = size;
   while (size > 0) {
@@ -121,7 +121,7 @@ struct ccsmplnode* ccionfpool_addevent(struct ccionfpool* self, struct ccionfevt
     ccloge("addEvent invalid event");
     return 0;
   }
-  slot = self->slot + ccionfpool_hash(self, (umedit)newevent->fd);
+  slot = self->slot + ccionfpool_hash(self, (umedit_int)newevent->fd);
   for (head = &slot->head, cur = head; cur->next != head; cur = cur->next) {
     msg = (struct ccionfmsg*)cur->next;
     /* if current event is new, than it will lead all empty nodes freed */

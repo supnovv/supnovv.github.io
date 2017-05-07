@@ -70,4 +70,12 @@ TARGET_IPHONE_SIMULATOR 0        0        1 */
 #define CCNLSIZE 1
 #endif
 
+union cceight {
+  double dval;
+  char a[8];
+  void* pval;
+};
+
+#define CCPLAT_IMPL_SIZE(n) union cceight platimpl[((n) - 1) / sizeof(union cceight) + 1]
+
 #endif /* LIBC_CCPREFIX_H_ */

@@ -2,8 +2,6 @@
 #define CCLIB_IONOTIFY_H_
 #include "thatcore.h"
 
-#define cchandle _medit
-
 #define CCIONFRD  0x01
 #define CCIONFWR  0x02
 #define CCIONFRW  0x03
@@ -14,20 +12,20 @@
 #define CCIONFINT 0x40
 
 struct ccionfevt {
-  cchandle hdl;
-  umedit masks;
-  umedit udata;
+  handle_int hdl;
+  umedit_int masks;
+  umedit_int udata;
 };
 
 struct ccionfmgr {
-  union cceight a[32];
+  CCPLAT_IMPL_SIZE(CC_IONFMGR_BYTES);
 };
 
-CORE_API bool ccionfmgr_init(struct ccionfmgr* self);
+CORE_API nauty_bool ccionfmgr_init(struct ccionfmgr* self);
 CORE_API void ccionfmgr_free(struct ccionfmgr* self);
-CORE_API bool ccionfmgr_add(struct ccionfmgr* self, struct ccionfevt* event);
-CORE_API bool ccionfmgr_mod(struct ccionfmgr* self, struct ccionfevt* event);
-CORE_API bool ccionfmgr_del(struct ccionfmgr* self, struct ccionfevt* event);
+CORE_API nauty_bool ccionfmgr_add(struct ccionfmgr* self, struct ccionfevt* event);
+CORE_API nauty_bool ccionfmgr_mod(struct ccionfmgr* self, struct ccionfevt* event);
+CORE_API nauty_bool ccionfmgr_del(struct ccionfmgr* self, struct ccionfevt* event);
 CORE_API void ccionfmgr_wait(struct ccionfmgr* self, void (*cb)(struct ccionfevt*));
 CORE_API void ccionfmgr_trywait(struct ccionfmgr* self, void (*cb)(struct ccionfevt*));
 CORE_API void ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccionfevt*));
