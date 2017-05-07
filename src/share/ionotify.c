@@ -1,5 +1,6 @@
 #include "ionotify.h"
 
+#if 0
 /** IO notification facility **/
 
 #define CCSOCK_ACCEPT 0x01
@@ -148,4 +149,6 @@ struct ccsmplnode* ccionfpool_addevent(struct ccionfpool* self, struct ccionfevt
   self->qsize += 1;
   return msg;
 }
+
+#endif
 

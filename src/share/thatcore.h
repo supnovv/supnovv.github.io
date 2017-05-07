@@ -35,18 +35,18 @@
 #define CC_SINT_MIN ((sright_int)-9223372036854775807-1) /* 9223372036854775808 0x8000000000000000 */
 
 struct ccfrom {
-  const uoctet_int* start;
-  const uoctet_int* beyond;
+  const nauty_byte* start;
+  const nauty_byte* beyond;
 };
 
 struct ccdest {
-  uoctet_int* start;
-  uoctet_int* beyond;
+  nauty_byte* start;
+  nauty_byte* beyond;
 };
 
 struct ccheap {
-  uoctet_int* start;
-  uoctet_int* beyond;
+  nauty_byte* start;
+  nauty_byte* beyond;
 };
 
 #define CCSTRING_SIZEOF 32
@@ -146,17 +146,26 @@ CORE_API struct ccheap ccheap_allocfrom(sright_int size, struct ccfrom from);
 CORE_API void ccheap_relloc(struct ccheap* self, sright_int newsize);
 CORE_API void ccheap_free(struct ccheap* self);
 
-CORE_API sright_int cczero(void* start, sright_int bytes);
-CORE_API sright_int cczerorange(void* start, const void* beyond);
+CORE_API sright_int cczero(void* start, const void* beyond);
+CORE_API sright_int cczeron(void* start, sright_int bytes);
 
-CORE_API sright_int cccopy(const struct ccfrom* from, void* dest);
-CORE_API sright_int cccopytodest(const struct ccfrom* from, const struct ccdest* dest);
-CORE_API sright_int ccrcopy(const struct ccfrom* from, void* dest);
-CORE_API sright_int ccrcopytodest(const struct ccfrom* from, const struct ccdest* dest);
+CORE_API sright_int cccopy(const nauty_byte* fromstart, const nauty_byte* frombeyond, nauty_byte* dest);
+CORE_API sright_int cccopyn(const nauty_byte* from, sright_int n, nauty_byte* dest);
+CORE_API sright_int cccopyfrom(struct ccfrom from, void* dest);
+CORE_API sright_int cccopyfromp(const struct ccfrom* from, void* dest);
+CORE_API sright_int cccopyfromtodest(struct ccfrom from, const struct ccdest* dest);
+CORE_API sright_int cccopyfromptodest(const struct ccfrom* from, const struct ccdest* dest);
 
-CORE_API struct ccfrom ccfrom(const void* start, sright_int bytes);
+CORE_API sright_int ccrcopy(const nauty_byte* fromstart, const nauty_byte* frombeyond, nauty_byte* dest);
+CORE_API sright_int ccrcopyn(const nauty_byte* from, sright_int n, nauty_byte* dest);
+CORE_API sright_int ccrcopyfrom(struct ccfrom from, void* dest);
+CORE_API sright_int ccrcopyfromp(const struct ccfrom* from, void* dest);
+CORE_API sright_int ccrcopyfromtodest(struct ccfrom from, const struct ccdest* dest);
+CORE_API sright_int ccrcopyfromptodest(const struct ccfrom* from, const struct ccdest* dest);
+
+CORE_API struct ccfrom ccfrom(const void* start, const void* beyond);
+CORE_API struct ccfrom ccfromn(const void* start, sright_int bytes);
 CORE_API struct ccfrom ccfromcstr(const void* cstr);
-CORE_API struct ccfrom ccfromrange(const void* start, const void* beyond);
 CORE_API struct ccdest ccdest(void* start, sright_int bytes);
 CORE_API struct ccdest ccdestrange(void* start, void* beyond);
 
@@ -176,6 +185,19 @@ CORE_API struct ccstring ccstrfromu(uright_int a);
 CORE_API struct ccstring ccstrfromuf(uright_int a, sright_int fmt);
 CORE_API struct ccstring ccstrfromi(sright_int a);
 CORE_API struct ccstring ccstrfromif(sright_int a, sright_int fmt);
+
+CORE_API struct ccstring ccstring_emptystr();
+CORE_API sright_int ccstring_getlen(const struct ccstring* self);
+CORE_API const char* ccstring_getcstr(const struct ccstring* self);
+CORE_API nauty_bool ccstring_equalcstr(const struct ccstring* self, const void* cstr);
+
+CORE_API void ccstring_free(struct ccstring* self);
+CORE_API void ccstring_setempty(struct ccstring* self);
+CORE_API void ccstring_setcstr(struct ccstring* self, const void* cstr);
+
+CORE_API nauty_bool ccstring_contain(struct ccfrom s, nauty_char ch);
+CORE_API nauty_bool ccstring_containp(const struct ccfrom* s, nauty_char ch);
+
 
 /** List and queue **/
 

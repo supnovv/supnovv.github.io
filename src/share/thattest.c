@@ -1,10 +1,12 @@
 #include "thatcore.h"
 #include "luacapi.h"
+#include "socket.h"
 int mainstart() {
   ccsetloglevel(4);
   ccthattest();
-  ccluatest();
   ccplattest();
+  ccluatest();
+  ccplatsocktest();
   return 0;
 }
 

@@ -1,6 +1,5 @@
 #include "lua.h"
 #include "lauxlib.h"
-#include "thatcore.h"
 #include "luacapi.h"
 
 /** Continuations **
@@ -22,7 +21,7 @@ void cclua_close(lua_State* L) {
 }
 
 static void llluaco_init(struct ccluaco* co) {
-  cczero(co, sizeof(struct ccluaco));
+  cczeron(co, sizeof(struct ccluaco));
   ccsmplnode_init(&co->node);
   co->coref = LUA_NOREF;
 }
@@ -80,6 +79,7 @@ static int lllua_resume(struct ccluaco* co, int nargs) {
     ccloge("lua_resume %s", lua_tostring(co->co, -1));
     lua_pop(co->co, 1);
   }
+  return n;
 }
 
 static int llluacofunc(lua_State* co) {
@@ -88,7 +88,7 @@ static int llluacofunc(lua_State* co) {
   ccco = (struct ccluaco*)lua_touserdata(co, -1);
   lua_pop(co, 1);
   n = ccco->func(ccco);
-  ccloge("llluacofunc returned %s", ccitos(n));
+  /* never goes here if ccco->func is yield inside */
   return n;
 }
 
@@ -114,6 +114,7 @@ int ccluaco_resume(struct ccluaco* co) {
 
 static int llluacokfunc(lua_State* co, int status, lua_KContext ctx) {
   struct ccluaco* ccco = (struct ccluaco*)ctx;
+  (void)co; /* not used here, it should be equal to co->co */
   (void)status; /* status always is LUA_YIELD when kfunc is called after lua_yieldk */
   return ccco->kfunc(ccco);
 }
@@ -175,16 +176,16 @@ static int llluaco_testfunc(struct ccluaco* co) {
   cclogd("llluaco_testfunc arguments in stack %s", ccitos(lua_gettop(co->co)));
   switch (i) {
   case 0:
-    cclogd("llluaco_testfunc called %s", ccitos(i+=1));
+    cclogd("llluaco_testfunc called %s", ccitos(i++));
     return ccluaco_yield(co, llluaco_testfunc);
   case 1:
-    cclogd("llluaco_testfunc called %s", ccitos(i+=1));
+    cclogd("llluaco_testfunc called %s", ccitos(i++));
     return ccluaco_yield(co, llluaco_testfunc);
   case 2:
-    cclogd("llluaco_testfunc called %s", ccitos(i+=1));
+    cclogd("llluaco_testfunc called %s", ccitos(i++));
     return ccluaco_yield(co, llluaco_testfunc);
   default:
-    cclogd("llluaco_testfunc called %s", ccitos(i+=1));
+    cclogd("llluaco_testfunc called %s", ccitos(i++));
     i = 0;
     break;
   }

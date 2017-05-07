@@ -1,5 +1,6 @@
 #ifndef CCLIB_LUACAPI_H_
 #define CCLIB_LUACAPI_H_
+#include "thatcore.h"
 
 struct lua_State;
 CORE_API struct lua_State* cclua_newstate();

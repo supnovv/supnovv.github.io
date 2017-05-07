@@ -1,9 +1,10 @@
 #include <string.h>
 #include <errno.h>
+#include "plationf.h"
 #include "ionotify.h"
-#include "linuxpoll.h"
 
 #if defined(CC_OS_LINUX)
+/** Linux Epoll **/
 
 /** epoll - I/O event notification facility **
 The epoll API performs a similar task to poll(2): monitoring multiple file
@@ -208,7 +209,7 @@ static nauty_bool llepollmgr_del(int epfd, int fd) {
   Applications that need to be portable to kernels before
   2.6.9 should specify a non-null pointer in event. */
   struct epoll_event event;
-  cczero(&event, sizeof(struct epoll_event));
+  cczeron(&event, sizeof(struct epoll_event));
   if (!llepollmgr_ctl(epfd, EPOLL_CTL_DEL, fd, &event)) {
     ccloge("llepollmgr_del %s", strerror(errno));
     return false;
@@ -271,7 +272,7 @@ static void llepollmgr_wait(struct llepollmgr* self, int ms) {
 
 nauty_bool ccionfmgr_init(struct ccionfmgr* self) {
   struct llepollmgr* mgr = (struct llepollmgr*)self;
-  cczero(mgr, sizeof(struct llepollmgr));
+  cczeron(mgr, sizeof(struct llepollmgr));
   if ((mgr->epfd = llepollmgr_create()) == -1) {
     return false;
   }
@@ -465,13 +466,12 @@ void ccionfmgr_trywait(struct ccionfmgr* self, void (*cb)(struct ccionfevt*)) {
   ccionfmgr_timedwait(self, 0, cb);
 }
 
-#else
-#if defined(CC_OS_APPLE) || defined(CC_OS_BSD)
-/* kqueue */
+#elif defined(CC_OS_APPLE) || defined(CC_OS_BSD)
+/** BSD Kqueue **/
 
 
 #else
-/* poll */
+/** Linux Poll **/
 
 struct ccepoll {
   struct ccarray fdset;
@@ -482,7 +482,7 @@ struct ccepoll {
 #define CCEPOLLINITFDSIZE (1 << CCEPOLLINITFDBITS)
 
 void ccepollinit(struct ccepoll* self) {
-  cczero(self, sizeof(struct ccepoll));
+  cczeron(self, sizeof(struct ccepoll));
 }
 
 nauty_bool ccepollcreate(struct ccepoll* self) {
@@ -554,8 +554,7 @@ void ccepollwaitms(struct ccepoll* self, int ms) {
   poll(self->fdset.buffer, self->fdset.nelem, ms);
 }
 
-#endif
-#endif
+#endif /* CC_OS_LINUX */
 
 void cclinuxpolltest() {
   ccassert(sizeof(handle_int) <= 4);

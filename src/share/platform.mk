@@ -5,10 +5,11 @@ DEBUG =
 MYINC =
 MACRO =
 LDPATH =
-LDLIBS =
+LDLIBS = -llua -lm
 SHARED =
 
-CC = gcc -std=c89
+CC = gcc
+CC89 = gcc -std=c89
 CWARNS = -Wall -Wextra -Werror
 CMACRO = $(MACRO)
 POSINDEPCODE = -fPIC # position independent code
@@ -25,8 +26,9 @@ ifeq ($(PLAT), macosx)
 SHARED = $(POSINDEPCODE) -dynamiclib -Wl,-undefined,dynamic_lookup -ldl
 endif
 
-CMPL = $(CC) $(CFLAGS) -c -o$@
-LINK = $(CC) -o$@
+CMPL_OPTIONS = $(CFLAGS) -c -o$@
+CMPL = $(CC89) $(CMPL_OPTIONS)
+LINK = $(CC89) -o$@
 
 RM = rm -rf
 MKDIR = mkdir -p
@@ -42,12 +44,17 @@ else
 BUILD_DIR =
 endif
 
-AUTOCONF = $(BUILD_DIR)autoconf$(E)
-CORETEST = $(BUILD_DIR)thattest$(E)
 AUTOOBJ = $(BUILD_DIR)autoconf$(O)
 MAINOBJ = $(BUILD_DIR)mainentry$(O)
 COREOBJ = $(BUILD_DIR)thatcore$(O) $(BUILD_DIR)linuxcore$(O) $(BUILD_DIR)thattest$(O)
-ALLOBJS = $(AUTOOBJ) $(MAINOBJ) $(COREOBJ)
+LUACOBJ = $(BUILD_DIR)luacapi$(O)
+IONFOBJ = $(BUILD_DIR)ionotify$(O) $(BUILD_DIR)linuxionf$(O)
+SOCKOBJ = $(BUILD_DIR)socket$(O) $(BUILD_DIR)linuxsock$(O)
+TESTOBJ = $(COREOBJ) $(LUACOBJ) $(IONFOBJ) $(SOCKOBJ)
+ALLOBJS = $(AUTOOBJ) $(MAINOBJ) $(TESTOBJ)
+
+AUTOCONF = $(BUILD_DIR)autoconf$(E)
+CORETEST = $(BUILD_DIR)thattest$(E)
 
 ifeq ($(PLAT), none)
 default: none
@@ -56,9 +63,9 @@ endif
 ifeq ($(DEBUG), ON)
 default: echo $(CORETEST) clean
 else
-default: echo $(AUTOCONF) $(COREOBJ) $(CORETEST)
-	$(MKDIR) debug
-	$(MAKE) PLAT=$(PLAT) DEBUG="ON" MACRO="-DCCDEBUG" -f platform.mk
+default: echo $(AUTOCONF) $(CORETEST)
+#	$(MKDIR) debug
+#	$(MAKE) PLAT=$(PLAT) DEBUG="ON" MACRO="-DCCDEBUG" -f platform.mk
 endif
 
 none:
@@ -67,7 +74,7 @@ none:
 echo:
 	@echo "PLAT= $(PLAT)"
 	@echo "DEBUG= $(DEBUG)"
-	@echo "CC= $(CC)"
+	@echo "CC= $(CC89)"
 	@echo "CFLAGS= $(CFLAGS)"
 
 clean:
@@ -80,13 +87,19 @@ $(AUTOCONF): $(AUTOOBJ)
 	$(LINK) $(AUTOOBJ)
 	./$@
 
-$(CORETEST): $(MAINOBJ) $(COREOBJ)
-	$(LINK) $(MAINOBJ) $(COREOBJ) $(LDLIBS)
+$(CORETEST): $(MAINOBJ) $(TESTOBJ)
+	$(LINK) $(MAINOBJ) $(TESTOBJ) $(LDLIBS)
 	./$@
+
+luacapi.o: luacapi.c luacapi.h
+	$(CC) $(CMPL_OPTIONS) $<
 
 $(BUILD_DIR)%$(O): %.c
 	$(CMPL) $<
 
 $(AUTOOBJ): autoconf.c
 $(MAINOBJ): mainentry.c thatcore.h autoconf.h
-$(COREOBJ): thatcore.c windows.c thattest.c thatcore.h autoconf.h
+$(COREOBJ): thatcore.c linuxcore.c thattest.c thatcore.h autoconf.h ccprefix.h
+$(IONFOBJ): ionotify.c linuxionf.c ionotify.h plationf.h
+$(SOCKOBJ): socket.c linuxsock.c socket.h platsock.h
+

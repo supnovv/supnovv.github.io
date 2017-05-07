@@ -191,7 +191,7 @@ static void llsetyear(struct ccdate* date, sright_int year, sright_int yday) {
 static struct ccdate llgetdate(time_t secs) {
   struct tm st;
   struct ccdate date = {0};
-  cczero(&st, sizeof(struct tm));
+  cczeron(&st, sizeof(struct tm));
   /* struct tm* gmtime_r(const time_t* secs, struct tm* out);
   The function converts the time secs to broken-down time representation,
   expressed in Coordinated Universal Time (UTC), i.e. since Epoch. */
@@ -336,7 +336,7 @@ sright_int ccfilesize(struct ccfrom name) {
   owner, group, link count, mode, etc.). */
   struct stat st; /* lstat needs _POSIX_C_SOURCE >= 200112L */
   if (name.start >= name.beyond) return 0;
-  cczero(&st, sizeof(struct stat));
+  cczeron(&st, sizeof(struct stat));
   if (lstat((const char*)name.start, &st) != 0) {
     ccloge("lstat %s %s", strerror(errno), name.start);
     return 0;
@@ -347,7 +347,7 @@ sright_int ccfilesize(struct ccfrom name) {
 struct ccfileattr ccgetfileattr(struct ccfrom name) {
   struct stat st;
   struct ccfileattr fa = {0};
-  cczero(&st, sizeof(struct stat));
+  cczeron(&st, sizeof(struct stat));
   if (name.start >= name.beyond) return fa;
   if (lstat((const char*)name.start, &st) != 0) {
     ccloge("lstat %s %s", strerror(errno), name.start);
@@ -707,7 +707,7 @@ nauty_bool ccplat_createthread(struct ccthrid* thrid, void* (*start)(void*), voi
   return true;
 }
 
-void ccplat_sleep(uright_int us) {
+void ccplat_threadsleep(uright_int us) {
   struct timespec req;
   req.tv_sec = (time_t)(us/1000000);
   req.tv_nsec = (long)(us%1000000*1000);

@@ -1,25 +1,21 @@
 #define _POSIX_C_SOURCE 200809L
+#include <string.h>
+#include <errno.h>
 #include <unistd.h>
 #include <signal.h>
+#include <netinet/in.h>
 #include <arpa/inet.h>
-#include <sys/types.h>
-#include <sys/socket.h>
+#include "platsock.h"
+#include "socket.h"
 
-struct cctcpserver {
-  int listenfd;
-};
-
-union llsockaddr {
-  struct sockaddr_storage storage;
-  struct sockaddr sa;
-  struct sockaddr_in in;
-  struct sockaddr_in6 in6;
-};
-
-int ccsockpton(struct ccfrom ip, ushort port, union llsockaddr* dest) {
-  /** inet_pton - convert ipv4 and ipv6 addresses from text to binary form **
-  #include <arpa/inet.h>
-  int inet_pton(int family, const char* str, void* dest);
+nauty_bool ccsockaddr_initp(struct ccsockaddr* self, const struct ccfrom* ip, ushort_int port) {
+  /** inet_pton htons/l ntohs/l **
+  #include <arpa/inet.h> // some systems require <netinet/in.h> instead of <arpa/inet.h>
+  int inet_pton(int family, const char* str, void* dest); // convert ipv4 and ipv6 from text to binary
+  uint32_t htonl(uint32_t hostlong);  // host to net (32-bit)
+  uint16_t htons(uint16_t hostshort); // host to net (16-bit)
+  uint32_t ntohl(uint32_t netlong);   // net to host (32-bit)
+  uint16_t ntohs(uint16_t netshort);  // net to host (16-bit)
   AF_INET - src contains an ipv4 network address in dotted-decimal format,
   "ddd.ddd.ddd.ddd", where ddd is a decimal number of up to three digits in
   the range 0 to 255. The address is convered to a struct in_addr and copied
@@ -38,30 +34,44 @@ int ccsockpton(struct ccfrom ip, ushort port, union llsockaddr* dest) {
   character string representing a valid network in the specified address family.
   If family does not contain a valid address family, -1 is returned and errno is
   set to EAFNOSUPPORT. */
-  if (ccstrcontain(ip, ':')) {
-    struct in6_addr addr;
-    if (inet_pton(AF_INET6, (const char*)ip.start, &addr) != 1) {
-      return 0;
+  int n = 0;
+  struct llsockaddr* sa = (struct llsockaddr*)self;
+  if (ccstring_containp(ip, ':')) {
+    if ((n = inet_pton(AF_INET6, (const char*)ip->start, &(sa->addr.in6.sin6_addr))) != 1) {
+      goto errorlabel;
     }
-    cczero(dest, sizeof(union llsockaddr));
-    dest->in6.sin6_family = AF_INET6;
-    dest->in6.sin6_port = htons(port);
-    dest->in6.sin6_addr = addr;
-    return sizeof(struct sockaddr_in6);
-  } else {
-    struct in_addr addr;
-    if (inet_pton(AF_INET, (const char*)ip.start, &addr) != 1) {
-      return 0;
-    }
-    cczero(dest, sizeof(union llsockaddr));
-    dest->in.sin_family = AF_INET;
-    dest->in.sin_port = htons(port);
-    dest->in.sin_addr = addr;
-    return sizeof(struct sockaddr_in);
+    sa->len = sizeof(struct sockaddr_in6);
+    sa->addr.in6.sin6_family = AF_INET6;
+    sa->addr.in6.sin6_port = htons(port);
+    return true;
   }
+  if ((n = inet_pton(AF_INET, (const char*)ip->start, &(sa->addr.in.sin_addr))) != 1) {
+    goto errorlabel;
+  }
+  sa->len = sizeof(struct sockaddr_in);
+  sa->addr.in.sin_family = AF_INET;
+  sa->addr.in.sin_port = htons(port);
+  return true;
+errorlabel:
+  if (n == 0) {
+    ccloge("inet_pton invalid ip");
+  } else {
+    ccloge("inet_pton %s", strerror(errno));
+  }
+  cczeron(sa, sizeof(struct llsockaddr));
+  return false;
 }
 
-_int ccsockntop(const union llsockaddr* sa, socklen_t len, struct ccstring* ip, ushort* port) {
+nauty_bool ccsockaddr_init(struct ccsockaddr* self, struct ccfrom ip, ushort_int port) {
+  return ccsockaddr_initp(self, &ip, port);
+}
+
+ushort_int ccsockaddr_getport(struct ccsockaddr* self) {
+  struct llsockaddr* sa = (struct llsockaddr*)self;
+  return ntohs(sa->addr.in.sin_port);
+}
+
+nauty_bool ccsockaddr_getipstr(struct ccsockaddr* self, struct ccstring* out) {
   /** inet_ntop - convert ipv4 and ipv6 addresses from binary to text form **
   #include <arpa/inet.h>
   const char* inet_ntop(int family, const void* src, char* dest, socklen_t size);
@@ -78,33 +88,33 @@ _int ccsockntop(const union llsockaddr* sa, socklen_t len, struct ccstring* ip, 
   INET6_ADDRSTRLEN bytes long.
   On success, inet_ntop() returns a non-null pointer to dst. NULL is returned if
   there was an error, with errno set to indicate the error. */
-  #define LLIPSTRMAXLEN 128
-  char dest[LLIPSTRMAXLEN+1] = {0};
-  ccstrsetempty(ip);
-  *port = 0;
-  if (sa == 0 || len <= 0) return EINVAL;
-  if (sa->sa.sa_family == AF_INET) {
-    if (inet_ntop(AF_INET, &(sa->in.sin_addr), dest, LLIPSTRMAXLEN) == 0) {
-      return errno;
+  struct llsockaddr* sa = (struct llsockaddr*)self;
+  if (sa->addr.sa.sa_family == AF_INET) {
+    char ipstrbuf[INET_ADDRSTRLEN+1];
+    if (inet_ntop(AF_INET, &(sa->addr.in.sin_addr), ipstrbuf, INET_ADDRSTRLEN) == 0) {
+      ccloge("inet_ntop %s", strerror(errno));
+      ccstring_setempty(out);
+      return false;
     }
-    *port = ntohs(sa->in.sin_port);
-    ccstrsetfromc(ip, dest);
-    return 0;
+    ccstring_setcstr(out, ipstrbuf);
+    return true;
   }
-  if (sa->sa.sa_family == AF_INET6) {
-    if (inet_ntop(AF_INET6, &(sa->in6.sin6_addr), dest, LLIPSTRMAXLEN) == 0) {
-      return errno;
+  if (sa->addr.sa.sa_family == AF_INET6) {
+    char ipv6strbuf[INET6_ADDRSTRLEN+1];
+    if (inet_ntop(AF_INET6, &(sa->addr.in6.sin6_addr), ipv6strbuf, INET6_ADDRSTRLEN) == 0) {
+      ccloge("inet_ntop %s", strerror(errno));
+      ccstring_setempty(out);
+      return false;
     }
-    *port = ntohs(sa->in6.sin6_port);
-    ccstrsetfromc(ip, dest);
-    return 0;
+    ccstring_setcstr(out, ipv6strbuf);
+    return true;
   }
-  #undef LLIPSTRMAXLEN
-  ccloge("sockntop invalid family");
-  return EINVAL;
+  ccloge("invalid address family");
+  ccstring_setempty(out);
+  return false;
 }
 
-bool ccsockbind(int sockfd, ccfrom ip, ushort port) {
+nauty_bool ccsocket_bind(socket_int sock, struct ccfrom ip, ushort_int port) {
   /** bind - bind a address to a socket **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -146,20 +156,45 @@ bool ccsockbind(int sockfd, ccfrom ip, ushort port) {
   49152小（以免与临时端口号的“正确”范围冲突）。
   从bind返回的一个常见错误是EADDRINUSE，到7.5节讨论SO_REUSEADDR和SO_REUSEPORT
   这两个套接字选项时在详细讨论。*/
-  union llsockaddr sa;
-  socklen_t len = (socklen_t)ccsockpton(ip, port, &sa);
-  if (len == 0) {
-    ccloge("bind invalid ip");
+  struct ccsockaddr addr;
+  struct llsockaddr* sa = (struct llsockaddr*)&addr;
+  ccsockaddr_initp(&addr, &ip, port);
+  if (sa->len == 0) {
+    ccloge("bind invalid address");
     return false;
   }
-  if (bind(sockfd, &sa.sa, len) != 0) {
-    ccloge("bind %s", strerror(errorno));
+  if (bind(sock, &sa->addr.sa, sa->len) != 0) {
+    ccloge("bind %s", strerror(errno));
     return false;
   }
   return true;
 }
 
-bool ccsocklisten(int sockfd, int backlog) {
+struct ccsockaddr ccsocket_getboundaddr(socket_int sock) {
+  /** getsockname **
+  #include <sys/socket.h>
+  int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+  returns the current address the sock is bound. the addrlen should be
+  initialized to indicate the amount of space in bytes pointed to by addr.
+  on return it contains the actual size of the socket address.
+  the returned address is truncated if the buffer provided is too small; in
+  this case, addrlen will return a value greater than was supplied to the call. */
+  struct ccsockaddr addr;
+  struct llsockaddr* sa = (struct llsockaddr*)&addr;
+  socklen_t providedlen = sizeof(union ll_sock_addr);
+  sa->len =  providedlen;
+  if (getsockname(sock, &(sa->addr.sa), &(sa->len)) != 0) {
+    ccloge("getsockname %s", strerror(errno));
+    sa->len = 0;
+  }
+  if (sa->len > providedlen) {
+    ccloge("getsockname truncated");
+    sa->len = providedlen;
+  }
+  return addr;
+}
+
+nauty_bool ccsocket_listen(socket_int sock, int backlog) {
   /** listen - listen for connections on a socket **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -216,39 +251,14 @@ bool ccsocklisten(int sockfd, int backlog) {
   “该端口有服务器在监听，不过它的队列已经满了”。
   在三次握手之后，但在服务器accept之前到达的数据应该有服务器TCP排队，最大数据量
   为相应已连接套接字的接收缓冲区大小。*/
-  if (listen(sockfd, backlog) != 0) {
+  if (listen(sock, backlog) != 0) {
     ccloge("listen %s", strerror(errno));
     return false;
   }
   return true;
 }
 
-struct ccsockconn {
-  int connfd;
-  struct ccstring localip;
-  struct ccstring remoteip;
-  ushort localport;
-  ushort remoteport;
-};
-
-void ccsockconninit(struct ccsockconn* conn) {
-  cczero(conn, sizeof(struct ccsockconn));
-  conn->connfd = -1;
-}
-
-_int cclocaladdr(int connfd, struct ccstring* ip, ushort* port) {
-  union llsockaddr sa;
-  socklen_t len = sizeof(sa);
-  cczero(&sa, sizeof(sa));
-  if (getsockname(connfd, (struct sockaddr*)&sa, &len) != 0) {
-    ccloge("getsockname %s", strerror(errno));
-    ccstrsetempty(ip);
-    *port = 0;
-    return errno;
-  }
-  return ccsockntop(&sa, len, ip, port);
-}
-
+#if 0
 /** POSIX signal interrupt process's execution **
 信号（signal）是告知某个进程发生了某个事件的通知，也称谓软中断
 （software interrupt）。信号通常是异步发生的，也就是说进程预先
@@ -479,7 +489,7 @@ void ccsockaccept(int listenfd) {
   struct ccsockconn conn;
   int n = 0;
 
-  cczero(&rdaddr, addrlen);
+  cczeron(&rdaddr, addrlen);
   ccscokconninit(&conn);
 
   for (; ;) {
@@ -746,12 +756,33 @@ _int cctcpserverbind(struct cctcpserver* s, struct ccfrom localip, ushort port) 
   s->listenfd = sockfd;
   return 0;
 }
+#endif
 
-
-void cclinuxsocktest() {
+void ccplatsocktest() {
+  struct ccsockaddr sa;
+  struct ccstring ipstr = ccstring_emptystr();
+  /* all kind of socket address size */
+  cclogd("socklen_t %s-byte", ccutos(sizeof(socklen_t)));
+  cclogd("struct in_addr %s-byte", ccutos(sizeof(struct in_addr)));
+  cclogd("struct in6_addr %s-byte", ccutos(sizeof(struct in6_addr)));
+  cclogd("struct sockaddr %s-byte", ccutos(sizeof(struct sockaddr)));
+  cclogd("struct sockaddr_in %s-byte", ccutos(sizeof(struct sockaddr_in)));
+  cclogd("struct sockaddr_in6 %s-byte", ccutos(sizeof(struct sockaddr_in6)));
+  cclogd("struct sockaddr_storage %s-byte", ccutos(sizeof(struct sockaddr_storage)));
+  cclogd("CC_SOCKADDR_BYTES %s-byte", ccutos(CC_SOCKADDR_BYTES));
+  cclogd("struct ccsockaddr %s-byte", ccutos(sizeof(struct ccsockaddr)));
   cclogd("INET_ADDRSTRLEN ipv4 string max len %s", ccitos(INET_ADDRSTRLEN));
   cclogd("INET6_ADDRSTRLEN ipv6 string max len %s", ccitos(INET6_ADDRSTRLEN));
-  cclogd("struct sockaddr_in %s-byte", ccitos(sizeof(struct sockaddr_in)));
-  cclogd("struct sockaddr_in6 %s-byte", ccitos(sizeof(struct sockaddr_in6)));
+  /* ipv4 string convert */
+  ccsockaddr_init(&sa, ccfromcstr("127.0.0.1"), 1024);
+  ccsockaddr_getipstr(&sa, &ipstr);
+  ccassert(ccsockaddr_getport(&sa) == 1024);
+  ccassert(ccstring_equalcstr(&ipstr, "127.0.0.1"));
+  /* ipv6 string convert */
+  ccsockaddr_init(&sa, ccfromcstr("::3742:204.152.189.116"), 2048);
+  ccsockaddr_getipstr(&sa, &ipstr);
+  ccassert(ccsockaddr_getport(&sa) == 2048);
+  ccassert(ccstring_equalcstr(&ipstr, "::3742:204.152.189.116"));
+  ccstring_free(&ipstr);
 }
 

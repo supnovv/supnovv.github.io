@@ -67,7 +67,16 @@ void ccexit() {
 
 /** Memory operation **/
 
-struct ccfrom ccfrom(const void* start, sright_int bytes) {
+struct ccfrom ccfromrange(const void* start, const void* beyond) {
+  struct ccfrom from = {0, 0};
+  if (start < beyond) {
+    from.start = (const uoctet_int*)start;
+    from.beyond = (const uoctet_int*)beyond;
+  }
+  return from;
+}
+
+struct ccfrom ccfromn(const void* start, sright_int bytes) {
   struct ccfrom from = {0, 0};
   if (start && bytes > 0) {
     size_t n = (size_t)bytes;
@@ -84,23 +93,16 @@ struct ccfrom ccfrom(const void* start, sright_int bytes) {
 struct ccfrom ccfromcstr(const void* cstr) {
   struct ccfrom from = {0, 0};
   if (cstr) {
-    from.start = (const uoctet_int*)cstr;
+    from.start = (const nauty_byte*)cstr;
     from.beyond = from.start + strlen(cstr);
   }
   return from;
 }
 
-struct ccfrom ccfromrange(const void* start, const void* beyond) {
-  struct ccfrom from = {0, 0};
-  if (start < beyond) {
-    from.start = (const uoctet_int*)start;
-    from.beyond = (const uoctet_int*)beyond;
-  }
-  return from;
-}
+
 
 struct ccfrom* ccsetfrom(struct ccfrom* self, const void* start, sright_int bytes) {
-  *self = ccfrom(start, bytes);
+  *self = ccfromn(start, bytes);
   return self;
 }
 
@@ -188,7 +190,7 @@ static void* llrawrelloc(void* buffer, size_t bytes) { /* both buffer and bytes 
     ccloge("realloc failed %s", ccutos(bytes));
     if ((tempbuffer = lloutofmemory(bytes))) {
       struct ccfrom from = ccfromrange(buffer, ((uoctet_int*)buffer) + bytes);
-      cccopy(&from, tempbuffer);
+      cccopyfromp(&from, tempbuffer);
       ccrawfree(buffer);
     }
   }
@@ -243,15 +245,15 @@ struct ccheap ccheap_allocrawbuffer(sright_int size) {
 
 struct ccheap ccheap_alloc(sright_int size) {
   struct ccheap heap = ccheap_allocrawbuffer(size);
-  cczerorange(heap.start, heap.beyond);
+  cczero(heap.start, heap.beyond);
   return heap;
 }
 
 struct ccheap ccheap_allocfrom(sright_int size, struct ccfrom from) {
   struct ccheap heap = ccheap_allocrawbuffer(size);
-  uoctet_int* beyond = heap.start + cccopytodest(&from, ccdestheap(&heap));
+  uoctet_int* beyond = heap.start + cccopyfromptodest(&from, ccdestheap(&heap));
   if (beyond < heap.beyond) {
-    cczerorange(beyond, heap.beyond);
+    cczero(beyond, heap.beyond);
   }
   return heap;
 }
@@ -282,7 +284,7 @@ void ccheap_relloc(struct ccheap* self, sright_int newsize) {
     ccloge("ccheap_relloc failed %s", ccutos(n));
     return;
   }
-  cczerorange(self->beyond, buffer + n);
+  cczero(self->beyond, buffer + n);
   self->start = (uoctet_int*)buffer;
   self->beyond = self->start + n;
 }
@@ -294,7 +296,7 @@ void ccheap_free(struct ccheap* self) {
   self->beyond = 0;
 }
 
-sright_int cczero(void* start, sright_int bytes) {
+sright_int cczeron(void* start, sright_int bytes) {
   if (start && bytes > 0) {
     size_t n = (size_t)bytes;
     memset(start, 0, n);
@@ -306,19 +308,19 @@ sright_int cczero(void* start, sright_int bytes) {
   return 0;
 }
 
-sright_int cczerorange(void* start, const void* beyond) {
+sright_int cczero(void* start, const void* beyond) {
   if (start < beyond) {
     size_t n = ((uoctet_int*)beyond) - ((uoctet_int*)start);
     memset(start, 0, n);
     if ((uright_int)((sright_int)n) != (uright_int)n) {
-      ccloge("cczerobuffer size too large %s", ccutos(n));
+      ccloge("cczero size too large %s", ccutos(n));
     }
     return (sright_int)n;
   }
   return 0;
 }
 
-static sright_int llcopy(const uoctet_int* start, size_t n, uoctet_int* dest) {
+static sright_int llcopy(const uoctet_int* start, size_t n, nauty_byte* dest) {
   if (dest + n <= start || dest >= start + n) {
     memcpy(dest, start, n);
   } else {
@@ -330,20 +332,24 @@ static sright_int llcopy(const uoctet_int* start, size_t n, uoctet_int* dest) {
   return (sright_int)n;
 }
 
-sright_int cccopy(const struct ccfrom* from, void* dest) {
-  if (from->start < from->beyond && dest) {
-    return llcopy(from->start, from->beyond - from->start, (uoctet_int*)dest);
-  }
-  return 0;
-}
-
-sright_int cccopytodest(const struct ccfrom* from, const struct ccdest* dest) {
+sright_int cccopyfromptodest(const struct ccfrom* from, const struct ccdest* dest) {
   size_t nfrom, ndest;
   if (from->start >= from->beyond) return 0;
   if (dest->start >= dest->beyond) return 0;
   nfrom = from->beyond - from->start;
   ndest = dest->beyond - dest->start;
   return llcopy(from->start, (ndest < nfrom ? ndest : nfrom), dest->start);
+}
+
+sright_int cccopyfrom(struct ccfrom from, void* dest) {
+  return cccopyfromp(&from, dest);
+}
+
+sright_int cccopyfromp(const struct ccfrom* from, void* dest) {
+  if (from->start < from->beyond && dest) {
+    return llcopy(from->start, from->beyond - from->start, (nauty_byte*)dest);
+  }
+  return 0;
 }
 
 static sright_int llrcopy(const uoctet_int* start, size_t n, uoctet_int* dest) {
@@ -367,14 +373,14 @@ static sright_int llrcopy(const uoctet_int* start, size_t n, uoctet_int* dest) {
   return (sright_int)n;
 }
 
-sright_int ccrcopy(const struct ccfrom* from, void* dest) {
+sright_int ccrcopyfromp(const struct ccfrom* from, void* dest) {
   if (from->start < from->beyond && dest) {
     return llrcopy(from->start, from->beyond - from->start, (uoctet_int*)dest);
   }
   return 0;
 }
 
-sright_int ccrcopytodest(const struct ccfrom* from, const struct ccdest* dest) {
+sright_int ccrcopyfromptodest(const struct ccfrom* from, const struct ccdest* dest) {
   size_t nfrom, ndest;
   if (from->start >= from->beyond) return 0;
   if (dest->start >= dest->beyond) return 0;
@@ -471,7 +477,7 @@ const char* ccstrgetcstr(const struct ccstring* self) {
 }
 
 struct ccfrom ccstrgetfrom(const struct ccstring* s) {
-  return ccfrom(ccstrgetcstr(s), ccstrgetlen(s));
+  return ccfromn(ccstrgetcstr(s), ccstrgetlen(s));
 }
 
 sright_int ccstrcapacity(const struct ccstring* self) {
@@ -487,7 +493,7 @@ static struct ccstring* llstrsetlen(struct ccstring* self, sright_int len) {
   return self;
 }
 
-static uoctet_int* llstrenlarge(struct ccstring* self, sright_int bytes) {
+static nauty_char* llstrenlarge(struct ccstring* self, sright_int bytes) {
   if (ccstrcapacity(self) < bytes) {
     sright_int len = 2 * ccstrgetlen(self); /* 1-byte for zero terminal */
     bytes = len >= (bytes+1) ? len : (bytes+1);
@@ -560,6 +566,57 @@ const char* ccutos(uright_int a) {
 
 const char* ccitos(sright_int a) {
   return ccstrgetcstr(ccstrseti(ccdefaultstr(), a));
+}
+
+
+void ccstring_free(struct ccstring* self) {
+  if (self->flag == 0xFF) {
+    ccheap_free(&self->heap);
+    self->len = 0;
+  }
+  self->flag = 0;
+}
+
+const char* ccstring_getcstr(const struct ccstring* self) {
+  return (self->flag == 0xFF ? (const char*)self->heap.start : (const char*)self);
+}
+
+sright_int ccstring_getlen(const struct ccstring* self) {
+  return (self->flag == 0xFF ? self->len : self->flag);
+}
+
+nauty_bool ccstring_equalcstr(const struct ccstring* self, const void* cstr) {
+  return ccstrequal(ccfromn(ccstring_getcstr(self), ccstring_getlen(self)), ccfromcstr(cstr));
+}
+
+struct ccstring ccstring_emptystr() {
+  return (struct ccstring){{0}, 0, {0}, 0};
+}
+
+void ccstring_setempty(struct ccstring* self) {
+  ccstring_free(self);
+  *self = ccstring_emptystr();
+}
+
+void ccstring_setcstr(struct ccstring* self, const void* cstr) {
+  sright_int n = strlen((const char*)cstr);
+  nauty_char* p = llstrenlarge(self, n);
+  llstrsetlen(self, cccopyfrom(ccfromn(cstr, n), p));
+}
+
+nauty_bool ccstring_contain(struct ccfrom s, nauty_char ch) {
+  return ccstring_containp(&s, ch);
+}
+
+nauty_bool ccstring_containp(const struct ccfrom* s, nauty_char ch) {
+  const nauty_byte* start = s->start;
+  if (start >= s->beyond) return false;
+  while (start < s->beyond) {
+    if (*start++ == (nauty_byte)ch) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /** List and queue **/
@@ -648,6 +705,21 @@ void ccdqueue_init(struct ccdqueue* self) {
 
 void ccdqueue_push(struct ccdqueue* self, struct cclinknode* newnode) {
   cclinknode_insertafter(&self->head, newnode);
+}
+
+void ccdqueue_pushqueue(struct ccdqueue* self, struct ccdqueue* q) {
+  struct cclinknode* tail = 0;
+  if (ccdqueue_isempty(q)) return;
+  /* chain self's tail with q's first element */
+  tail = self->head.prev;
+  tail->next = q->head.next;
+  q->head.next->prev = tail;
+  /* chain q's tail with self's head */
+  tail = q->head.prev;
+  tail->next = &self->head;
+  self->head.prev = tail;
+  /* init q to empty */
+  ccdqueue_init(q);
 }
 
 nauty_bool ccdqueue_isempty(struct ccdqueue* self) {
@@ -745,7 +817,7 @@ static nauty_bool llsetthrkeydata(struct ccthread* thrd) {
 }
 
 static void llglobal_init(struct ccglobal* self, struct ccthread* master) {
-  cczero(self, sizeof(struct ccglobal));
+  cczeron(self, sizeof(struct ccglobal));
   ccdqueue_init(&self->thrdq);
   ccdqueue_init(&self->workq);
   ccdqueue_init(&self->freewq);
@@ -821,7 +893,7 @@ struct ccthread* ccthread_getmaster() {
 }
 
 void ccthread_init(struct ccthread* self) {
-  cczero(self, sizeof(struct ccthread));
+  cczeron(self, sizeof(struct ccthread));
   cclinknode_init(&self->node);
   ccdqueue_init(&self->workrxq);
   ccdqueue_init(&self->workq);
@@ -849,7 +921,7 @@ nauty_bool ccthread_start(struct ccthread* self, int (*start)()) {
   self->start = start;
   self->L = cclua_newstate();
   if (!ccplat_createthread(&self->id, llthreadfunc, self)) {
-    cczero(&self->id, sizeof(struct ccthrid));
+    cczeron(&self->id, sizeof(struct ccthrid));
     return false;
   }
   return true;
@@ -881,6 +953,7 @@ static nauty_bool llismastermsg(struct ccmsghead* msg) {
 }
 
 static void llsendremotemsg(struct ccmsghead* msg) {
+  (void)msg;
 }
 
 void ccservice_sendmsg(struct ccmsghead* msg) {
@@ -906,6 +979,7 @@ void ccservice_sendmsg(struct ccmsghead* msg) {
  */
 
 static struct ccservice* lldestservice(struct ccmsghead* msg) { /* called by master only */
+  (void)msg;
   return 0; /* TODO: (struct ccservice*)msg->svid;  find server by svid */
 }
 
@@ -917,7 +991,7 @@ static nauty_bool lliscservice(struct ccservice* self) {
   return (self->iflag & CCSVTYPE_CSERVICE);
 }
 
-static void llmaster_dispatch(struct ccthread* master) {
+void llmaster_dispatch(struct ccthread* master) {
   struct ccsqueue queue;
   struct ccsqueue freeq;
   struct ccmsghead* msg;
@@ -995,7 +1069,7 @@ static void llmaster_dispatch(struct ccthread* master) {
   }
 }
 
-static void llthread_runservice(struct ccthread* thrd) {
+void llthread_runservice(struct ccthread* thrd) {
   struct ccdqueue doneq;
   struct ccsqueue freemq;
   struct ccservice* sv;
@@ -1205,11 +1279,11 @@ void ccthattest() {
   ccassert(ccmultofpow2(2, 3) == 4);
   ccassert(ccmultofpow2(2, 4) == 4);
   ccassert(ccmultofpow2(2, 5) == 8);
-  cccopy(ccsetfrom(&from, a, 1), a+1);
+  cccopyfromp(ccsetfrom(&from, a, 1), a+1);
   ccassert(*(a+1) == '0'); *(a+1) = '1';
-  cccopy(ccsetfrom(&from, a+3, 1), a+2);
+  cccopyfromp(ccsetfrom(&from, a+3, 1), a+2);
   ccassert(*(a+2) == '3'); *(a+2) = '2';
-  cccopy(ccsetfrom(&from, a, 4), a+2);
+  cccopyfromp(ccsetfrom(&from, a, 4), a+2);
   ccassert(*(a+2) == '0');
   ccassert(*(a+3) == '1');
   ccassert(*(a+4) == '2');

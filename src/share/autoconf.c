@@ -1,7 +1,8 @@
 #define CCLIB_AUTOCONF_TOOL
 #define _CRT_SECURE_NO_WARNINGS
 #include "ccprefix.h"
-#include "linuxpoll.h"
+#include "plationf.h"
+#include "platsock.h"
 #if defined(CC_OS_WINDOWS)
 #define UNICODE
 #define _UNICODE
@@ -106,11 +107,12 @@ int main(void) {
     }
   }
 
-  ccwriteline(file, "%s/* false true nauty_bool nauty_char uoctet_int soctet_int */", CCNEWLINE);
+  ccwriteline(file, "%s/* false true nauty_bool nauty_char nauty_byte uoctet_int soctet_int */", CCNEWLINE);
   ccwriteline(file, "#undef false");
   ccwriteline(file, "#undef true");
   ccwriteline(file, "#undef nauty_bool");
   ccwriteline(file, "#undef nauty_char");
+  ccwriteline(file, "#undef nauty_byte");
   ccwriteline(file, "#undef uoctet_int");
   ccwriteline(file, "#undef soctet_int");
   ccwriteline(file, "#define false 0");
@@ -118,6 +120,7 @@ int main(void) {
   if (sizeof(unsigned char) == 1 && sizeof(signed char) == 1) {
     ccwriteline(file, "#define nauty_bool unsigned char");
     ccwriteline(file, "#define nauty_char unsigned char");
+    ccwriteline(file, "#define nauty_byte unsigned char");
     ccwriteline(file, "#define uoctet_int unsigned char");
     ccwriteline(file, "#define soctet_int signed char");
   } else {
@@ -226,6 +229,7 @@ int main(void) {
   ccwriteline(file, "#define CC_THKEY_BYTES %d", ccthkeybytes);
   ccwriteline(file, "#define CC_THRID_BYTES %d", ccthridbytes);
   ccwriteline(file, "#define CC_IONFMGR_BYTES %d", LLIONFMGR_TYPE_BYTES);
+  ccwriteline(file, "#define CC_SOCKADDR_BYTES %d", LLSOCKADDR_TYPE_BYTES);
 
   ccwriteline(file, "%s/* char %d-bit */", CCNEWLINE, sizeof(char)*8);
   ccwriteline(file, "/* short %d-bit */", sizeof(short)*8);
