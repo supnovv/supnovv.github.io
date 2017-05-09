@@ -21,6 +21,8 @@
   #define CLUA_API extern
 #endif
 
+/** Limit numbers **/
+
 #define CC_UBYT_MAX ((uoctet_int)0xFF) /* 255 */
 #define CC_SBYT_MAX ((soctet_int)0x7F) /* 127 */
 #define CC_SBYT_MIN ((soctet_int)(-127-1)) /* 128 0x80 */
@@ -33,6 +35,39 @@
 #define CC_UINT_MAX ((uright_int)0xFFFFFFFFFFFFFFFF) /* 18446744073709551615 */
 #define CC_SINT_MAX ((sright_int)0x7FFFFFFFFFFFFFFF) /* 9223372036854775807 */
 #define CC_SINT_MIN ((sright_int)-9223372036854775807-1) /* 9223372036854775808 0x8000000000000000 */
+#define CC_RDWR_MAX_BYTES 0x7fff0000 /* 2147418112 */
+
+/** Error status **/
+
+#define CCERROR  (1)
+#define CCEAGAIN (2)
+
+/** Debugger and logger **/
+
+#ifdef CCDEBUG
+#define CC_DEBUG_ZONE(...) { __VA_ARGS__ } 
+#else
+#define CC_DEBUG_ZONE(...) { ((void)0); }
+#endif
+
+#define CCXMKSTR(a) #a
+#define CCMKSTR(a) CCXMKSTR(a)
+#define CCFILELINESTR __FILE__ " (" CCMKSTR(__LINE__) ") "
+#define CCLOGTAGSTR __FILE__ " (" CCMKSTR(__LINE__) ") "
+
+#define ccassert(e) cc_assert_func((e), (#e), CCFILELINESTR)                        /* 0:assert */
+#define ccloge(fmt, ...) cc_logger_func("1[E] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 1:error */
+#define cclogw(fmt, ...) cc_logger_func("2[W] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 2:warning */
+#define cclogi(fmt, ...) cc_logger_func("3[I] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 3:important */
+#define cclogd(fmt, ...) cc_logger_func("4[D] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 4:debug */
+
+CORE_API void cc_assert_func(nauty_bool pass, const char* expr, const char* fileline);
+CORE_API sright_int cc_logger_func(const char* tag, const void* fmt, ...);
+CORE_API void ccsetloglevel(sright_int loglevel);
+CORE_API sright_int ccgetloglevel();
+CORE_API void ccexit();
+
+/** Memory operation **/
 
 struct ccfrom {
   const nauty_byte* start;
@@ -49,15 +84,45 @@ struct ccheap {
   nauty_byte* beyond;
 };
 
-#define CCSTRING_SIZEOF 32
-#define CCSTRING_STATIC_CHARS 30
+CORE_API void* ccrawalloc(sright_int size);
+CORE_API void* ccrawrelloc(void* buffer, sright_int size);
+CORE_API void ccrawfree(void* buffer);
 
-struct ccstring {
-  struct ccheap heap;
-  sright_int len;
-  uoctet_int a[CCSTRING_SIZEOF-sizeof(struct ccheap)-sizeof(sright_int)-1];
-  uoctet_int flag; /* flag==0xFF ? heap-string : stack-string */
-}; /* a sequence of bytes with zero terminated */ 
+CORE_API struct ccheap ccheap_alloc(sright_int size);
+CORE_API struct ccheap ccheap_allocrawbuffer(sright_int size);
+CORE_API struct ccheap ccheap_allocfrom(sright_int size, struct ccfrom from);
+CORE_API void ccheap_relloc(struct ccheap* self, sright_int newsize);
+CORE_API void ccheap_free(struct ccheap* self);
+
+CORE_API sright_int cczero(void* start, const void* beyond);
+CORE_API sright_int cczeron(void* start, sright_int bytes);
+
+CORE_API sright_int cccopy(const nauty_byte* fromstart, const nauty_byte* frombeyond, nauty_byte* dest);
+CORE_API sright_int cccopyn(const nauty_byte* from, sright_int n, nauty_byte* dest);
+CORE_API sright_int cccopyfrom(struct ccfrom from, void* dest);
+CORE_API sright_int cccopyfromp(const struct ccfrom* from, void* dest);
+CORE_API sright_int cccopyfromtodest(struct ccfrom from, const struct ccdest* dest);
+CORE_API sright_int cccopyfromptodest(const struct ccfrom* from, const struct ccdest* dest);
+
+CORE_API sright_int ccrcopy(const nauty_byte* fromstart, const nauty_byte* frombeyond, nauty_byte* dest);
+CORE_API sright_int ccrcopyn(const nauty_byte* from, sright_int n, nauty_byte* dest);
+CORE_API sright_int ccrcopyfrom(struct ccfrom from, void* dest);
+CORE_API sright_int ccrcopyfromp(const struct ccfrom* from, void* dest);
+CORE_API sright_int ccrcopyfromtodest(struct ccfrom from, const struct ccdest* dest);
+CORE_API sright_int ccrcopyfromptodest(const struct ccfrom* from, const struct ccdest* dest);
+
+CORE_API struct ccfrom ccfrom(const void* start, const void* beyond);
+CORE_API struct ccfrom ccfromn(const void* start, sright_int bytes);
+CORE_API struct ccfrom ccfromcstr(const void* cstr);
+CORE_API struct ccdest ccdest(void* start, sright_int bytes);
+CORE_API struct ccdest ccdestrange(void* start, void* beyond);
+
+CORE_API struct ccfrom* ccsetfrom(struct ccfrom* self, const void* start, sright_int bytes);
+CORE_API struct ccfrom* ccsetfromcstr(struct ccfrom* self, const void* cstr);
+CORE_API struct ccfrom* ccsetfromrange(struct ccfrom* self, const void* start, const void* beyond);
+CORE_API struct ccdest* ccsetdest(struct ccdest* self, void* start, sright_int bytes);
+CORE_API struct ccdest* ccsetdestrange(struct ccdest* self, void* start, void* beyond);
+CORE_API const struct ccdest* ccdestheap(const struct ccheap* heap);
 
 /** Time and date **
 The 64-bit signed integer's biggest value is 9223372036854775807.
@@ -108,75 +173,17 @@ CORE_API struct ccdate ccgetdate();
 CORE_API sright_int ccfilesize(struct ccfrom name);
 CORE_API struct ccfileattr ccgetfileattr(struct ccfrom name);
 
-
-/** Debugger and logger **/
-
-#ifdef CCDEBUG
-#define CC_DEBUG_ZONE(...) { __VA_ARGS__ } 
-#else
-#define CC_DEBUG_ZONE(...) { ((void)0); }
-#endif
-
-#define CCXMKSTR(a) #a
-#define CCMKSTR(a) CCXMKSTR(a)
-#define CCFILELINESTR __FILE__ " (" CCMKSTR(__LINE__) ") "
-#define CCLOGTAGSTR __FILE__ " (" CCMKSTR(__LINE__) ") "
-
-#define ccassert(e) cc_assert_func((e), (#e), CCFILELINESTR)                        /* 0:assert */
-#define ccloge(fmt, ...) cc_logger_func("1[E] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 1:error */
-#define cclogw(fmt, ...) cc_logger_func("2[W] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 2:warning */
-#define cclogi(fmt, ...) cc_logger_func("3[I] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 3:important */
-#define cclogd(fmt, ...) cc_logger_func("4[D] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 4:debug */
-
-CORE_API void cc_assert_func(nauty_bool pass, const char* expr, const char* fileline);
-CORE_API sright_int cc_logger_func(const char* tag, const void* fmt, ...);
-CORE_API void ccsetloglevel(sright_int loglevel);
-CORE_API sright_int ccgetloglevel();
-CORE_API void ccexit();
-
-/** Memory operation **/
-
-CORE_API void* ccrawalloc(sright_int size);
-CORE_API void* ccrawrelloc(void* buffer, sright_int size);
-CORE_API void ccrawfree(void* buffer);
-
-CORE_API struct ccheap ccheap_alloc(sright_int size);
-CORE_API struct ccheap ccheap_allocrawbuffer(sright_int size);
-CORE_API struct ccheap ccheap_allocfrom(sright_int size, struct ccfrom from);
-CORE_API void ccheap_relloc(struct ccheap* self, sright_int newsize);
-CORE_API void ccheap_free(struct ccheap* self);
-
-CORE_API sright_int cczero(void* start, const void* beyond);
-CORE_API sright_int cczeron(void* start, sright_int bytes);
-
-CORE_API sright_int cccopy(const nauty_byte* fromstart, const nauty_byte* frombeyond, nauty_byte* dest);
-CORE_API sright_int cccopyn(const nauty_byte* from, sright_int n, nauty_byte* dest);
-CORE_API sright_int cccopyfrom(struct ccfrom from, void* dest);
-CORE_API sright_int cccopyfromp(const struct ccfrom* from, void* dest);
-CORE_API sright_int cccopyfromtodest(struct ccfrom from, const struct ccdest* dest);
-CORE_API sright_int cccopyfromptodest(const struct ccfrom* from, const struct ccdest* dest);
-
-CORE_API sright_int ccrcopy(const nauty_byte* fromstart, const nauty_byte* frombeyond, nauty_byte* dest);
-CORE_API sright_int ccrcopyn(const nauty_byte* from, sright_int n, nauty_byte* dest);
-CORE_API sright_int ccrcopyfrom(struct ccfrom from, void* dest);
-CORE_API sright_int ccrcopyfromp(const struct ccfrom* from, void* dest);
-CORE_API sright_int ccrcopyfromtodest(struct ccfrom from, const struct ccdest* dest);
-CORE_API sright_int ccrcopyfromptodest(const struct ccfrom* from, const struct ccdest* dest);
-
-CORE_API struct ccfrom ccfrom(const void* start, const void* beyond);
-CORE_API struct ccfrom ccfromn(const void* start, sright_int bytes);
-CORE_API struct ccfrom ccfromcstr(const void* cstr);
-CORE_API struct ccdest ccdest(void* start, sright_int bytes);
-CORE_API struct ccdest ccdestrange(void* start, void* beyond);
-
-CORE_API struct ccfrom* ccsetfrom(struct ccfrom* self, const void* start, sright_int bytes);
-CORE_API struct ccfrom* ccsetfromcstr(struct ccfrom* self, const void* cstr);
-CORE_API struct ccfrom* ccsetfromrange(struct ccfrom* self, const void* start, const void* beyond);
-CORE_API struct ccdest* ccsetdest(struct ccdest* self, void* start, sright_int bytes);
-CORE_API struct ccdest* ccsetdestrange(struct ccdest* self, void* start, void* beyond);
-CORE_API const struct ccdest* ccdestheap(const struct ccheap* heap);
-
 /** String **/
+
+#define CCSTRING_SIZEOF 32
+#define CCSTRING_STATIC_CHARS 30
+
+struct ccstring {
+  struct ccheap heap;
+  sright_int len;
+  uoctet_int a[CCSTRING_SIZEOF-sizeof(struct ccheap)-sizeof(sright_int)-1];
+  uoctet_int flag; /* flag==0xFF ? heap-string : stack-string */
+}; /* a sequence of bytes with zero terminated */
 
 CORE_API const char* ccutos(uright_int a);
 CORE_API const char* ccitos(sright_int a);

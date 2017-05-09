@@ -273,6 +273,7 @@ static void llepollmgr_wait(struct llepollmgr* self, int ms) {
 nauty_bool ccionfmgr_init(struct ccionfmgr* self) {
   struct llepollmgr* mgr = (struct llepollmgr*)self;
   cczeron(mgr, sizeof(struct llepollmgr));
+  mgr->maxlen = CCEPOLL_MAX_EVENTS;
   if ((mgr->epfd = llepollmgr_create()) == -1) {
     return false;
   }
@@ -556,7 +557,7 @@ void ccepollwaitms(struct ccepoll* self, int ms) {
 
 #endif /* CC_OS_LINUX */
 
-void cclinuxpolltest() {
+void ccplationftest() {
   ccassert(sizeof(handle_int) <= 4);
 }
 

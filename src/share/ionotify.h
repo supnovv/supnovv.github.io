@@ -30,5 +30,7 @@ CORE_API void ccionfmgr_wait(struct ccionfmgr* self, void (*cb)(struct ccionfevt
 CORE_API void ccionfmgr_trywait(struct ccionfmgr* self, void (*cb)(struct ccionfevt*));
 CORE_API void ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccionfevt*));
 
+CORE_API void ccplationftest();
+
 #endif /* CCLIB_IONOTIFY_H_ */
 

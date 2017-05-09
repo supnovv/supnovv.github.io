@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <unistd.h>
 #include <signal.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include "platsock.h"
@@ -114,7 +115,212 @@ nauty_bool ccsockaddr_getipstr(struct ccsockaddr* self, struct ccstring* out) {
   return false;
 }
 
-nauty_bool ccsocket_bind(socket_int sock, struct ccfrom ip, ushort_int port) {
+static nauty_bool llsetnonblock(handle_int fd) {
+  /** fcntl - manipulate file descriptor **
+  #include <unistd.h>
+  #include <fcntl.h>
+  int fcntl(int fd, int cmd, ...);
+  On error, this function returns -1, and errno is set appropriately.
+  File status flags: each open fd has certain associated status flags,
+  initialized by open(2) and possibly modified by fcntl(). duplicated
+  fds refer to the same open fd, and thus share the same file status
+  flags. The file status flags and their semantics are described in open(2).
+  F_GETFL (void) - return (as the function result) the file access mode
+  and the file status flags, arg is ignored.
+  F_SETFL (int) - set the file status flags to the value specified by arg.
+  File access mode (O_RDONLY, O_WRONLY, O_RDWR) and file creation flags (i.e.,
+  O_CREATE,O_EXCL, O_NOCTTY, O_TRUNC) in arg are ignored. On linux, this
+  command can change only the O_APPEND, O_ASYNC, O_DIRECT, O_NOATIME, and
+  O_NONBLOCK flags. It is not possible to change the O_DSYNC and O_SYNC flags. */
+  int flag = 0;
+  if ((flag = fcntl(fd, F_GETFL)) == -1) {
+    ccloge("fcntl getfl %s", strerror(errno));
+    return false;
+  }
+  if (fcntl(fd, F_SETFL, flag | O_NONBLOCK) == -1) {
+    ccloge("fcntl setfl %s", strerror(errno));
+    return false;
+  }
+  return true;
+}
+
+static nauty_bool llsocket_create(int domain, int type, int protocol, struct ccsocket* out) {
+  /** socket - create an endpoint for communication **
+  #include <sys/types.h>
+  #include <sys/socket.h>
+  int socket(int domain, int type, int protocol);
+  It returns a file descriptor that refers to the communication endpoint.
+  The domain specifies a communication domain, it selects the protocol
+  family which will be used for communication.
+  AF_UNIX, AF_LOCAL - local communication - man unix(7)
+  AF_INET - ipv4 internet protocols - man ip(7)
+  AF_INET6 - ipv6 internet protocols - man ipv6(7)
+  AF_NETLINK - kernel user interface device - man netlink(7)
+  AF_APPLETALK - AppleTalk - man ddp(7), ...
+  ---
+  The socket 'type' specifies the communication semantics.
+  SOCK_STREAM - provides sequenced, reliable, two-way, connection-based
+  byte streams. an out-of-band data transmission mechanism may be supported.
+  SOCK_DGRAM - supports datagrams (connectionless, unreliable messages
+  of a fixed maximum length).
+  SOCK_SEQPACKET - provides a sequenced, reliable, two-way connection-based
+  data transmission path for datagrams of fixed maximum length; a consumer
+  is required to read an entire packet with each input system call.
+  SOCK_RAW - provides raw network protocol access.
+  SOCK_RDM - provides a reliable datagram layer that does not guarantee
+  ordering.
+  SOCK_PACKET - obsolete and should not be used. see packet(7).
+  Since Linux 2.6.27, the 'type' argument serves a second purpose: in
+  addition to specifying a socket type, it may include the bitwise OR
+  of any of the following values, to modify the behavior of socket().
+  SOCK_NONBLOCK - set the O_NONBLOCK file status flag on the new open fd.
+  using this flag saves extra calls to fcntl(2) to achieve the same result.
+  SOCK_CLOEXEC - set the close-on-exec (FD_CLOEXEC) flag on the new fd.
+  see the description of the O_CLOEXEC flag in open(2) for reasons.
+  The SOCK_NONBLOCK and SOCK_CLOEXEC flags are Linux-specific.
+  ---
+  The 'protocol' specifies a particular protocol to be used with the socket.
+  Normally only a single protocol exists to support a particular socket type
+  within a given protocol family, in which case protocol can be specified
+  as 0. However, it is possible that many protocols may exist, in which case
+  a particular protocol must be specified in this manner. protocol number is
+  defined in http://www.iana.org/assignments/protocol-numbers/protocol-numbers.xhtml,
+  and also can be seen in '/etc/protocols'.
+  ---
+  The communications protocols which implement a SOCK_STREAM ensure that data
+  is not lost and duplicated. If a piece of data for which the peer protocol
+  has buffer space cannot be successfully thransmitted within a reasonable length
+  of time, then the connection is considered to be dead. When SO_KEEPALIVE is
+  enabled on the socket the protocol checks in a protocol-specific manner if the
+  other end is still alive. A SIGPIPE signal is raised if a process sends or
+  receives on a broken stream; this causes naive processes, which do not handle
+  the signal, to exit. SOCK_SEQPACKET sockets employ the same system calls as
+  SOCK_STREAM sockets. The only difference is that read(2) calls will return
+  only the amount of data requested, and any data remaining in the arriving packet
+  will be discarded. Also all message boundaries in incoming datagrams are preserved.
+  SOCK_DGRAM and SOCK_RAW sockets allow sending of datagrams to correspondents
+  named in sendto(2) calls. Datagrams are generally received with recvfrom(2), which
+  returns the next datagram along with the address of its sender.
+  ---
+  An fcntl(2) F_SETOWN operation can be used to specify a process or process
+  group to receive a SIGURG signal when the out-of-band data arrives or SIGPIPE
+  signal when a SOCK_STREAM connection breaks unexpectedly. This operation may
+  also be used to set the process or process group that receives the I/O and
+  asynchronous notification of I/O events via SIGIO. Using F_SETOWN is equivalent
+  to an ioctl(2) call with the FIOSETOWN or SIOCSPGRP argument.
+  When the network signals an error condition to the protocol module (e.g., using
+  an ICMP message for IP) the pending error flag is set for the socket. The next
+  operation on this socket will return the error code of the pending error. For
+  some protocols it is possible to enable a per-socket error queue to retrieve
+  detailed information about the error; see IP_RECVERR in ip(7).
+  ---
+  On success, a fd for the new socket is returned. On error, -1 is returned,
+  and errno is set appropriately.
+  EACCES - permission to create a socket of the specified type/protocol is denied
+  EAFNOSUPPORT - doesn't support the specified address family.
+  EINVAL - unknown protocol, or protocol family not available, or invalid falgs in type.
+  EMFILE - the per-process limit on the number of open fds has been reached.
+  ENFILE - the system-wide limit on the total number of open files has been reached.
+  ENOBUFS or ENOMEM - insufficient memory is available.
+  EPROTONOSUPPORT - the protocol type or the specified protocol is not supported.
+  Other errors may be generated by the underlying protocol modules. */
+  if ((out->id = socket(domain, type, protocol)) == -1) {
+    ccloge("socket %s", strerror(errno));
+    return false;
+  }
+  llsetnonblock(out->id);
+  return true;
+}
+
+nauty_bool ccsocket_isopen(const struct ccsocket* sock) {
+  return (sock->id != -1);
+}
+
+void ccsocket_close(struct ccsocket* sock) {
+  /** close - close a file descriptor **
+  #include <unistd.h>
+  int close (int fd);
+  It closes a fd, so that it no longer refers to any file and may be reused.
+  Any record locks held on the file it was associated with, and owned by the
+  process, are removed (regardless of the fd that was used to obtain the lock).
+  If fd is the last fd referring to the underlying open fd, the resources
+  associated with the open fd are freed.
+  It returns zero on success. On error, -1 is returned, and errno is set.
+  EBADF - fd isn't a valid open fd.
+  EINTR - the close() call was interrupted by a signal.
+  EIO - an I/O error occurred.
+  close() should not be retried after an error. Retrying the close() after a
+  failure return is the wrong thing to do, since this may cause a reused fd
+  from another thread to be closed. This can occur because the Linux kernel
+  always releases the fd early in the close operation, freeing it for resue.
+  关闭一个TCP套接字的默认行为是把该套接字标记为已关闭，然后立即返回到调用进程。
+  该套接字不能再由调用进程使用，也就是说不能再作为read或write的第一个参数。然而
+  TCP将尝试发送已排队等待发送到对端的任何数据，发送完毕后发生正常的TCP断连操作。
+  我们将在7.5节介绍的SO_LINGER套接字选项可以用来改变TCP套接字的这种默认行为。我
+  们将在那里介绍TCP应用进程必须怎么做才能确信对端应用进程已收到所有排队数据。
+  关闭套接字只是导致相应描述符的引用计数减1，如果引用计数仍大于0，这个close调用
+  并不会引发TCP断连流程。如果我们确实想在某个TCP连接上发送一个FIN，可以调用
+  shutdown函数以代替close()，我们将在6.5节阐述这么做的动机。*/
+  if (sock->id == -1) return;
+  if (close(sock->id) != 0) {
+    ccloge("close socket %d", strerror(errno));
+  }
+  sock->id = -1;
+}
+
+void ccsocket_shutdown(struct ccsocket* sock, nauty_char r_w_a) {
+  /** shutdown - shut down part of a full-duplex connection **
+  #include <sys/socket.h>
+  int shutdown(int sockfd, int how);
+  This call causes all or part of a full-duplex connection on the socket
+  associated with sockfd to be shut down. If how is SHUT_RD, further
+  receptions will be disallowed. If how is SHUT_WR, further transmissions
+  will be disallowed. If how is SHUT_RDWR, further receptions and
+  transmissions will be disallowed.
+  On success, zero is returned. On error, -1 is returned, and errno is set.
+  EBADF - sockfd is not a valid fd.
+  EINVAL - an invalid value was specified in how.
+  ENOTCONN - the specified socket is not connected.
+  ENOTSOCK - the sockfd is not refer to a socket. */
+  int flag = 0;
+  switch (r_w_a) {
+  case 'r': case 'R': flag = SHUT_RD; break;
+  case 'w': case 'W': flag = SHUT_WR; break;
+  case 'a': case 'A': flag = SHUT_RDWR; break;
+  default:
+    ccloge("shutdown invalid argument");
+    return;
+  }
+  if (shutdown(sock->id, flag) != 0) {
+    ccloge("shutdown %s", strerror(errno));
+  }
+}
+
+struct ccsockaddr ccsocket_getlocaladdr(struct ccsocket* sock) {
+  /** getsockname **
+  #include <sys/socket.h>
+  int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
+  returns the current address the sock is bound. the addrlen should be
+  initialized to indicate the amount of space in bytes pointed to by addr.
+  on return it contains the actual size of the socket address.
+  the returned address is truncated if the buffer provided is too small; in
+  this case, addrlen will return a value greater than was supplied to the call. */
+  struct ccsockaddr addr;
+  struct llsockaddr* sa = (struct llsockaddr*)&addr;
+  socklen_t providedlen = sizeof(union ll_sock_addr);
+  sa->len =  providedlen;
+  if (getsockname(sock->id, &(sa->addr.sa), &(sa->len)) != 0) {
+    ccloge("getsockname %s", strerror(errno));
+    sa->len = 0;
+  }
+  if (sa->len > providedlen) {
+    ccloge("getsockname truncated");
+    sa->len = providedlen;
+  }
+  return addr;
+}
+
+static nauty_bool llsocket_bind(struct ccsocket* sock, const struct ccsockaddr* addr) {
   /** bind - bind a address to a socket **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -156,45 +362,19 @@ nauty_bool ccsocket_bind(socket_int sock, struct ccfrom ip, ushort_int port) {
   49152小（以免与临时端口号的“正确”范围冲突）。
   从bind返回的一个常见错误是EADDRINUSE，到7.5节讨论SO_REUSEADDR和SO_REUSEPORT
   这两个套接字选项时在详细讨论。*/
-  struct ccsockaddr addr;
-  struct llsockaddr* sa = (struct llsockaddr*)&addr;
-  ccsockaddr_initp(&addr, &ip, port);
+  struct llsockaddr* sa = (struct llsockaddr*)addr;
   if (sa->len == 0) {
     ccloge("bind invalid address");
     return false;
   }
-  if (bind(sock, &sa->addr.sa, sa->len) != 0) {
+  if (bind(sock->id, &(sa->addr.sa), sa->len) != 0) {
     ccloge("bind %s", strerror(errno));
     return false;
   }
   return true;
 }
 
-struct ccsockaddr ccsocket_getboundaddr(socket_int sock) {
-  /** getsockname **
-  #include <sys/socket.h>
-  int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
-  returns the current address the sock is bound. the addrlen should be
-  initialized to indicate the amount of space in bytes pointed to by addr.
-  on return it contains the actual size of the socket address.
-  the returned address is truncated if the buffer provided is too small; in
-  this case, addrlen will return a value greater than was supplied to the call. */
-  struct ccsockaddr addr;
-  struct llsockaddr* sa = (struct llsockaddr*)&addr;
-  socklen_t providedlen = sizeof(union ll_sock_addr);
-  sa->len =  providedlen;
-  if (getsockname(sock, &(sa->addr.sa), &(sa->len)) != 0) {
-    ccloge("getsockname %s", strerror(errno));
-    sa->len = 0;
-  }
-  if (sa->len > providedlen) {
-    ccloge("getsockname truncated");
-    sa->len = providedlen;
-  }
-  return addr;
-}
-
-nauty_bool ccsocket_listen(socket_int sock, int backlog) {
+static nauty_bool llsocket_listen(struct ccsocket* sock, int backlog) {
   /** listen - listen for connections on a socket **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -251,14 +431,36 @@ nauty_bool ccsocket_listen(socket_int sock, int backlog) {
   “该端口有服务器在监听，不过它的队列已经满了”。
   在三次握手之后，但在服务器accept之前到达的数据应该有服务器TCP排队，最大数据量
   为相应已连接套接字的接收缓冲区大小。*/
-  if (listen(sock, backlog) != 0) {
+  if (listen(sock->id, backlog) != 0) {
     ccloge("listen %s", strerror(errno));
     return false;
   }
   return true;
 }
 
-#if 0
+struct ccsocket ccsocket_listen(const struct ccsockaddr* addr, int backlog) {
+  struct ccsocket sock = {-1};
+  const struct llsockaddr* sa = (const struct llsockaddr*)addr;
+  int domain = (addr == 0 ? AF_INET : sa->addr.sa.sa_family);
+  if (domain != AF_INET && domain != AF_INET6) {
+    ccloge("invalid address family");
+    return sock;
+  }
+  if (!llsocket_create(domain, SOCK_STREAM, IPPROTO_TCP, &sock)) {
+    return sock;
+  }
+  /* 如果一个TCP客户或服务器未曾调用bind绑定一个端口，当使用connect或
+  listen 时，内核会为相应的套接字选择一个临时端口 */
+  if (addr && !llsocket_bind(&sock, addr)) {
+    ccsocket_close(&sock);
+    return sock;
+  }
+  if (!llsocket_listen(&sock, (backlog <= 0 ? CCBACKLOG : backlog))) {
+    ccsocket_close(&sock);
+  }
+  return sock;
+}
+
 /** POSIX signal interrupt process's execution **
 信号（signal）是告知某个进程发生了某个事件的通知，也称谓软中断
 （software interrupt）。信号通常是异步发生的，也就是说进程预先
@@ -331,10 +533,11 @@ recvfrom。
 如果信号出现时需采取特殊措施（可能需要在日志文件中记录），那么就必须捕获该信号，
 以便在信号处理函数中执行所有期望的动作。但是必须意识到，如果使用了多个套接字，
 该信号的递交无法告诉我们是哪个套接字出的错。如果我们确实需要知道是哪个write
-出错，那么必须不理会该信号，那么从信号处理函数返回后再处理EPIPE错误。
-*/
+出错，那么必须不理会该信号，那么从信号处理函数返回后再处理EPIPE错误。*/
+
 typedef void (*ccsigfunc)(int);
-ccsigfunc ccsigact(int sig, ccsigfunc func) {
+
+static ccsigfunc llsigact(int sig, ccsigfunc func) {
   /** sigaction - examine and change a signal action **
   #include <signal.h>
   int sigaction(int signum, const struct sigaction* act, struct sigaction* oldact);
@@ -426,7 +629,7 @@ ccsigfunc ccsigact(int sig, ccsigfunc func) {
 }
 
 void ccsigign(int sig) {
-  ccsigact(sig, SIG_IGN);
+  llsigact(sig, SIG_IGN);
 }
 
 /** accept - accept a connection on a socket **
@@ -455,6 +658,15 @@ is not marked as nonblocking, accept() blocks the caller until a
 connection is present. If the socket is marked nonblocking and no
 pending connections are present on the queue, accept() fails with
 the error EAGIN or EWOULDBLOCK.
+on success, it returns a nonnegative interger that is a fd for the accepted
+socket. on error, -1 is returned, and errno is set appropriately.
+Error handling - linux accept passes already-pending network errors on the
+new socket as an error code from accept(). this behavior differs from other
+BSD socket implementations. for reliable operation the application should
+detect the network errors defined for the protocol after accept() and treat
+them like EAGAIN by retrying. in the case of TCP/IP, these are ENETDOWN,
+EPROTO, ENOPROTOOPT, EHOSTDOWN, ENONET, EHOSTUNREACH, EOPNOTSUPP, and
+ENETUNREACH.
 当有一个已完成的连接准备好被accept时，如果使用select会将其作为可读描述符
 返回该连接的监听套接字。因此如果我们使用select在某个监听套接字上等待一个
 外来连接，那就没必要把该监听套接字设置为非阻塞的，这是因为如果select告诉我
@@ -480,35 +692,23 @@ caused connection abort）。POSIX作出修正的理由在于，流子系统（s
 的非致命中止也返回同样的错误，那么服务器就不知道该再次调用accept还是不该。换成
 是ECONNABORTED错误，服务器可以忽略它，再次调用accept即可。源自Berkeley的内核从
 不把该错误传递给进程的做法所涉及的步骤在TCPv2中得到阐述，引发该错误的RST在第964
-页到达处理，导致tcp_close被调用。
-*/
-void ccsockaccept(int listenfd) {
-  union llsockaddr rdaddr;
-  socklen_t addrlen = sizeof(union llsockaddr);
+页到达处理，导致tcp_close被调用。*/
 
-  struct ccsockconn conn;
+void ccsocket_accept(struct ccsocket* sock, int (*cb)(struct ccsockconn*)) {
   int n = 0;
-
-  cczeron(&rdaddr, addrlen);
-  ccscokconninit(&conn);
+  struct ccsockconn conn;
+  struct llsockaddr* sa = (struct llsockaddr*)&(conn.remote);
+  socklen_t providedlen = sizeof(union ll_sock_addr);
 
   for (; ;) {
-    /** accept - accept a connection on a socket **
-    int accept(int sockfd, struct sockaddr* addr, socklen_t* addrlen);
-    on success, it returns a nonnegative interger that is a fd for the accepted
-    socket. on error, -1 is returned, and errno is set appropriately.
-    Error handling - linux accept passes already-pending network errors on the
-    new socket as an error code from accept(). this behavior differs from other
-    BSD socket implementations. for reliable operation the application should
-    detect the network errors defined for the protocol after accept() and treat
-    them like EAGAIN by retrying. in the case of TCP/IP, these are ENETDOWN,
-    EPROTO, ENOPROTOOPT, EHOSTDOWN, ENONET, EHOSTUNREACH, EOPNOTSUPP, and
-    ENETUNREACH.
-    */
-    if ((conn->connfd = accept(listenfd, &rdaddr.sa, &addrlen)) != -1) {
-      ccsockntop(&rdaddr, addrlen, &conn->remoteip, &conn->remoteport);
-      cclocaladdr(conn->connfd, &conn->localip, &conn->localport);
-      ccdispatchconn(&conn);
+    sa->len = providedlen;
+    if ((conn.sock.id = accept(sock->id, &(sa->addr.sa), &(sa->len))) != -1) {
+      if (sa->len > providedlen) {
+        ccloge("accept address truncated");
+        sa->len = providedlen;
+      }
+      llsetnonblock(conn.sock.id);
+      if (cb(&conn)) return;
       continue;
     }
 
@@ -522,7 +722,10 @@ void ccsockaccept(int listenfd) {
     case EINTR: /* system call was interrupted by a signal */
     case ECONNABORTED: /* a connection has been aborted */
     case EPROTO: /* protocol error */
-      /* try to call accept again */
+      /* current connection is interrupted, aborted or has protocol error,
+      so skip this connection and continue to accept next connections
+      in the kernel queue until it is empty */
+      cclogw("accept %s", strerror(n));
       break;
     case EBADF: /* sockfd is not an open fd */
     case EFAULT: /* the addr is not in a writable part of the user address space */
@@ -541,7 +744,7 @@ void ccsockaccept(int listenfd) {
       may be returned. various linux kernels can return other errors such as ENOSR,
       ESOCKTNOSUPPORT, EPROTONOSUPPORT, ETIMEOUT. the value ERESTARTSYS may be seen
       during a trace. */
-      ccloge("accept unknown error: %s", strerror(n));
+      ccloge("accept %s", strerror(n));
       return;
     }
   }
@@ -574,10 +777,9 @@ SIGKILL信号（该信号不能被捕获）。这么做留给所有运行进程�
 我们忽略SIGTERM信号（如果默认处置SIGTERM也会终止进程），我们的服务器将由SIGKILL信号
 终止。进程终止会使所有打开这的描述符都被关闭，然后服务器会发生正常的TCP断连过程。正
 如5.12节所讨论的一样，我们必须在客户中使用select或poll函数，以防TCP断连时客户阻塞在
-其他的函数中而不能快速知道TCP已经断连了。
-*/
+其他的函数中而不能快速知道TCP已经断连了。*/
 
-_int cctcpconnect(ccfrom remoteip, ushort port, struct ccsockconn* conn) {
+static nauty_bool llsocket_connect(struct ccsocket* sock, const struct ccsockaddr* addr) {
   /** connect - initiate a conneciton on a socket **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -595,6 +797,7 @@ _int cctcpconnect(ccfrom remoteip, ushort port, struct ccsockconn* conn) {
   times to change their association. Connectionless sockets may dissolve
   the association by connecting to an address with the sa_family member of
   sockaddr set to AF_UNSPEC (supported on Linux since kernel 2.2).
+  ---
   If the connection or binding succeeds, zero is returned. On error, -1
   is returned, and errno is set. If connect() fails, consider the state of
   the socket as unspecified. Protable appliations should close the socket
@@ -609,7 +812,10 @@ _int cctcpconnect(ccfrom remoteip, ushort port, struct ccsockconn* conn) {
   ephemeral port range are currently in use. See the discussion of
   /proc/sys/net/ipv4/ip_local_port_range in ip(7).
   EAFNOSUPPORT - the passed address didn't have the correct address family.
-  EAGAIN - insufficient entries in the routing cache.
+  EAGAIN - No more free local ports or insufficient entries in the routing
+  cache. For AF_INET see the description of /proc/sys/net/ipv4/
+  ip_local_port_range ip(7) for information on how to increase the number
+  of local ports.
   EALREADY - the socket is nonblocking and a previous connection attempt
   has not yet been completed.
   EBADF - sockfd is not a valid open fd.
@@ -651,112 +857,280 @@ _int cctcpconnect(ccfrom remoteip, ushort port, struct ccsockconn* conn) {
   ENETUNREACH和EHOSTUNREACH作为相同的错误对待。
   按照TCP状态转换图，connect函数导致当前套接字从CLOSED状态转移到SYN_SENT状态，
   若成功再转移到ESTABLISHED状态，如connect失败则该套接字不再可用，必须关闭。
-  我们不能对这样的套接字再次调用connect函数。*/
-  union llsockaddr sa;
-  int connfd = 0, family = AF_INET;
-  socklen_t len = (socklen_t)ccsockpton(remoteip, port, &sa);
-  ccstrsetempty(&conn->remoteip);
-  ccstrsetempty(&conn->localip);
-  conn->localport = conn->remoteport = 0;
-  conn->connfd = -1;
-  if (len == 0) {
-    ccloge("connect invalid ip %s", remoteip.start);
-    return EINVAL;
+  我们不能对这样的套接字再次调用connect函数
+  ---
+  当在一个非阻塞的TCP套接字上调用connect时会立即返回一个EINPROGRESS，已经发起的
+　　TCP三次握手继续进行，然后可以使用select检测这个连接是否建立成功。使用非阻塞连接:
+  (1) 可以把三次握手叠加在其他处理上，完成一个connect要一个RTT时间，而RTT波动范围
+　很大，从局域网上的几个毫秒到几百个毫秒到广域网的甚至几秒，这段时间内可能还有其他事情
+　需要处理。
+　　(2) 可以使用这个技术同时建立多个连接，这个用途随着Web浏览器变得流行起来。
+  (3) 既然使用select等待连接建立，就可以给select指定时间限制，使得能缩短连接超时。
+　许多实现有75s到数分钟的connect超时时间，应用程序有时想要一个更短的超时。实现方法
+　之一就是使用非阻塞connect，另外14.2节也介绍过设置套接字操作超时的方法。
+  尽管套接字是非阻塞的，如果连接的服务器在同一个主机上，调用connect通常连接会立即成功。
+　源自Berkeley的实现（和POSIX）关于select和非阻塞connect有以下两个规则：
+　　(1) 当连接成功建立时，描述符变成可写（TCPv2第531页）；
+　 (2) 当连接建立遇到错误时，描述符变得可读又可写（TCPv2第530页）；
+　关于select的这两个规则出自6.3节中关于描述符就绪条件的相关规则，一个TCP套接字变为可写
+　的条件是，其发送缓冲区中有可用空间（对于连接建立中的套接字而言本子条件总为真，因为尚未
+　往其写出任何数据）并且套接字已成功建立（本子条件为真发生在三次握手成功之后）。一个TCP
+　套接字发生发生某个错误时，这个待处理错误总是导致套接字变为可读又可写。
+  调用select之前可能连接已经建立并有来自对端的数据到达，这种情况下即使套接字上不发生错误，
+　套接字也是可读又可写的；阻塞套接字连接在TCP三次握手完成之前被中断了会发生什么？假设被中
+　断的套接字没有被内核自动重启，那么它会返回EINTR，此时不能再次调用connect等待未完成的连接，
+　这样做将导致返回EADDRINUSE错误，我们只能调用select，就像对于非阻塞connect所做的那样，
+　连接建立成功时返回套接字可写条件，连接建立失败时select返回套接字既可读也可写条件。*/
+  int n = 0;
+  const struct llsockaddr* sa = (const struct llsockaddr*)addr;
+  if (connect(sock->id, &(sa->addr.sa), sa->len) == 0) {
+    return true;
   }
-  if (ccstrcontain(remoteip, ':')) {
-    family = AF_INET6;
+  n = errno;
+  if (n == EISCONN) {
+    return true;
   }
-  if ((connfd = socket(family, SOCK_STREAM, IPPROTO_TCP)) == -1) {
-    ccloge("socket %s", strerror(errno));
-    return errno;
+  if (n == EINPROGRESS || n == EALREADY || n == EINTR) {
+    /* the connection doesn't complete yet */
+    errno = EINPROGRESS;
+  } else {
+    ccloge("connect %s", strerror(n));
   }
-  if (connect(connfd, &sa.sa, len) != 0) {
-    cclogw("connect %s", strerror(errno));
-    ccsockclose(&connfd);
-    return errno;
-  }
-  conn->connfd = connfd;
-  ccstrsetfrom(&conn->remoteip, remoteip);
-  conn->remoteport = port;
-  cclocaladdr(connfd, &conn->localip, &localport);
-  return 0;
+  return false;
 }
 
-void ccsockshutdown(int sockfd, char how) {
-  /** shutdown - shut down part of a full-duplex connection **
-  #include <sys/socket.h>
-  int shutdown(int sockfd, int how);
-  This call causes all or part of a full-duplex connection on the socket
-  associated with sockfd to be shut down. If how is SHUT_RD, further
-  receptions will be disallowed. If how is SHUT_WR, further transmissions
-  will be disallowed. If how is SHUT_RDWR, further receptions and
-  transmissions will be disallowed.
-  On success, zero is returned. On error, -1 is returned, and errno is set.
-  EBADF - sockfd is not a valid fd.
-  EINVAL - an invalid value was specified in how.
-  ENOTCONN - the specified socket is not connected.
-  ENOTSOCK - the sockfd is not refer to a socket. */
-  int flag = (how == 'r' ? SHUT_RD : (how == 'w' ? SHUT_WR : SHUT_RDWR));
-  if (how != 'r' && how != 'w' && how != 'a') {
-    ccloge("shutdown invalid value");
-    return;
-  }
-  if (shutdown(sockfd, flag) != 0) {
-    ccloge("shutdown %s", strerror(errno));
-  }
+void ccsocketconn_init(struct ccsockconn* self, struct ccfrom ip, ushort_int port) {
+  self->sock.id = -1;
+  ccsockaddr_initp(&(self->remote), &ip, port);
 }
 
-void ccsockclose(int* sockfd) {
-  /** close - close a file descriptor **
-  #include <unistd.h>
-  int close (int fd);
-  It closes a fd, so that it no longer refers to any file and may be reused.
-  Any record locks held on the file it was associated with, and owned by the
-  process, are removed (regardless of the fd that was used to obtain the lock).
-  If fd is the last fd referring to the underlying open fd, the resources
-  associated with the open fd are freed.
-  It returns zero on success. On error, -1 is returned, and errno is set.
-  EBADF - fd isn't a valid open fd.
-  EINTR - the close() call was interrupted by a signal.
-  EIO - an I/O error occurred.
-  close() should not be retried after an error. Retrying the close() after a
-  failure return is the wrong thing to do, since this may cause a reused fd
-  from another thread to be closed. This can occur because the Linux kernel
-  always releases the fd early in the close operation, freeing it for resue.
-  关闭一个TCP套接字的默认行为是把该套接字标记为已关闭，然后立即返回到调用进程。
-  该套接字不能再由调用进程使用，也就是说不能再作为read或write的第一个参数。然而
-  TCP将尝试发送已排队等待发送到对端的任何数据，发送完毕后发生正常的TCP断连操作。
-  我们将在7.5节介绍的SO_LINGER套接字选项可以用来改变TCP套接字的这种默认行为。我
-  们将在那里介绍TCP应用进程必须怎么做才能确信对端应用进程已收到所有排队数据。
-  关闭套接字只是导致相应描述符的引用计数减1，如果引用计数仍大于0，这个close调用
-  并不会引发TCP断连流程。如果我们确实想在某个TCP连接上发送一个FIN，可以调用
-  shutdown函数以代替close()，我们将在6.5节阐述这么做的动机。*/
-  if (*sockfd != -1) {
-    if (close(*sockfd) != 0) {
-      cclogw("close sockfd %d", strerror(errno));
+/* return true if success, return false if inprocess or error (socket closed on error) */
+nauty_bool ccsocket_connect(struct ccsockconn* conn) {
+  struct ccsocket* sock = &(conn->sock);
+  struct ccsockaddr* addr = &(conn->remote);
+  if (!ccsocket_isopen(sock)) {
+    struct llsockaddr* sa = (struct llsockaddr*)addr;
+    int domain = sa->addr.sa.sa_family;
+    if (domain != AF_INET && domain != AF_INET6) {
+      ccloge("connect invalid address");
+      return false;
     }
-    *sockfd = -1;
+    if (!llsocket_create(domain, SOCK_STREAM, IPPROTO_TCP, sock)) {
+      return false;
+    }
+  } else {
+    /* socket already opened, it should be called 2nd time after EINPROGRESS */
   }
+  if (llsocket_connect(sock, addr)) {
+    return true;
+  }
+  if (errno != EINPROGRESS) {
+    ccsocket_close(sock);
+  }
+  return false;
 }
 
-_int cctcpserverbind(struct cctcpserver* s, struct ccfrom localip, ushort port) {
-  int sockfd = 0, family = AF_INET;
-  s->listenfd = -1;
-  if (ccstrcontain(localip, ':')) {
-    family = AF_INET6;
+static sright_int llsocket_read(const struct ccsockconn* conn, void* out, sright_int count) {
+  /** read - read from a file descriptor **
+  #include <unistd.h>
+  ssize_t read(int fd, void *buf, size_t count);
+  read up to count bytes from fd into out buffer. if count is 0, read() may detect
+  the errors described below. in the absence of any errors, or if read() does not
+  check for errors, it returns 0 and has no other effects. according to POSIX.1, if
+  count is greater than SSIZE_MAX, the result is implementation-defined; on linux,
+  read() and similar system calls will transfer at most 0x7ffff000 (2,147,479,552)
+  bytes, returning the number of bytes actually transferred. (this is true on both
+  32-bit and 64-bit systems).
+  On success, the number of bytes read is returned, and the file position is
+  advanced by this number. It is not an error if this number is smaller than the
+  number of bytes requested; this may happen for example because fewer bytes are
+  actually available right now (maybe because we were close to end-of-file, or
+  reading from a pipe, or from a terminal), or because read() was interrupted by
+  a signal. On error, -1 is returned, and errno is set appropriately. In this case,
+  it is left unspecified whether the file position changes.
+  EAGAIN - the fd refers to a file other than a socket and has been marked nonblocking,
+  and the read would block.
+  EAGAIN or EWOULDBLOCK - the fd refers to a socket and has been marked nonblocking,
+  and the read would block. POSIX.1-2001 allows either error to be returned for this
+  case, and does not require these constants to have the same value, so a portable
+  application should check for both possibilities.
+  EBADF - fd is not a valid fd or is not open for reading
+  EFAULT - buf is outside your accessible address space
+  EINTR - the call was interrupted by a signal before any data was read
+  EINVAL - fd is attached to an object which is unsuitable for reading; or the file was
+  opened with the O_DIRECT flag, and either the address specified in buf, the value
+  specified in count, or the file offset is not suitably aligned
+  EINVAL - fd was created via a call to timerfd_create(2) and the wrong size buffer was
+  given to read(); see timerfd_create(2) for further information
+  EIO - I/O error. this will happen for example when the process is in a background
+  process group, tries to read from this controlling terminal, and either it is ignoring
+  or blocking SIGTTIN or its process group is orphaned. It may also occur when there is
+  a low-level I/O error while reading from a disk or tape.
+  EISDIR - fd refers to a directory.
+  Other errors may occurs, depending on the object connected to fd. */
+  ssize_t n = 0;
+
+  if (count < 0 || count > CC_RDWR_MAX_BYTES) {
+    ccloge("read invalid argument");
+    return -2;
   }
-  if ((sockfd = socket(family, SOCK_STREAM, IPPROTO_TCP)) == -1) {
-    ccloge("socket %s", strerror(errno));
-    return errno;
+
+  for (; ;) {
+    if ((n = read(conn->sock.id, out, (size_t)count)) >= 0) {
+      /* note that one case about read bytes n < count is:
+      at least one byte is read and then interrupted by a
+      signal, the call is returned success in this case. */
+      return (sright_int)n;
+    }
+
+    n = errno;
+    if (n == EINTR) {
+      /* interrupted by a signal before read any bytes,
+      try to read again. */
+      continue;
+    }
+
+    if (n == EAGAIN || n == EWOULDBLOCK) {
+      /* data is not available currently */
+      return -1;
+    }
+
+    /* error occurred */
+    break;
   }
-  if (!ccsockbind(sockfd, localip, port)) {
-    ccsockclose(&sockfd);
-    return EINVAL;
-  }
-  s->listenfd = sockfd;
-  return 0;
+
+  ccloge("read %s", strerror(n));
+  return -2;
 }
-#endif
+
+sright_int ccsocket_read(const struct ccsockconn* conn, void* out, sright_int count) {
+  nauty_byte* buf = (nauty_byte*)out;
+  sright_int n = 0, sum = 0;
+  while ((n = llsocket_read(conn, buf, count)) > 0) {
+    sum += n;
+    if (n < count) {
+      buf += n;
+      count -= n;
+      continue;
+    }
+    break;
+  }
+  errno = (n >= 0 ? 0 : (n == -1 ? CCEAGAIN : CCERROR));
+  return sum;
+}
+
+static sright_int llsocket_write(const struct ccsockconn* conn, const void* buf, sright_int count) {
+  /** write - write to a file descriptor **
+  #include <unistd.h>
+  ssize_t write(int fd, const void *buf, size_t count);
+  Writes up to count bytes from the buffer to the file referred to by the fd.
+  The number of bytes written may be less than count if, for example, there
+  is insufficient space on the underlying physical medium, or the RLIMIT_FSIZE
+  resource limit is encountered (see setrlimit(2)), or the call was interrupted
+  by a signal handler after having written less then bytes. (see also pipe(7).)
+  POSIX requires that a read(2) that can be proved to occur after a write()
+  has returned will return the new data. Note that not all filesystems are
+  POSIX conforming.
+  According to POSIX.1, if count is greater than SSIZE_MAX, the result is
+  implementation-defined; on linux, write() and similar system calls will
+  transfer at most 0x7ffff000 (2,147,479,522) bytes, returning the number of
+  bytes actually transferred. (this is true on both 32-bit and 64-bit systems).
+  A successful return from write() does not make any guarantee that data has
+  been committed to disk. In fact, on some buggy implementations, it does not
+  even guarantee that space has successfully been reserved for the data. The
+  only way is to call fsync(2) after you are done writing all your data.
+  If a write() is interrupted by a signal handler before any bytes are written,
+  then the call fails with the error EINTR; if it is interrupted after at
+  least one byte has been writtn, the call succeeds, and returns the number
+  of bytes written.
+  ---
+  On success, the number of bytes written is returned. It is not an error if
+  this number is smaller than the number of bytes requested; this may happen
+  for example because the disk device was filled, or interrupted by a signal.
+  On error, -1 is returned, and errno is set appropriately.
+  If count is zero and fd refers to a regular file, then write() may return a
+  failure status if one of the errors below is detected. If no errors are
+  detected, or error detection is not performed, 0 will be returned without
+  causing any other effect. If count is zero and fd refers to a file other than
+  a regular file, the results are not specified.
+  EAGAIN - the fd refers to a file other than a socket and has been marked
+  nonblocking, and the write would block.
+  EAGAIN or EWOULDBLOCK - the fd refers to a socket and has been marked
+  nonblocking, and the write would block. POSIX.1-2001 allows either error to
+  be returned for this case, and does not require these constants to have the
+  same value, so a protable application should check for both possibilities.
+  EBADF - fd is not a valid fd or is not open for writing.
+  EDESTADDRREQ - fd refers to a datagram socket for which a peer address has
+  not been set using connect(2).
+  EDQUOT - the usr's quota of disk blocks on the filesystem containing the file
+  referred to by fd has been exhausted.
+  EFAULT - buf is outside your accessible address space.
+  EFBIG - an attempt was made to write a file that exceeds the implementation-
+  defined maximum file size or the process's file size limit, or to write
+  at position past the maximum allowed offset.
+  EINTR - the call was interrupted by a signal before any data was written.
+  EINVAL - fd is attached to an object which is unsuitable for writing; or the
+  file was opened with the O_DIRECT flag, and either the address specified in
+  buf, the value specified in count, or the file offset is not suitably aligned.
+  EIO - a low-level I/O error occurred while modifying the inode.
+  ENOSPC - the device containing the file referred to by fd has no room for
+  the data.
+  EPERM - the operation was prevented by a file seal; see fcntl(2).
+  EPIPE - fd is connected to a pipe or socket whose reading end is closed.
+  When this happens the writing process will also receive a SIGPIPE signal.
+  (Thus, the write return value is seen only if the program catches, blocks
+  or ignores this signal.)
+  Other errors may occur, depending on the object connected to fd. */
+  ssize_t n = 0;
+
+  if (count < 0 || count > CC_RDWR_MAX_BYTES) {
+    ccloge("write invalid argument");
+    return -2;
+  }
+
+  for (; ;) {
+    if ((n = write(conn->sock.id, buf, (size_t)count)) >= 0) {
+      /* note that one case about written bytes n < count is:
+      at least one byte is written and then interrupted by a
+      signal, the call is returned success in this case. */
+      return (sright_int)n;
+    }
+
+    n = errno;
+    if (n == EINTR) {
+      /* interrupted by a signal before written any bytes,
+      try to read again. */
+      continue;
+    }
+
+    if (n == EAGAIN || n == EWOULDBLOCK) {
+      /* cannot write currently */
+      return -1;
+    }
+
+    /* error occurred */
+    break;
+  }
+
+  ccloge("write %s", strerror(n));
+  return -2;
+}
+
+sright_int ccsocket_write(const struct ccsockconn* conn, const void* from, sright_int count) {
+  sright_int n = 0, sum = 0;
+  const nauty_byte* buf = (const nauty_byte*)from;
+  while ((n = llsocket_write(conn, buf, count)) > 0) {
+    sum += n;
+    if (n < count) {
+      buf += n;
+      count -= n;
+      continue;
+    }
+    break;
+  }
+  errno = (n >= 0 ? 0 : (n == -1 ? CCEAGAIN : CCERROR));
+  return sum;
+}
 
 void ccplatsocktest() {
   struct ccsockaddr sa;
@@ -782,7 +1156,17 @@ void ccplatsocktest() {
   ccsockaddr_init(&sa, ccfromcstr("::3742:204.152.189.116"), 2048);
   ccsockaddr_getipstr(&sa, &ipstr);
   ccassert(ccsockaddr_getport(&sa) == 2048);
-  ccassert(ccstring_equalcstr(&ipstr, "::3742:204.152.189.116"));
+  ccassert(ccstring_equalcstr(&ipstr, "::3742:cc98:bd74"));
+  cclogd("ccsockaddr ip string %s", ccstring_getcstr(&ipstr));
+  ccsockaddr_init(&sa, ccfromcstr("::3742:4723:5525"), 4096);
+  ccsockaddr_getipstr(&sa, &ipstr);
+  ccassert(ccsockaddr_getport(&sa) == 4096);
+  ccassert(ccstring_equalcstr(&ipstr, "::3742:4723:5525"));
   ccstring_free(&ipstr);
+  /* protocol number */
+  cclogd("IPPROTO_IP(0) is %s", ccutos(IPPROTO_IP));
+  cclogd("IPPROTO_IPV6(41) is %s", ccutos(IPPROTO_IPV6));
+  cclogd("IPPROTO_TCP(6) is %s", ccutos(IPPROTO_TCP));
+  cclogd("IPPROTO_UDP(17) is %s", ccutos(IPPROTO_UDP));
 }
 

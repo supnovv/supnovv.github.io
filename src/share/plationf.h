@@ -8,12 +8,12 @@
 #include <sys/epoll.h>
 /** Linux Epoll **/
 
-#define CCEPOLL_MAX_EVENTS 128
+#define CCEPOLL_MAX_EVENTS 64
 
 struct llepollmgr {
   int epfd;
   int n, maxlen;
-  struct epoll_event ready[CCEPOLL_MAX_EVENTS];
+  struct epoll_event ready[CCEPOLL_MAX_EVENTS+1];
 };
 
 #ifdef CCLIB_AUTOCONF_TOOL
