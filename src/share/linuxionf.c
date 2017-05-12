@@ -6,6 +6,136 @@
 #if defined(CC_OS_LINUX)
 /** Linux Epoll **/
 
+/** eventfd - create a file descriptor for event notification **
+#include <sys/eventfd.h>
+int eventfd(unsigned int initval, int flags);
+Creates an "eventfd object" that can be used as an event wait/notify
+mechanism by user-space applications, and by the kernel to notify
+user-space applications of events. The object contains an unsigned
+64-bit integer (uint64_t) counter that is maintained by the kernel.
+This counter is initialized with the value specified in the
+argument initval.
+eventfd() is available on Linux since kernel 2.6.22. Working support
+is provided in glibc since version 2.8. The eventfd2() system call
+is available on Linux since kernel 2.6.27. Since version 2.9, the
+glibc eventfd() wrapper will employ the eventfd2() system call,
+if it is supported by the kernel. eventfd() and eventfd2() are
+Linux-specific.
+The following values may be bitwise ORed in flags to change the
+behavior of eventfd():
+EFD_CLOEXEC (since Linux 2.6.27) - set the close-on-exec (FD_CLOEXEC)
+flag on the new file descriptor.
+EFD_NONBLOCK (since Linux 2.6.27) - set the O_NONBLOCK file status
+flag on the new open fd. Using this flag saves extra calls to fcntl(2)
+to achieve the same result.
+EFD_SEMAPHORE (since Linux 2.6.30) - provided semaphore-like semantics
+for reads from the new fd.
+In Linux up to version 2.6.26, the flags arugment is unused, and must
+be specified as zero.
+---
+It returns a new fd that can be used to refer to the eventfd object. The
+following operations can be perfromed on the file descriptor.
+* read(2) - each successful read(2) returns an 8-byte integer. A read(2)
+will fail with the error EINVAL if the size of the supplied buffer is less
+than 8 bytes. The value returned by read(2) is host type order, i.e., the
+native byte order for integers on the host machine.
+The semantics of read(2) depend on whether the evenfd counter currently
+has a nonzero value and whether the EFD_SEMAPHORE flag was specified when
+creating the evenfd file descriptor:
+If EFD_SEMAPHORE was not specified and the eventfd counter has a nonzero
+value, than a read(2) returns 8 bytes containing that value, and the
+counter's value is reset to zero.
+If EFD_SEMAPHORE was specified and eventfd counter has a nonzero value,
+then a read(2) returns 8 bytes containing the value 1, and the counter's
+value is decremented by 1.
+If the eventfd counter is zero at the time of the call to read(2), then
+the call either blocks until the counter becomes nonzero (at which time,
+the read(2) proceeds as described above) or fails with the error EAGAIN
+if the file descriptor has been made nonblocking.
+* write(2) - a write(2) call adds the 8-byte integer value supplied in
+its buffer to the counter. The maximum value that may be stored in the
+counter is the largest unsigned 64-bit value minux 1 (i.e., 0xfffffffe).
+If the addition would cause the counter's value to exceed the maximum,
+then the write(2) either blocks until a read(2) is performed on the fd.
+or fails with the error EAGAIN if the fd has been made nonblocking.
+A write(2) will fail with the error EINVAL if the size of the supplied
+buffer is less than 8 bytes, or if an attempt is made to write the value
+0xffffffff.
+* poll(2), select(2) and similar - the returned fd supports poll(2),
+epoll(7) and select(2), as follows:
+The fd is readable if the counter has a value greater than 0. The fd is
+writable if it is possible to write a value of at least "1" without blocking.
+If an overflow of the counter value was detected, then select(2) indicates
+the fd as being both readable and writable, and poll(2) returns a POLLERR
+event. As noted above, write(2) can never overflow the counter. However an
+overflow can occur if 2^64 evenfd "signal posts" were performed by the KAIO
+subsystem (theoretically possible, but practically unlikely). If an overflow
+has occured, then read(2) will return that maximum uint64_t value (i.e,
+0xffffffff). The eventfd fd also supports the other fd multiplexing APIs:
+pselect(2) and ppoll(2).
+* close(2) - when the fd is no longer required it shoud be closed. When all
+fd associated with the same eventfd object have been closed, the resources
+for object are freed by the kernel.
+---
+On success, eventfd() returns a new eventfd. On error, -1 is returned and
+errno is set to indicate the error.
+EINVAL - an unsupported value was specified in flags.
+EMFILE - the per-process limit on open fd has been reached.
+ENFILE - the system-wide limit on the total number of open files has been reached.
+ENODEV - could not mount (internal) anonymous inode device.
+ENOMEM - there was insufficent memory to create a new eventfd file descriptor.
+Application can use an eventfd file descriptor instead of a pipe in all cases where
+a pipe is used simply to signal events. The kernel overhead of an eventfd is
+much lower than that of a pipe, and only one fd is required (versus the two required
+for pipe). When used in the kernel, an eventfd descriptor can provide a bridge
+from kernel to user space, allowing, for example, functionalities like (KAIO, kernel
+AIO) to signal to a file descriptor that some operation is complete.
+A key point about an eventfd is that it can be monitored just like any other fd
+using select(2), poll(2), or epoll(7). This means that an application can simultaneously
+monitor the readiness of "traditonal" files and the readiness of other kernel
+mechanisms that support the eventfd interface. (Without the eventfd() interface, these
+mechanisms could not be multiplexed via select(2), poll(2), or epoll(7)). */
+
+/* return -1 failed, others success */
+static int ll_event_fd() {
+  int n = eventfd(0, EFD_NONBLOCK);
+  if (n == -1) {
+    ccloge("eventfd %s", strerror(n));
+  }
+  return n;
+}
+
+static void ll_event_fd_close(handle_int fd) {
+  if (close(fd) != 0) {
+    ccloge("eventfd close %s", strerror(errno));
+  }
+}
+
+sright_int ll_read(handle_int fd, void* out, sright_int count);
+sright_int ll_write(handle_int fd, const void* buf, sright_int count);
+
+/* return > 0 success, -1 block, -2 error */
+static int ll_event_fd_write(int fd) {
+  uright_int count = 1;
+  int n = ll_write(fd, &count, sizeof(uright_int));
+  if (n == sizeof(uright_int)) {
+    return n;
+  }
+  if (n == -1) return n;
+  return -2;
+}
+
+/* return > 0 success, -1 block, -2 error */
+static int ll_event_fd_read(int fd) {
+  uright_int count = 0;
+  int n = ll_read(fd, &count, sizeof(uright_int));
+  if (n == sizeof(uright_int)) {
+    return (int)count;
+  }
+  if (n == -1) return n;
+  return -2;
+}
+
 /** epoll - I/O event notification facility **
 The epoll API performs a similar task to poll(2): monitoring multiple file
 description to see if I/O is possible on any of them. The epoll API can be
@@ -95,7 +225,7 @@ example, FreeBSD has kqueue, and Solaris has /dev/poll.
 The set of fds that is being monitored via an epoll fd can be viewed the entry for the
 epoll fd in the process's /proc/[pid]/fdinfo directory. */
 
-static int llepollmgr_create() {
+static int ll_epoll_create() {
   /** epoll_create **
   #include <sys/epoll.h>
   int epoll_create(int size);
@@ -261,11 +391,17 @@ static void llepollmgr_wait(struct llepollmgr* self, int ms) {
   examination has wrong checksum and is discarded. There may be other circumstances in which
   a fd is spuriously reported as ready. Thus it may be safer to use O_NONBLOCK on sockets that
   should not block. */
+  int n = 0;
+
   errno = 0;
-  if ((self->n = epoll_wait(self->epfd, self->ready, self->maxlen, ms)) < 0) {
-    self->n = 0;
+  if ((self->nready = epoll_wait(self->epfd, self->ready, CCEPOLL_MAX_EVENTS, ms)) < 0) {
+    self->nready = 0;
   }
-  if (errno != 0 && errno != EINTR) {
+
+  n = errno;
+  if (n == EINTR) {
+    cclogw("epoll_wait interrupted %s", strerror(n));
+  } else if (n != 0) {
     ccloge("epoll_wait %s", strerror(errno));
   }
 }
@@ -273,8 +409,11 @@ static void llepollmgr_wait(struct llepollmgr* self, int ms) {
 nauty_bool ccionfmgr_init(struct ccionfmgr* self) {
   struct llepollmgr* mgr = (struct llepollmgr*)self;
   cczeron(mgr, sizeof(struct llepollmgr));
-  mgr->maxlen = CCEPOLL_MAX_EVENTS;
-  if ((mgr->epfd = llepollmgr_create()) == -1) {
+  ccmutex_init(&(mgr->mutex));
+  if ((mgr->epfd = ll_epoll_create()) == -1) {
+    return false;
+  }
+  if ((mgr->wakeupfd = ll_event_fd()) == -1) {
     return false;
   }
   return true;
@@ -282,9 +421,16 @@ nauty_bool ccionfmgr_init(struct ccionfmgr* self) {
 
 void ccionfmgr_free(struct ccionfmgr* self) {
   struct llepollmgr* mgr = (struct llepollmgr*)self;
+  mgr->wakeupfd_added = false;
+  mgr->wakeup_count = 0;
+  ccmutex_free(&(mgr->mutex));
   if (mgr->epfd != -1) {
     llepollmgr_close(mgr->epfd);
     mgr->epfd = -1;
+  }
+  if (mgr->wakeupfd != -1) {
+    ll_event_fd_close(mgr->wakeupfd);
+    mgr->wakeupfd = -1;
   }
 }
 
@@ -425,46 +571,100 @@ nauty_bool ccionfmgr_del(struct ccionfmgr* self, struct ccionfevt* event) {
   return llepollmgr_del(mgr->epfd, (int)event->hdl);
 }
 
-void ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccionfevt*)) {
+/* return > 0 success, -1 block, -2 error, -3 already signaled */
+int ccionfmgr_wakeup(struct ccionfmgr* self) {
   struct llepollmgr* mgr = (struct llepollmgr*)self;
+  nauty_bool needtowakeup = false;
+
+  /* if we use a flag like "wait_is_called" to indicate master called epoll_wait() or not,
+  and then write eventfd to signal master wakeup only "wait_is_called" is true, then master
+  may not be triggered to wakeup. because if this kind of check is performed just before
+  master call epoll_wait(), wakeup is not signaled but master will enter into wait state
+  next. so dont use this trick. */
+
+  /* here is the another trick to count the wakeup times.
+  this function can be called from any thread, the counter
+  need to be protected by a lock.*/
+  ccmutex_lock(&(mgr->mutex));
+  if (mgr->wakeup_count < 2) {
+    mgr->wakeup_count += 1;
+    needtowakeup = true;
+  }
+  ccmutex_unlock(&(mgr->mutex));
+
+  if (!needtowakeup) {
+    /* already signaled to wakeup */
+    return -3;
+  }
+
+  return ll_event_fd_write(mgr->wakeupfd);
+}
+
+/* return number of events waited and handled */
+int ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccionfevt*)) {
+  struct llepollmgr* mgr = (struct llepollmgr*)self;
+  struct epoll_event* start = 0;
+  struct epoll_event* beyond = 0;
   struct ccionfevt event;
+  int nevent = 0, n = 0;
+
+  /* timeout cannot be negative except infinity (-1) */
   if (ms < 0 && ms != -1) {
     ms = 0;
   }
+
+  /* Linux may treat the timeout greater than
+  35.79 minutes as infinity */
   if (ms > 30 * 60 * 1000) {
     ms = 30 * 60 * 1000; /* 30min */
   }
-  llepollmgr_wait(mgr, ms);
-  if (mgr->n > 0) {
-    struct epoll_event* start = mgr->ready;
-    struct epoll_event* beyond = start + mgr->n;
-    for (; start < beyond; ++start) {
-      event.masks = llgetionfmasks(start);
-      event.hdl = llgetionfhandle(start);
-      event.udata = llgetionfudata(start);
-      cb(&event);
+
+  if (!mgr->wakeupfd_added) {
+    struct epoll_event e;
+    mgr->wakeupfd_added = true;
+    e.events = EPOLLERR | EPOLLIN;
+    e.data.fd = mgr->wakeupfd;
+    if (!llepollmgr_add(mgr->epfd, mgr->wakeupfd, &e)) {
+      ccloge("epoll_wait add wakeupfd failed");
     }
   }
-  if (errno == 0) {
-    return;
+
+  llepollmgr_wait(mgr, ms);
+  if (mgr->nready <= 0) {
+    return 0;
   }
-  event.hdl = 0;
-  event.udata = 0;
-  if (errno == EINTR) {
-    event.masks = CCIONFINT;
-    cb(&event);
-  } else {
-    event.masks = CCIONFERR;
+
+  start = mgr->ready;
+  beyond = start + mgr->nready;
+  for (; start < beyond; ++start) {
+    if (start->data.fd == mgr->wakeupfd) {
+      /* return > 0 success, -1 block, -2 error */
+      n = ll_event_fd_read(mgr->wakeupfd);
+      cclogd("ionf wakeup %s", ccitos(n));
+      /* count down wakeup_count */
+      ccmutex_lock(&(mgr->mutex));
+      if (mgr->wakeup_count > 0) {
+        mgr->wakeup_count -= 1;
+      }
+      ccmutex_unlock(&(mgr->mutex));
+      continue;
+    }
+    nevent += 1;
+    event.masks = llgetionfmasks(start);
+    event.hdl = llgetionfhandle(start);
+    event.udata = llgetionfudata(start);
     cb(&event);
   }
+
+  return nevent;
 }
 
-void ccionfmgr_wait(struct ccionfmgr* self, void (*cb)(struct ccionfevt*)) {
-  ccionfmgr_timedwait(self, -1, cb);
+int ccionfmgr_wait(struct ccionfmgr* self, void (*cb)(struct ccionfevt*)) {
+  return ccionfmgr_timedwait(self, -1, cb);
 }
 
-void ccionfmgr_trywait(struct ccionfmgr* self, void (*cb)(struct ccionfevt*)) {
-  ccionfmgr_timedwait(self, 0, cb);
+int ccionfmgr_trywait(struct ccionfmgr* self, void (*cb)(struct ccionfevt*)) {
+  return ccionfmgr_timedwait(self, 0, cb);
 }
 
 #elif defined(CC_OS_APPLE) || defined(CC_OS_BSD)

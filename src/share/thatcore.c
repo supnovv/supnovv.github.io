@@ -6,7 +6,7 @@
 #include <errno.h>
 #define CCLIB_THATCORE
 #include "thatcore.h"
-#include "luacapi.h"
+#include "service.h"
 
 /** Debugger and logger **/
 
@@ -143,13 +143,11 @@ static uright_int ccmultofpow2(uoctet_int bits, uright_int orig) {
 }
 
 static size_t llgetallocsize(sright_int bytes) {
-  size_t n;
-  if (bytes <= 0) bytes = 1;
-  n = (size_t)(bytes = (sright_int)ccmultofpow2(3, bytes));
-  if (bytes <= 0 || (uright_int)bytes != (uright_int)n) {
-    n = 0;
+  if (bytes > CC_RDWR_MAX_BYTES) {
+    return 0;
   }
-  return n;
+  if (bytes <= 0) bytes = 1;
+  return (size_t)ccmultofpow2(3, bytes);
 }
 
 static void* lloutofmemory(size_t bytes) {
@@ -207,20 +205,35 @@ void* ccrawalloc(sright_int size) {
   return llrawalloc(bytes);
 }
 
-void* ccrawrelloc(void* buffer, sright_int size) {
+void* ccrawalloc_init(sright_int size) {
+  size_t bytes = llgetallocsize(size);
+  void* buffer = 0;
+  if (bytes == 0) {
+    ccloge("ccrawalloc too large %s", ccitos(size));
+    return 0;
+  }
+  buffer = llrawalloc(bytes);
+  cczeron(buffer, bytes);
+  return buffer;
+}
+
+void* ccrawrelloc(void* buffer, sright_int oldsize, sright_int newsize) {
   size_t bytes;
 
-  if ((bytes = llgetallocsize(size)) == 0) {
-    ccloge("ccrawrelloc too large %s", ccitos(size));
+  if (buffer == 0) {
+    return ccrawalloc_init(newsize);
+  }
+
+  if (oldsize < 0 || (bytes = llgetallocsize(newsize)) == 0) {
+    ccloge("ccrawrelloc invalid argument %s", ccitos(newsize));
     return 0;
   }
 
-  if (buffer == 0) {
-    /* returned buffer is not initialized */
-    return llrawalloc(bytes);
+  if (bytes > oldsize) {
+    nauty_byte* p = (nauty_byte*)llrawrelloc(buffer, bytes);
+    cczero(p+oldsize, p+bytes);
+    return p;
   }
-
-  /* if the new size is larger, the value of the newly allocated portion is indeterminate */
   return llrawrelloc(buffer, bytes);
 }
 
@@ -515,10 +528,6 @@ struct ccstring ccemptystr() {
   return (struct ccstring){{0}, 0, {0}, 0};
 }
 
-struct ccstring* ccdefaultstr() {
-  return &ccthread_getself()->defstr;
-}
-
 struct ccstring ccstrfromu(uright_int a) {
   return ccstrfromuf(a, 0);
 }
@@ -561,11 +570,11 @@ void ccstrfree(struct ccstring* self) {
 }
 
 const char* ccutos(uright_int a) {
-  return ccstrgetcstr(ccstrsetu(ccdefaultstr(), a));
+  return ccstrgetcstr(ccstrsetu(ccthread_getdefstr(), a));
 }
 
 const char* ccitos(sright_int a) {
-  return ccstrgetcstr(ccstrseti(ccdefaultstr(), a));
+  return ccstrgetcstr(ccstrseti(ccthread_getdefstr(), a));
 }
 
 
@@ -619,7 +628,12 @@ nauty_bool ccstring_containp(const struct ccfrom* s, nauty_char ch) {
   return false;
 }
 
+
 /** List and queue **/
+
+/**
+ * double link list node
+ */
 
 void cclinknode_init(struct cclinknode* node) {
   node->next = node->prev = node;
@@ -646,6 +660,10 @@ struct cclinknode* cclinknode_remove(struct cclinknode* node) {
   return node;
 }
 
+/**
+ * single link list node
+ */
+
 void ccsmplnode_init(struct ccsmplnode* node) {
   node->next = node;
 }
@@ -664,6 +682,10 @@ struct ccsmplnode* ccsmplnode_removenext(struct ccsmplnode* node) {
   node->next = p->next;
   return p;
 }
+
+/**
+ * single link queue
+ */
 
 void ccsqueue_init(struct ccsqueue* self) {
   ccsmplnode_init(&self->head);
@@ -699,6 +721,10 @@ struct ccsmplnode* ccsqueue_pop(struct ccsqueue* self) {
   return node;
 }
 
+/**
+ * double link queue
+ */
+
 void ccdqueue_init(struct ccdqueue* self) {
   cclinknode_init(&self->head);
 }
@@ -731,454 +757,182 @@ struct cclinknode* ccdqueue_pop(struct ccdqueue* self) {
   return cclinknode_remove(self->head.prev);
 }
 
-/** IO notification facility **/
+/**
+ * proority double link queue
+ */
 
-struct ccionfslot {
-  struct ccsmplnode head;
-};
-
-struct ccionfnode {
-  struct ccionfnode* bucket_next_dont_use_;
-  struct ccionfnode* qnext; /* union with size/type/flag in ccmsghead */
-};
-
-struct ccpqueue {
-  struct ccionfnode head;
-  struct ccionfnode* tail;
-};
-
-struct ccionfpool {
-  umedit_int nslot; /* prime number size not near 2^n */
-  umedit_int nfreed, nbucket, qsize;
-  struct ccpqueue queue; /* chain all ccionfmsg fifo */
-  struct ccsmplnode freelist;
-  struct ccionfslot slot[1];
-};
-
-struct ccionfmgr {
-  struct ccionfpool* pool;
-};
-
-struct ccionfevt;
-struct ccionfmsg;
-
-nauty_bool ccionfevt_isempty(struct ccionfevt* self);
-void ccionfevt_setempty(struct ccionfevt* self);
-struct ccionfmsg* ccionfmsg_new(struct ccionfevt* event);
-struct ccionfmsg* ccionfmsg_set(struct ccionfmsg* self, struct ccionfevt* event);
-
-void ccpqueue_init(struct ccpqueue* self) {
-  self->head.qnext = self->tail = &self->head;
+void ccpriorq_init(struct ccpriorq* self, nauty_bool (*less)(void*, void*)) {
+  cclinknode_init(&self->node);
+  self->less = less;
 }
 
-void ccpqueue_push(struct ccpqueue* self, struct ccionfnode* newnode) {
-  newnode->qnext = self->tail->qnext;
-  self->tail->qnext = newnode;
-  self->tail = newnode;
+nauty_bool ccpriorq_isempty(struct ccpriorq* self) {
+  return cclinknode_isempty(&self->node);
 }
 
-nauty_bool ccpqueue_isempty(struct ccpqueue* self) {
-  return (self->head.qnext == &self->head);
+void ccpriorq_push(struct ccpriorq* self, struct cclinknode* elem) {
+  struct cclinknode* head = &(self->node);
+  struct cclinknode* cur = head->next;
+  while (cur != head && self->less(cur, elem)) {
+    cur = cur->next;
+  }
+  /* insert elem before current node  or the head node */
+  cur->prev->next = elem;
+  elem->prev = cur->prev;
+  cur->prev = elem;
+  elem->next = cur;
 }
 
-struct ccionfnode* ccpqueue_pop(struct ccpqueue* self) {
-  struct ccionfnode* node = 0;
-  if (ccpqueue_isempty(self)) {
+void ccpriorq_remove(struct ccpriorq* self, struct cclinknode* elem) {
+  if (elem == &(self->node)) return;
+  cclinknode_remove(elem);
+}
+
+struct cclinknode* ccpriorq_pop(struct ccpriorq* self) {
+  struct cclinknode* head;
+  struct cclinknode* first;
+  if (ccpriorq_isempty(self)) {
     return 0;
   }
-  node = self->head.qnext;
-  self->head.qnext = node->qnext;
-  if (self->tail == node) {
-    self->tail = &self->head;
-  }
-  return node;
+  head = &(self->node);
+  first = head->next;
+  head->next = first->next;
+  first->next->prev = head;
+  return first;
 }
 
-/** Thread and synchronization **/
+/** Useful structures **/
 
 /**
- * global variable
+ * heap - add/remove quick, search slow
  */
 
-struct ccglobal {
-  struct ccthread* master;
-  struct ccthrkey thrkey;
-  struct ccdqueue thrdq;
-  struct ccdqueue workq;
-  struct ccdqueue freewq;
-  struct ccsqueue msgrxq;
-  struct ccsqueue freemq;
-};
-
-static struct ccglobal* ccG;
-
-static nauty_bool llsetthrkeydata(struct ccthread* thrd) {
-  return ccthrkey_setdata(&ccG->thrkey, thrd);
-}
-
-static void llglobal_init(struct ccglobal* self, struct ccthread* master) {
-  cczeron(self, sizeof(struct ccglobal));
-  ccdqueue_init(&self->thrdq);
-  ccdqueue_init(&self->workq);
-  ccdqueue_init(&self->freewq);
-  ccsqueue_init(&self->msgrxq);
-  ccsqueue_init(&self->freemq);
-  ccG = self;
-  self->master = master;
-  ccthrkey_init(&self->thrkey);
-  llsetthrkeydata(master);
-}
-
-static void llglobal_free(struct ccglobal* self) {
-  ccthrkey_free(&self->thrkey);
-}
-
-static struct ccsqueue* llglobalmq() {
-  return &(ccG->msgrxq);
-}
-
-/**
- * thread
- */
-
-static void llthread_lock(struct ccthread* self) {
-  ccmutex_lock(&self->mutex);
-}
-
-static void llthread_unlock(struct ccthread* self) {
-  ccmutex_unlock(&self->mutex);
-}
-
-static struct ccthread* llgetidlethread() {
-  struct ccthread* thrd;
-  thrd = (struct ccthread*)ccdqueue_pop(&ccG->thrdq);
-  /* adjust the spriq */
-  return thrd;
-}
-
-static void llparsecmdline(int argc, char** argv) {
-  (void)argc;
-  (void)argv;
-}
-
-int llmainthreadfunc(int (*start)(), int argc, char** argv) {
-  int n = 0;
-  struct ccglobal g;
-  struct ccthread master;
-  ccthread_init(&master);
-  master.id = ccplat_selfthread();
-  llglobal_init(&g, &master);
-  llparsecmdline(argc, argv);
-  n = start();
-  llglobal_free(&g);
-  ccthread_free(&master);
-  return n;
-}
-
-static void* llthreadfunc(void* para) {
-  struct ccthread* self = (struct ccthread*)para;
-  int n = 0;
-  llsetthrkeydata(self);
-  n = self->start();
-  ccthread_free(self);
-  return (void*)(signed_ptr)n;
-}
-
-struct ccthread* ccthread_getself() {
-  return (struct ccthread*)ccthrkey_getdata(&ccG->thrkey);
-}
-
-struct ccthread* ccthread_getmaster() {
-  return ccG->master;
-}
-
-void ccthread_init(struct ccthread* self) {
-  cczeron(self, sizeof(struct ccthread));
-  cclinknode_init(&self->node);
-  ccdqueue_init(&self->workrxq);
-  ccdqueue_init(&self->workq);
-  ccmutex_init(&self->mutex);
-  cccondv_init(&self->condv);
-  ccsqueue_init(&self->msgq);
-  ccsqueue_init(&self->freeco);
-  self->defstr = ccemptystr();
-}
-
-void ccthread_free(struct ccthread* self) {
-  self->start = 0;
-  if (self->L) {
-   cclua_close(self->L);
-   self->L = 0;
-  }
-  ccstrfree(&self->defstr);
-}
-
-nauty_bool ccthread_start(struct ccthread* self, int (*start)()) {
-  if (self->start) {
-    ccloge("thread already started");
-    return false;
-  }
-  self->start = start;
-  self->L = cclua_newstate();
-  if (!ccplat_createthread(&self->id, llthreadfunc, self)) {
-    cczeron(&self->id, sizeof(struct ccthrid));
-    return false;
-  }
-  return true;
-}
-
-void ccthread_sleep(uright_int us) {
-  ccplat_threadsleep(us);
-}
-
-void ccthread_exit() {
-  ccthread_free(ccthread_getself());
-  ccplat_threadexit();
-}
-
-int ccthread_join(struct ccthread* self) {
-  return ccplat_threadjoin(&self->id);
-}
-
-/**
- * message
- */
-
-static nauty_bool llislocalmsg(struct ccmsghead* msg) {
-  return (msg->svid & CCMSGTYPE_REMOTE) == 0;
-}
-
-static nauty_bool llismastermsg(struct ccmsghead* msg) {
-  return (msg->svid & CCMSGTYPE_MASTER);
-}
-
-static void llsendremotemsg(struct ccmsghead* msg) {
-  (void)msg;
-}
-
-void ccservice_sendmsg(struct ccmsghead* msg) {
-  if (llislocalmsg(msg)) {
-    struct ccthread* master = ccthread_getmaster();
-    llthread_lock(master);
-    /* append msg to global mq */
-    ccsqueue_push(llglobalmq(), &msg->node);
-    /* if master is sleep, wakeup it */
-    if ((master->runstatus & CCRUNSTATUS_SLEEP) &&
-        (master->runstatus & CCRUNSTATUS_WAKEUP_TRIGGERED) == 0) {
-      master->runstatus |= CCRUNSTATUS_WAKEUP_TRIGGERED;
-      /* TODO: wakeup master */
-    }
-    llthread_unlock(master);
-  } else {
-    llsendremotemsg(msg);
-  }
-}
-
-/**
- * service
- */
-
-static struct ccservice* lldestservice(struct ccmsghead* msg) { /* called by master only */
-  (void)msg;
-  return 0; /* TODO: (struct ccservice*)msg->svid;  find server by svid */
-}
-
-static nauty_bool llislservice(struct ccservice* self) {
-  return (self->iflag & CCSVTYPE_LSERVICE);
-}
-
-static nauty_bool lliscservice(struct ccservice* self) {
-  return (self->iflag & CCSVTYPE_CSERVICE);
-}
-
-void llmaster_dispatch(struct ccthread* master) {
-  struct ccsqueue queue;
-  struct ccsqueue freeq;
-  struct ccmsghead* msg;
-  struct ccservice* sv;
-
-  /* get all global messages */
-  llthread_lock(master);
-  queue = *llglobalmq();
-  ccsqueue_init(llglobalmq());
-  llthread_unlock(master);
-
-  /* prepare master's messages */
-  while ((msg = (struct ccmsghead*)ccsqueue_pop(&queue))) {
-    if (llismastermsg(msg)) {
-      ccsqueue_push(&master->msgq, &msg->node);
-    }
-  }
-
-  /* handle master's messages */
-  ccsqueue_init(&freeq);
-  while ((msg = (struct ccmsghead*)ccsqueue_pop(&master->msgq))) {
-    /* TODO: how to handle master's messages */
-    ccsqueue_push(&freeq, &msg->node);
-  }
-
-  /* dispatch service's messages */
-  while ((msg = (struct ccmsghead*)ccsqueue_pop(&queue))) {
-    nauty_bool newattach = false;
-
-    /* get message's dest service */
-    sv = lldestservice(msg);
-    if (sv == 0) {
-      ccsqueue_push(&freeq, &msg->node);
-      continue;
-    }
-
-    if (sv->thrd) {
-      nauty_bool done = false;
-      llthread_lock(sv->thrd);
-      done = (sv->oflag & CCSVFLAG_DONE) != 0;
-      llthread_unlock(sv->thrd);
-      if (done) {
-        sv->thrd = 0;
-        ccsqueue_push(&freeq, &msg->node);
-        /* TODO: reset and remove servie to free list */
-        continue;
-      }
-    } else {
-      if (sv->oflag & CCSVFLAG_DONE) {
-        ccsqueue_push(&freeq, &msg->node);
-        /* TODO: reset and remove servie to free list */
-        continue;
-      }
-      /* attach a thread to handle */
-      sv->thrd = llgetidlethread();
-      if (sv->thrd == 0) {
-        /* TODO: thread busy, need pending */
-      }
-      newattach = true;
-    }
-
-    llthread_lock(sv->thrd);
-    msg->extra = sv;
-    ccsqueue_push(&sv->rxmq, &msg->node);
-    if (newattach) {
-      ccdqueue_push(&sv->thrd->workrxq, &sv->node);
-    }
-    llthread_unlock(sv->thrd);
-  }
-
-  if (!ccsqueue_isempty(&freeq)) {
-    llthread_lock(master);
-    /* TODO: add free msg to global free queue */
-    llthread_unlock(master);
-  }
-}
-
-void llthread_runservice(struct ccthread* thrd) {
-  struct ccdqueue doneq;
-  struct ccsqueue freemq;
-  struct ccservice* sv;
-  struct cclinknode* head;
-  struct cclinknode* node;
-  struct ccmsghead* msg;
-  int n = 0;
-
-  llthread_lock(thrd);
-  ccdqueue_pushqueue(&thrd->workq, &thrd->workrxq);
-  llthread_unlock(thrd);
-
-  if (ccdqueue_isempty(&thrd->workq)) {
-    /* no services need to run */
+void ccmmheap_init(struct ccmmheap* self, nauty_bool (*less)(void*, void*), int initsize) {
+  self->size = self->capacity = 0;
+  self->less = less;
+  if (initsize > CC_RDWR_MAX_BYTES) {
+    self->a = 0;
+    ccloge("size too large");
     return;
   }
+  if (initsize < CCMMHEAP_MIN_SIZE) {
+    initsize = CCMMHEAP_MIN_SIZE;
+  }
+  self->a = ccrawalloc_init(initsize*sizeof(void*));
+  self->capacity = initsize;
+}
 
-  head = &(thrd->workq.head);
-  node = head->next;
-  for (; node != head; node = node->next) {
-    sv = (struct ccservice*)node;
-    if (!ccsqueue_isempty(&sv->rxmq)) {
-      llthread_lock(thrd);
-      ccsqueue_pushqueue(&thrd->msgq, &sv->rxmq);
-      llthread_unlock(thrd);
+void ccmmheap_free(struct ccmmheap* self) {
+  if (self->a) {
+    ccrawfree(self->a);
+  }
+  cczeron(self, sizeof(struct ccmmheap));
+}
+
+static umedit_int ll_left(umedit_int n) {
+  return n*2 + 1;
+}
+
+static umedit_int ll_right(umedit_int n) {
+  return n*2 + 2;
+}
+
+static umedit_int ll_parent(umedit_int n) {
+  return (n == 0 ? 0 : (n - 1) / 2);
+}
+
+static nauty_bool ll_has_child(struct ccmmheap* self, umedit_int i) {
+  return self->size > ll_left(i);
+}
+
+static nauty_bool ll_less_than(struct ccmmheap* self, umedit_int i, umedit_int j) {
+  return self->less((void*)self->a[i], (void*)self->a[j]);
+}
+
+static umedit_int ll_min_child(struct ccmmheap* self, umedit_int i) {
+  if (self->size & 0x01) {
+    /* have two children */
+    umedit_int left = ll_left(i);
+    if (ll_less_than(self, left, left+1)) {
+      return left;
     }
+    return left+1;
   }
+  /* only have left child */
+  return ll_left(i);
+}
 
-  if (ccsqueue_isempty(&thrd->msgq)) {
-    /* current services have no messages */
-    return;
-  }
-
-  ccdqueue_init(&doneq);
-  ccsqueue_init(&freemq);
-  while ((msg = (struct ccmsghead*)ccsqueue_pop(&thrd->msgq))) {
-    sv = (struct ccservice*)msg->extra;
-    if (sv->iflag & CCSVFLAG_DONE) {
-      ccsqueue_push(&freemq, &msg->node);
+static void ll_add_tail_elem(struct ccmmheap* self) {
+  umedit_int i = self->size;
+  while (i != 0) {
+    umedit_int pa = ll_parent(i);
+    if (ll_less_than(self, i, pa)) {
+      unsign_ptr temp = self->a[i];
+      self->a[i] = self->a[pa];
+      self->a[pa] = temp;
+      i = pa;
       continue;
     }
-    if (llislservice(sv)) {
-      /* TODO: lua service */
-    } else if (lliscservice(sv)) {
-      if (sv->co == 0) {
-        if ((sv->co = (struct ccluaco*)ccsqueue_pop(&thrd->freeco)) == 0) {
-          /* TODO: how to allocate ccluaco */
-          /* sv->co = ccluaco_create(thrd, sv->u.cofunc, sv->udata); */
-        }
-      }
-      if (sv->co->owner != thrd) {
-        ccloge("runservice invalide luaco");
-      }
-      sv->co->msg = msg;
-      n = ccluaco_resume(sv->co);
-      sv->co->msg = 0;
-    } else {
-      n = sv->u.func(sv->udata, &msg->node);
-    }
-    /* service run completed */
-    if (n == 0) {
-      sv->iflag |= CCSVFLAG_DONE;
-      ccdqueue_push(&doneq, cclinknode_remove(&sv->node));
-      if (sv->co) {
-        ccsqueue_push(&thrd->freeco, &sv->co->node);
-        sv->co = 0;
-      }
-    }
-    /* free handled message */
-    ccsqueue_push(&freemq, &msg->node);
-  }
-
-  if (!ccdqueue_isempty(&doneq)) {
-    llthread_lock(thrd);
-    while ((sv = (struct ccservice*)ccdqueue_pop(&doneq))) {
-      sv->iflag &= (~CCSVFLAG_DONE);
-      sv->oflag |= CCSVFLAG_DONE;
-    }
-    llthread_unlock(thrd);
-  }
-
-  if (!ccsqueue_isempty(&freemq)) {
-    struct ccthread* master = ccthread_getmaster();
-    llthread_lock(master);
-    /* TODO: add free msg to global free queue */
-    llthread_unlock(master);
+    break;
   }
 }
 
-/** Other functions **/
+void ccmmheap_add(struct ccmmheap* self, void* elem) {
+  if (self->capacity == 0 || elem == 0) {
+    ccloge("mmheap_add invalid argument");
+    return;
+  }
+  if (self->size >= self->capacity) {
+    self->a = ccrawrelloc(self->a, self->capacity, self->capacity*2);
+    self->capacity *= 2;
+  }
+  self->a[self->size++] = (unsign_ptr)elem;
+  ll_add_tail_elem(self);
+}
+
+void* ccmmheap_del(struct ccmmheap* self, umedit_int i) {
+  void* elem = 0;
+  if (i >= self->size) {
+    return 0;
+  }
+
+  elem = (void*)self->a[i];
+  self->a[i] = self->a[self->size-1];
+
+  while (ll_has_child(self, i)) {
+    umedit_int child = ll_min_child(self, i);
+    unsign_ptr temp = self->a[i];
+    self->a[i] = self->a[child];
+    self->a[child] = temp;
+    i = child;
+  }
+
+  return elem;
+}
+
+/**
+ * hash table - add/remove/search quick, need re-hash when enlarge buffer size
+ */
 
 nauty_bool ccisprime(umedit_int n) {
-  sright_int i = 0;
+  uright_int i = 0;
   if (n == 2) return true;
-  if (n == 1 || (n % 2) == 0) return false; 
+  if (n == 1 || (n % 2) == 0) return false;
   for (i = 3; i*i <= n; i += 2) {
     if ((n % i) == 0) return false;
   }
   return true;
 }
 
-umedit_int cchashprime(uoctet_int bits) {
+/* return prime is less than 2^bits and greater then 2^(bits-1) */
+umedit_int ccmidprime(nauty_byte bits) {
   umedit_int i = 0, n = 0, mid = 0, m = (1 << bits);
   umedit_int dn = 0, dm = 0; /* distance */
   umedit_int nprime = 0, mprime = 0;
   if (m == 0) return 0; /* max value of bits is 31 */
   if (bits < 3) return bits + 1; /* 1(2^0) 2(2^1) 4(2^2) => 1 2 3 */
   n = (1 << (bits - 1)); /* even number */
-  mid = 3 * n / 2; /* middle value between n and m, even number */
+  mid = 3 * (n >> 1); /* middle value between n and m, even number */
   for (i = mid - 1; i > n; i -= 2) {
     if (ccisprime(i)) {
       dn = i - n;
@@ -1194,6 +948,158 @@ umedit_int cchashprime(uoctet_int bits) {
     }
   }
   return (dn > dm ? nprime : mprime);
+}
+
+void cchashtable_init(struct cchashtable* self, nauty_byte sizebits, int offsetofnext, umedit_int (*getkey)(void*)) {
+  if (sizebits > 30) {
+    ccloge("size too large");
+    return;
+  }
+  if (sizebits < 3) {
+    sizebits = 3;
+  }
+  self->slotbits = sizebits;
+  self->nslot = ccmidprime(sizebits);
+  self->slot = (struct cchashslot*)ccrawalloc_init(sizeof(struct cchashslot)*self->nslot);
+  self->nbucket = 0;
+  self->offsetofnext = (ushort_int)offsetofnext;
+  self->getkey = getkey;
+}
+
+void cchashtable_free(struct cchashtable* self) {
+  if (self->slot) {
+    ccrawfree(self->slot);
+    self->slot = 0;
+  }
+  cczeron(self, sizeof(struct cchashtable));
+}
+
+static umedit_int llgethashval(struct cchashtable* self, void* elem) {
+  return (self->getkey(elem) % self->nslot);
+}
+
+static void llsetelemnext(struct cchashtable* self, void* elem, void* next) {
+  *((void**)((nauty_byte*)elem + self->offsetofnext)) = next;
+}
+
+static void* llgetnextelem(struct cchashtable* self, void* elem) {
+  return *((void**)((nauty_byte*)elem + self->offsetofnext));
+}
+
+void cchashtable_add(struct cchashtable* self, void* elem) {
+  struct cchashslot* slot = 0;
+  if (elem == 0) return;
+  slot = self->slot + llgethashval(self, elem);
+  llsetelemnext(self, elem, slot->next);
+  slot->next = elem;
+  self->nbucket += 1;
+}
+
+void* cchashtable_find(struct cchashtable* self, umedit_int key) {
+  struct cchashslot* slot = 0;
+  void* elem = 0;
+  slot = self->slot + (key % self->nslot);
+  elem = slot->next;
+  while (elem != 0) {
+    if (self->getkey(elem) == key) {
+      return elem;
+    }
+    elem = llgetnextelem(self, elem);
+  }
+  return 0;
+}
+
+void* cchashtable_del(struct cchashtable* self, umedit_int key) {
+  struct cchashslot* slot = 0;
+  void* prev = 0;
+  void* elem = 0;
+  slot = self->slot + (key % self->nslot);
+  if (slot->next == 0) {
+    return 0;
+  }
+  if (self->getkey(slot->next) == key) {
+    elem = slot->next;
+    slot->next = llgetnextelem(self, elem);
+    self->nbucket -= 1;
+    return elem;
+  }
+  prev = slot->next;
+  while ((elem = llgetnextelem(self, prev)) != 0) {
+    if (self->getkey(elem) == key) {
+      llsetelemnext(self, prev, llgetnextelem(self, elem));
+      self->nbucket -= 1;
+      return elem;
+    }
+    prev = elem;
+  }
+  return 0;
+}
+
+void ccbackhash_init(struct ccbackhash* self, nauty_byte initsizebits, int offsetofnext, umedit_int (*getkey)(void*)) {
+  cchashtable_init(&self->a, initsizebits, offsetofnext, getkey);
+  self->cur = &(self->a);
+  self->b.slot = 0;
+  self->old = &(self->b);
+}
+
+void ccbackhash_free(struct ccbackhash* self) {
+  cchashtable_free(&self->a);
+  cchashtable_free(&self->b);
+  self->cur = self->old = 0;
+}
+
+static nauty_bool ll_need_to_enlarge(struct ccbackhash* self) {
+  struct cchashtable* t = self->cur;
+  return (t->nbucket > t->nslot * 2);
+}
+
+void ccbackhash_add(struct ccbackhash* self, void* elem) {
+  if (elem == 0) return;
+  if (!ll_need_to_enlarge(self)) {
+    cchashtable_add(self->cur, elem);
+  } else {
+    struct cchashtable oldtable = *(self->old);
+    struct cchashtable* temp = 0;
+    cchashtable_init(self->old, self->cur->slotbits*2, self->cur->offsetofnext, self->cur->getkey);
+    /* switch curtable to new enlarged table */
+    temp = self->cur;
+    self->cur = self->old;
+    self->old = temp;
+    /* re-hash previous old table elements to new table */
+    if (oldtable.slot && oldtable.nbucket) {
+      struct cchashslot* slot = oldtable.slot;
+      struct cchashslot* end = slot + oldtable.nslot;
+      struct cchashslot* head = 0;
+      for (; slot < end; ++slot) {
+        head = slot;
+        while (head->next) {
+          void* elem = head->next;
+          head->next = llgetnextelem(&oldtable, elem);
+          cchashtable_add(self->cur, elem);
+        }
+      }
+    }
+    if (oldtable.slot) {
+      cchashtable_free(&oldtable);
+    }
+    cchashtable_add(self->cur, elem);
+  }
+}
+
+void* ccbackhash_find(struct ccbackhash* self, umedit_int key) {
+  void* elem = cchashtable_find(self->cur, key);
+  if (elem == 0 && self->old->slot) {
+    return cchashtable_find(self->old, key);
+  }
+  return elem;
+}
+
+void* ccbackhash_del(struct ccbackhash* self, umedit_int key) {
+  void* elem = cchashtable_del(self->cur, key);
+  if (elem == 0 && self->old->slot) {
+    return cchashtable_del(self->old, key);
+  }
+  return elem;
 }
 
 /** Core test **/
@@ -1240,7 +1146,7 @@ void ccthattest() {
   ccassert(sizeof(struct ccrwlock) >= CC_RWLOCK_BYTES);
   ccassert(sizeof(struct cccondv) >= CC_CONDV_BYTES);
   ccassert(sizeof(struct ccthrkey) >= CC_THKEY_BYTES);
-  ccassert(sizeof(struct ccthread) >= CC_THRID_BYTES);
+  ccassert(sizeof(struct ccthrid) >= CC_THRID_BYTES);
   /* value ranges */
   ccassert(CC_UBYT_MAX == 255);
   ccassert(CC_SBYT_MAX == 127);
@@ -1288,10 +1194,6 @@ void ccthattest() {
   ccassert(*(a+3) == '1');
   ccassert(*(a+4) == '2');
   ccassert(*(a+5) == '3');
-  /* string */
-  ccutos(CC_UINT_MAX);
-  ccassert(ccstrgetlen(ccdefaultstr()) < CCSTRING_STATIC_CHARS);
-  ccassert(ccstrcapacity(ccdefaultstr()) == CCSTRING_STATIC_CHARS);
   /* other tests */
   ccassert(ccisprime(0) == false);
   ccassert(ccisprime(1) == false);

@@ -6,13 +6,18 @@
 #define _POSIX_C_SOURCE 200809L
 #include <unistd.h>
 #include <sys/epoll.h>
+#include <sys/eventfd.h>
 /** Linux Epoll **/
 
 #define CCEPOLL_MAX_EVENTS 64
 
 struct llepollmgr {
   int epfd;
-  int n, maxlen;
+  int wakeupfd;
+  int nready;
+  int wakeupfd_added;
+  int wakeup_count;
+  struct ccmutex mutex;
   struct epoll_event ready[CCEPOLL_MAX_EVENTS+1];
 };
 

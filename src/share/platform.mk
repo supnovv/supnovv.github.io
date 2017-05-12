@@ -45,13 +45,13 @@ BUILD_DIR =
 endif
 
 AUTOOBJ = $(BUILD_DIR)autoconf$(O)
-MAINOBJ = $(BUILD_DIR)mainentry$(O)
 COREOBJ = $(BUILD_DIR)thatcore$(O) $(BUILD_DIR)linuxcore$(O) $(BUILD_DIR)thattest$(O)
 LUACOBJ = $(BUILD_DIR)luacapi$(O)
-IONFOBJ = $(BUILD_DIR)ionotify$(O) $(BUILD_DIR)linuxionf$(O)
-SOCKOBJ = $(BUILD_DIR)socket$(O) $(BUILD_DIR)linuxsock$(O)
-TESTOBJ = $(COREOBJ) $(LUACOBJ) $(IONFOBJ) $(SOCKOBJ)
-ALLOBJS = $(AUTOOBJ) $(MAINOBJ) $(TESTOBJ)
+IONFOBJ = $(BUILD_DIR)linuxionf$(O)
+SOCKOBJ = $(BUILD_DIR)linuxsock$(O)
+SRVCOBJ = $(BUILD_DIR)service$(O)
+TESTOBJ = $(COREOBJ) $(LUACOBJ) $(IONFOBJ) $(SOCKOBJ) $(SRVCOBJ)
+ALLOBJS = $(AUTOOBJ) $(TESTOBJ)
 
 AUTOCONF = $(BUILD_DIR)autoconf$(E)
 CORETEST = $(BUILD_DIR)thattest$(E)
@@ -87,8 +87,8 @@ $(AUTOCONF): $(AUTOOBJ)
 	$(LINK) $(AUTOOBJ)
 	./$@
 
-$(CORETEST): $(MAINOBJ) $(TESTOBJ)
-	$(LINK) $(MAINOBJ) $(TESTOBJ) $(LDLIBS)
+$(CORETEST): $(TESTOBJ)
+	$(LINK) $(TESTOBJ) $(LDLIBS)
 	./$@
 
 luacapi.o: luacapi.c luacapi.h
@@ -98,8 +98,8 @@ $(BUILD_DIR)%$(O): %.c
 	$(CMPL) $<
 
 $(AUTOOBJ): autoconf.c
-$(MAINOBJ): mainentry.c thatcore.h autoconf.h
 $(COREOBJ): thatcore.c linuxcore.c thattest.c thatcore.h autoconf.h ccprefix.h
-$(IONFOBJ): ionotify.c linuxionf.c ionotify.h plationf.h
-$(SOCKOBJ): socket.c linuxsock.c socket.h platsock.h
+$(IONFOBJ): linuxionf.c ionotify.h plationf.h
+$(SOCKOBJ): linuxsock.c socket.h platsock.h
+$(SRVCOBJ): service.c service.h
 

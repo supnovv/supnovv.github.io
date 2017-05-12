@@ -2,8 +2,9 @@
 #include "luacapi.h"
 #include "ionotify.h"
 #include "socket.h"
+#include "service.h"
 
-int mainstart() {
+static int start() {
   ccsetloglevel(4);
   ccthattest();
   ccplattest();
@@ -11,5 +12,9 @@ int mainstart() {
   ccplationftest();
   ccplatsocktest();
   return 0;
+}
+
+int main() {
+  return startmainthread(start);
 }
 

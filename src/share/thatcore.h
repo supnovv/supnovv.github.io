@@ -85,7 +85,8 @@ struct ccheap {
 };
 
 CORE_API void* ccrawalloc(sright_int size);
-CORE_API void* ccrawrelloc(void* buffer, sright_int size);
+CORE_API void* ccrawalloc_init(sright_int size);
+CORE_API void* ccrawrelloc(void* buffer, sright_int oldsize, sright_int newsize);
 CORE_API void ccrawfree(void* buffer);
 
 CORE_API struct ccheap ccheap_alloc(sright_int size);
@@ -171,7 +172,7 @@ CORE_API struct cctime ccsystime();
 CORE_API struct cctime ccinctime();
 CORE_API struct ccdate ccgetdate();
 CORE_API sright_int ccfilesize(struct ccfrom name);
-CORE_API struct ccfileattr ccgetfileattr(struct ccfrom name);
+CORE_API struct ccfileattr ccfileattr(struct ccfrom name);
 
 /** String **/
 
@@ -213,37 +214,112 @@ struct cclinknode {
   struct cclinknode* prev;
 };
 
+CORE_API void cclinknode_init(struct cclinknode* node);
+CORE_API nauty_bool cclinknode_isempty(struct cclinknode* node);
+CORE_API void cclinknode_insertafter(struct cclinknode* node, struct cclinknode* newnode);
+CORE_API struct cclinknode* cclinknode_remove(struct cclinknode* node);
+
 struct ccsmplnode {
   struct ccsmplnode* next;
 };
 
-struct ccdqueue {
-  struct cclinknode head;
-};
+CORE_API void ccsmplnode_init(struct ccsmplnode* node);
+CORE_API nauty_bool ccsmplnode_isempty(struct ccsmplnode* node);
+CORE_API void ccsmplnode_insertafter(struct ccsmplnode* node, struct ccsmplnode* newnode);
+CORE_API struct ccsmplnode* ccsmplnode_removenext(struct ccsmplnode* node);
 
 struct ccsqueue {
   struct ccsmplnode head;
   struct ccsmplnode* tail;
 };
 
-CORE_API void cclinknode_init(struct cclinknode* node);
-CORE_API nauty_bool cclinknode_isempty(struct cclinknode* node);
-CORE_API void cclinknode_insertafter(struct cclinknode* node, struct cclinknode* newnode);
-CORE_API void ccsmplnode_init(struct ccsmplnode* node);
-CORE_API nauty_bool ccsmplnode_isempty(struct ccsmplnode* node);
-CORE_API void ccsmplnode_insertafter(struct ccsmplnode* node, struct ccsmplnode* newnode);
 CORE_API void ccsqueue_init(struct ccsqueue* self);
 CORE_API void ccsqueue_push(struct ccsqueue* self, struct ccsmplnode* newnode);
 CORE_API void ccsqueue_pushqueue(struct ccsqueue* self, struct ccsqueue* queue);
 CORE_API nauty_bool ccsqueue_isempty(struct ccsqueue* self);
+CORE_API struct ccsmplnode* ccsqueue_pop(struct ccsqueue* self);
+
+struct ccdqueue {
+  struct cclinknode head;
+};
+
 CORE_API void ccdqueue_init(struct ccdqueue* self);
 CORE_API void ccdqueue_push(struct ccdqueue* self, struct cclinknode* newnode);
 CORE_API void ccdqueue_pushqueue(struct ccdqueue* self, struct ccdqueue* queue);
 CORE_API nauty_bool ccdqueue_isempty(struct ccdqueue* self);
-CORE_API struct cclinknode* cclinknode_remove(struct cclinknode* node);
-CORE_API struct ccsmplnode* ccsmplnode_removenext(struct ccsmplnode* node);
-CORE_API struct ccsmplnode* ccsqueue_pop(struct ccsqueue* self);
 CORE_API struct cclinknode* ccdqueue_pop(struct ccdqueue* self);
+
+struct ccpriorq {
+  struct cclinknode node;
+  /* elem with less number has higher priority, i.e., 0 is the highest */
+  nauty_bool (*less)(void* elem_is_less_than, void* this_one);
+};
+
+CORE_API void ccpriorq_init(struct ccpriorq* self, nauty_bool (*less)(void*, void*));
+CORE_API void ccpriorq_push(struct ccpriorq* self, struct cclinknode* elem);
+CORE_API void ccpriorq_remove(struct ccpriorq* self, struct cclinknode* elem);
+CORE_API nauty_bool ccpriorq_isempty(struct ccpriorq* self);
+CORE_API struct cclinknode* ccpriorq_pop(struct ccpriorq* self);
+
+/** Userful structures **/
+
+/**
+ * heap - add/remove quick, search slow
+ */
+
+#define CCMMHEAP_MIN_SIZE (8)
+struct ccmmheap {
+  umedit_int size;
+  umedit_int capacity;
+  unsign_ptr* a; /* array of elements with pointer size */
+  nauty_bool (*less)(void* this_elem_is_less, void* than_this_one);
+};
+
+/* min. heap - pass less function to less, max. heap - pass greater function to less */
+CORE_API void ccmmheap_init(struct ccmmheap* self, nauty_bool (*less)(void*, void*), int initsize);
+CORE_API void ccmmheap_free(struct ccmmheap* self);
+CORE_API void ccmmheap_add(struct ccmmheap* self, void* elem);
+CORE_API void* ccmmheap_del(struct ccmmheap* self, umedit_int i);
+
+/**
+ * hash table - add/remove/search quick, need re-hash when enlarge buffer size
+ */
+
+CORE_API nauty_bool ccisprime(umedit_int n);
+CORE_API umedit_int ccmidprime(nauty_byte bits);
+
+struct cchashslot {
+  void* next;
+};
+
+struct cchashtable {
+  nauty_byte slotbits;
+  ushort_int offsetofnext;
+  umedit_int nslot; /* prime number size not near 2^n */
+  umedit_int nbucket;
+  umedit_int (*getkey)(void*);
+  struct cchashslot* slot;
+};
+
+CORE_API void cchashtable_init(struct cchashtable* self, nauty_byte sizebits, int offsetofnext, umedit_int (*getkey)(void*));
+CORE_API void cchashtable_free(struct cchashtable* self);
+CORE_API void cchashtable_add(struct cchashtable* self, void* elem);
+CORE_API void* cchashtable_find(struct cchashtable* self, umedit_int key);
+CORE_API void* cchashtable_del(struct cchashtable* self, umedit_int key);
+
+/* table size is enlarged auto */
+struct ccbackhash {
+  struct cchashtable* cur;
+  struct cchashtable* old;
+  struct cchashtable a;
+  struct cchashtable b;
+};
+
+CORE_API void ccbackhash_init(struct ccbackhash* self, nauty_byte initsizebits, int offsetofnext, umedit_int (*getkey)(void*));
+CORE_API void ccbackhash_free(struct ccbackhash* self);
+CORE_API void ccbackhash_add(struct ccbackhash* self, void* elem);
+CORE_API void* ccbackhash_find(struct ccbackhash* self, umedit_int key);
+CORE_API void* ccbackhash_del(struct ccbackhash* self, umedit_int key);
 
 /** Thread and synchronization **/
 
@@ -318,82 +394,6 @@ CORE_API nauty_bool ccplat_createthread(struct ccthrid* thrid, void* (*start)(vo
 CORE_API void ccplat_threadsleep(uright_int us);
 CORE_API void ccplat_threadexit();
 CORE_API int ccplat_threadjoin(struct ccthrid* thrid);
-
-#define CCRUNSTATUS_SLEEP 0x01
-#define CCRUNSTATUS_RUNNING 0x02
-#define CCRUNSTATUS_WAKEUP_TRIGGERED 0x04
-
-struct ccthread {
-  /* access by master only */
-  struct cclinknode node;
-  umedit_int weight;
-  /* shared with master */
-  umedit_int runstatus;
-  struct ccdqueue workrxq;
-  struct ccmutex mutex;
-  struct cccondv condv;
-  /* free access */
-  umedit_int index;
-  struct ccthrid id;
-  /* thread own use */
-  struct lua_State* L;
-  int (*start)();
-  struct ccdqueue workq;
-  struct ccsqueue msgq;
-  struct ccsqueue freeco;
-  struct ccstring defstr;
-};
-
-CORE_API struct ccthread* ccthread_getself();
-CORE_API struct ccthread* ccthread_getmaster();
-CORE_API void ccthread_init(struct ccthread* self);
-CORE_API void ccthread_free(struct ccthread* self);
-CORE_API nauty_bool ccthread_start(struct ccthread* self, int (*start)());
-CORE_API void ccthread_sleep(uright_int us);
-CORE_API void ccthread_exit();
-CORE_API int ccthread_join(struct ccthread* self);
-
-/**
- * message
- */
-
-#define CCMSGTYPE_REMOTE 0x01
-#define CCMSGTYPE_MASTER 0x02
-
-struct ccmsghead {
-  struct ccsmplnode node;
-  void* extra;
-  umedit_int svid;
-  umedit_int data;
-};
-
-CORE_API void ccservice_sendmsg(struct ccmsghead* msg);
-
-/**
- * service
- */
-
-#define CCSVFLAG_DONE 0x01
-#define CCSVTYPE_REGULARC 0x01
-#define CCSVTYPE_CSERVICE 0x02
-#define CCSVTYPE_LSERVICE 0x03
-
-struct ccservice {
-  struct cclinknode node;
-  struct ccthread* thrd; /* modify by master only */
-  struct ccsqueue rxmq;
-  ushort_int oflag; /* shared with master */
-  ushort_int iflag; /* internal use */
-  umedit_int svid;
-  void* udata;
-  struct ccluaco* co;
-  union {
-  int (*func)(void* udata, void* msg);
-  int (*cofunc)(struct ccluaco*);
-  } u;
-};
-
-
 
 /** Core test **/
 

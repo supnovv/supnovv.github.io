@@ -26,9 +26,11 @@ CORE_API void ccionfmgr_free(struct ccionfmgr* self);
 CORE_API nauty_bool ccionfmgr_add(struct ccionfmgr* self, struct ccionfevt* event);
 CORE_API nauty_bool ccionfmgr_mod(struct ccionfmgr* self, struct ccionfevt* event);
 CORE_API nauty_bool ccionfmgr_del(struct ccionfmgr* self, struct ccionfevt* event);
-CORE_API void ccionfmgr_wait(struct ccionfmgr* self, void (*cb)(struct ccionfevt*));
-CORE_API void ccionfmgr_trywait(struct ccionfmgr* self, void (*cb)(struct ccionfevt*));
-CORE_API void ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccionfevt*));
+CORE_API int ccionfmgr_wait(struct ccionfmgr* self, void (*cb)(struct ccionfevt*));
+CORE_API int ccionfmgr_trywait(struct ccionfmgr* self, void (*cb)(struct ccionfevt*));
+CORE_API int ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccionfevt*));
+CORE_API int ccionfmgr_wakeup(struct ccionfmgr* self);
+
 
 CORE_API void ccplationftest();
 

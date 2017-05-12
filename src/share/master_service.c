@@ -1,7 +1,65 @@
-#include "ionotify.h"
+#include "service.h"
 
-#if 0
-/** IO notification facility **/
+struct ccionfslot {
+  struct ccsmplnode head;
+};
+
+struct ccionfnode {
+  struct ccionfnode* bucket_next_dont_use_;
+  struct ccionfnode* qnext; /* union with size/type/flag in ccmsghead */
+};
+
+struct ccpqueue {
+  struct ccionfnode head;
+  struct ccionfnode* tail;
+};
+
+struct ccionfpool {
+  umedit_int nslot; /* prime number size not near 2^n */
+  umedit_int nfreed, nbucket, qsize;
+  struct ccpqueue queue; /* chain all ccionfmsg fifo */
+  struct ccsmplnode freelist;
+  struct ccionfslot slot[1];
+};
+
+struct ccionfmgr {
+  struct ccionfpool* pool;
+};
+
+struct ccionfevt;
+struct ccionfmsg;
+
+nauty_bool ccionfevt_isempty(struct ccionfevt* self);
+void ccionfevt_setempty(struct ccionfevt* self);
+struct ccionfmsg* ccionfmsg_new(struct ccionfevt* event);
+struct ccionfmsg* ccionfmsg_set(struct ccionfmsg* self, struct ccionfevt* event);
+
+void ccpqueue_init(struct ccpqueue* self) {
+  self->head.qnext = self->tail = &self->head;
+}
+
+void ccpqueue_push(struct ccpqueue* self, struct ccionfnode* newnode) {
+  newnode->qnext = self->tail->qnext;
+  self->tail->qnext = newnode;
+  self->tail = newnode;
+}
+
+nauty_bool ccpqueue_isempty(struct ccpqueue* self) {
+  return (self->head.qnext == &self->head);
+}
+
+struct ccionfnode* ccpqueue_pop(struct ccpqueue* self) {
+  struct ccionfnode* node = 0;
+  if (ccpqueue_isempty(self)) {
+    return 0;
+  }
+  node = self->head.qnext;
+  self->head.qnext = node->qnext;
+  if (self->tail == node) {
+    self->tail = &self->head;
+  }
+  return node;
+}
 
 #define CCSOCK_ACCEPT 0x01
 #define CCSOCK_CONNET 0x02
@@ -150,5 +208,25 @@ struct ccsmplnode* ccionfpool_addevent(struct ccionfpool* self, struct ccionfevt
   return msg;
 }
 
-#endif
+int ccnodemain(struct ccstate* s) {
+  struct ccglobal G;
+  ccinitglobal(&G, "ccnode.conf");
+  struct ccstate s[G.workers+1];
+  int i = 0;
+  ccinitstatepool(&G, s+1, G.workers);
+  for (; i < G.workers + 1; ++i) {
+
+  }
+  ccinitstate(&s[0], G, pthread_self());
+  G.iofd = llepollcreate();
+  if (G.iofd == -1) return -1;
+}
+
+static int ccmaster_start() {
+
+}
+
+int main(int argc, char** argv) {
+  return startmainthreadcv(ccmaster_start, argc, argv);
+}
 
