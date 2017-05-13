@@ -409,7 +409,7 @@ static void llepollmgr_wait(struct llepollmgr* self, int ms) {
 nauty_bool ccionfmgr_init(struct ccionfmgr* self) {
   struct llepollmgr* mgr = (struct llepollmgr*)self;
   cczeron(mgr, sizeof(struct llepollmgr));
-  ccmutex_init(&(mgr->mutex));
+  ccmutex_init((struct ccmutex*)&(mgr->mutex));
   if ((mgr->epfd = ll_epoll_create()) == -1) {
     return false;
   }
@@ -423,7 +423,7 @@ void ccionfmgr_free(struct ccionfmgr* self) {
   struct llepollmgr* mgr = (struct llepollmgr*)self;
   mgr->wakeupfd_added = false;
   mgr->wakeup_count = 0;
-  ccmutex_free(&(mgr->mutex));
+  ccmutex_free((struct ccmutex*)&(mgr->mutex));
   if (mgr->epfd != -1) {
     llepollmgr_close(mgr->epfd);
     mgr->epfd = -1;
@@ -585,12 +585,12 @@ int ccionfmgr_wakeup(struct ccionfmgr* self) {
   /* here is the another trick to count the wakeup times.
   this function can be called from any thread, the counter
   need to be protected by a lock.*/
-  ccmutex_lock(&(mgr->mutex));
+  ccmutex_lock((struct ccmutex*)&(mgr->mutex));
   if (mgr->wakeup_count < 2) {
     mgr->wakeup_count += 1;
     needtowakeup = true;
   }
-  ccmutex_unlock(&(mgr->mutex));
+  ccmutex_unlock((struct ccmutex*)&(mgr->mutex));
 
   if (!needtowakeup) {
     /* already signaled to wakeup */
@@ -642,11 +642,11 @@ int ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccionf
       n = ll_event_fd_read(mgr->wakeupfd);
       cclogd("ionf wakeup %s", ccitos(n));
       /* count down wakeup_count */
-      ccmutex_lock(&(mgr->mutex));
+      ccmutex_lock((struct ccmutex*)&(mgr->mutex));
       if (mgr->wakeup_count > 0) {
         mgr->wakeup_count -= 1;
       }
-      ccmutex_unlock(&(mgr->mutex));
+      ccmutex_unlock((struct ccmutex*)&(mgr->mutex));
       continue;
     }
     nevent += 1;

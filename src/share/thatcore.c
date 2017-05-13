@@ -229,7 +229,7 @@ void* ccrawrelloc(void* buffer, sright_int oldsize, sright_int newsize) {
     return 0;
   }
 
-  if (bytes > oldsize) {
+  if ((uright_int)bytes > (uright_int)oldsize) {
     nauty_byte* p = (nauty_byte*)llrawrelloc(buffer, bytes);
     cczero(p+oldsize, p+bytes);
     return p;
@@ -830,11 +830,7 @@ void ccmmheap_free(struct ccmmheap* self) {
 }
 
 static umedit_int ll_left(umedit_int n) {
-  return n*2 + 1;
-}
-
-static umedit_int ll_right(umedit_int n) {
-  return n*2 + 2;
+  return n*2 + 1; /* right is left + 1 */
 }
 
 static umedit_int ll_parent(umedit_int n) {

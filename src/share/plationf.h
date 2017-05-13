@@ -7,6 +7,7 @@
 #include <unistd.h>
 #include <sys/epoll.h>
 #include <sys/eventfd.h>
+#include <pthread.h>
 /** Linux Epoll **/
 
 #define CCEPOLL_MAX_EVENTS 64
@@ -17,7 +18,7 @@ struct llepollmgr {
   int nready;
   int wakeupfd_added;
   int wakeup_count;
-  struct ccmutex mutex;
+  pthread_mutex_t mutex;
   struct epoll_event ready[CCEPOLL_MAX_EVENTS+1];
 };
 

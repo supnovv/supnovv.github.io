@@ -26,26 +26,26 @@ static void llluaco_init(struct ccluaco* co) {
   co->coref = LUA_NOREF;
 }
 
-struct ccluaco ccluaco_create(struct ccthread* owner, int (*func)(struct ccluaco*), void* work) {
+struct ccluaco ccluaco_create(lua_State* L, int (*func)(struct ccluaco*), void* work) {
   struct ccluaco ccco;
   lua_State* co = 0;
   llluaco_init(&ccco);
-  if ((co = lua_newthread(owner->L)) == 0) {
+  if ((co = lua_newthread(L)) == 0) {
     ccloge("lua_newthread failed");
     return ccco;
   }
-  ccco.owner = owner;
+  ccco.L = L;
   ccco.co = co;
-  ccco.coref = luaL_ref(owner->L, LUA_REGISTRYINDEX);
+  ccco.coref = luaL_ref(L, LUA_REGISTRYINDEX);
   ccco.func = func;
   ccco.work = work;
   return ccco;
 }
 
 void ccluaco_free(struct ccluaco* co) {
-  if (co->owner->L && co->coref != LUA_NOREF) {
+  if (co->L && co->coref != LUA_NOREF) {
     /* if ref is LUA_NOREF or LUA_REFNIL, luaL_unref does nothing. */
-    luaL_unref(co->owner->L, LUA_REGISTRYINDEX, co->coref);
+    luaL_unref(co->L, LUA_REGISTRYINDEX, co->coref);
   }
 }
 
@@ -59,7 +59,7 @@ static int lllua_resume(struct ccluaco* co, int nargs) {
   the function is called. The function results are pushed onto the
   stack when the function returns, and the last result is on the top
   of the stack. */
-  int n = lua_resume(co->co, co->owner->L, nargs);
+  int n = lua_resume(co->co, co->L, nargs);
   if (n == LUA_OK) {
     /* coroutine finishes its execution without errors, the stack in L contains
     all values returned by the coroutine main function 'func'. */
@@ -193,17 +193,13 @@ static int llluaco_testfunc(struct ccluaco* co) {
 }
 
 void ccluatest() {
-  struct ccthread thread;
-  struct ccluaco co;
-  ccthread_init(&thread);
-  thread.L = cclua_newstate();
-  co = ccluaco_create(&thread, llluaco_testfunc, 0);
+  lua_State* L = cclua_newstate();
+  struct ccluaco co = ccluaco_create(L, llluaco_testfunc, 0);
   ccluaco_resume(&co);
   ccluaco_resume(&co);
   ccluaco_resume(&co);
   ccluaco_resume(&co);
   ccluaco_free(&co);
-  ccthread_free(&thread);
   ccassert(sizeof(lua_KContext) >= sizeof(void*));
 }
 

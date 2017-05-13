@@ -8,7 +8,7 @@ CORE_API void cclua_close(struct lua_State* L);
 
 struct ccluaco {
   struct ccsmplnode node;
-  struct ccthread* owner;
+  struct lua_State* L;
   struct lua_State* co;
   int coref;
   int (*func)(struct ccluaco*);
@@ -17,7 +17,7 @@ struct ccluaco {
   void* msg;
 };
 
-CORE_API struct ccluaco ccluaco_create(struct ccthread* owner, int (*func)(struct ccluaco*), void* work);
+CORE_API struct ccluaco ccluaco_create(struct lua_State* L, int (*func)(struct ccluaco*), void* work);
 CORE_API void ccluaco_free(struct ccluaco* co);
 CORE_API int ccluaco_resume(struct ccluaco* co);
 CORE_API int ccluaco_yield(struct ccluaco* co, int (*kfunc)(struct ccluaco*));
