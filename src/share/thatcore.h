@@ -303,6 +303,7 @@ struct cchashtable {
 
 CORE_API void cchashtable_init(struct cchashtable* self, nauty_byte sizebits, int offsetofnext, umedit_int (*getkey)(void*));
 CORE_API void cchashtable_free(struct cchashtable* self);
+CORE_API void cchashtable_foreach(struct cchashtable* self, void (*cb)(void*));
 CORE_API void cchashtable_add(struct cchashtable* self, void* elem);
 CORE_API void* cchashtable_find(struct cchashtable* self, umedit_int key);
 CORE_API void* cchashtable_del(struct cchashtable* self, umedit_int key);

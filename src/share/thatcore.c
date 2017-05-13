@@ -640,11 +640,7 @@ void cclinknode_init(struct cclinknode* node) {
 }
 
 nauty_bool cclinknode_isempty(struct cclinknode* node) {
-  if (node->next == node) {
-    ccassert(node->prev == node);
-    return true;
-  }
-  return false;
+  return (node->next == node);
 }
 
 void cclinknode_insertafter(struct cclinknode* node, struct cclinknode* newnode) {
@@ -989,6 +985,20 @@ void cchashtable_add(struct cchashtable* self, void* elem) {
   llsetelemnext(self, elem, slot->next);
   slot->next = elem;
   self->nbucket += 1;
+}
+
+void cchashtable_foreach(struct cchashtable* self, void (*cb)(void*)) {
+  struct cchashslot* slot = self->slot;
+  struct cchashslot* end = slot + self->nslot;
+  struct cchashslot* elem = 0;
+  if (self->slot == 0) return;
+  for (; slot < end; ++slot) {
+    elem = slot->next;
+    while (elem) {
+      cb(elem);
+      elem = llgetnextelem(self, elem);
+    }
+  }
 }
 
 void* cchashtable_find(struct cchashtable* self, umedit_int key) {

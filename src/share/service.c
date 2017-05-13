@@ -71,6 +71,61 @@ static nauty_bool ll_thread_less(void* elem, void* elem2) {
   return thread->weight < thread2->weight;
 }
 
+static void ll_lock_thread(struct ccthread* self) {
+  ccmutex_lock(&self->mutex);
+}
+
+static void ll_unlock_thread(struct ccthread* self) {
+  ccmutex_unlock(&self->mutex);
+}
+
+static umedit_int ll_new_thread_index();
+static void ll_free_msgs(struct ccsqueue* msgq);
+
+void ccthread_init(struct ccthread* self) {
+  cczeron(self, sizeof(struct ccthread));
+  cclinknode_init(&self->node);
+  ccdqueue_init(&self->srvcrxq);
+  ccdqueue_init(&self->srvcq);
+  ccsqueue_init(&self->msgq);
+  ccsqueue_init(&self->freeco);
+  self->freecosz = self->totalco = 0;
+
+  ccmutex_init(&self->mutex);
+  cccondv_init(&self->condv);
+
+  self->L = cclua_newstate();
+  self->defstr = ccemptystr();
+  self->index = ll_new_thread_index();
+}
+
+void ccthread_free(struct ccthread* self) {
+  struct ccluaco* co = 0;
+
+  self->start = 0;
+  if (self->L) {
+   cclua_close(self->L);
+   self->L = 0;
+  }
+
+  /* free all un-handled msgs */
+  ll_free_msgs(&self->msgq);
+
+  /* un-complete services are all in the hash table,
+  it is no need to free them here */
+
+  /* free all coroutines */
+  while ((co = (struct ccluaco*)ccsqueue_pop(&self->freeco))) {
+    ccluaco_free(co);
+    ccrawfree(co);
+  }
+
+  ccmutex_free(&self->mutex);
+  cccondv_free(&self->condv);
+  ccstring_free(&self->defstr);
+}
+
+
 /**
  * threads container
  */
@@ -139,7 +194,20 @@ static void llservices_init(struct llservices* self, nauty_byte initsizebits) {
   self->seed = LLSERVICE_START_SVID;
 }
 
+static void ll_service_free_memory(void* service) {
+  ccrawfree(service);
+}
+
 static void llservices_free(struct llservices* self) {
+  struct ccservice* sv = 0;
+  cchashtable_foreach(&(self->table.a), ll_service_free_memory);
+  cchashtable_foreach(&(self->table.b), ll_service_free_memory);
+
+  while ((sv = (struct ccservice*)ccdqueue_pop(&self->freeq))) {
+    ll_service_free_memory(sv);
+  }
+
+  ccbackhash_free(&self->table);
   ccmutex_free(&self->mutex);
 }
 
@@ -195,6 +263,7 @@ struct llmessages {
 };
 
 static struct llmessages* ll_ccg_messages();
+static void ll_msg_free_data(struct ccmsgnode* self);
 
 static void llmessages_init(struct llmessages* self) {
   ccsqueue_init(&self->rxq);
@@ -204,6 +273,17 @@ static void llmessages_init(struct llmessages* self) {
 }
 
 static void llmessages_free(struct llmessages* self) {
+  struct ccmsgnode* msg = 0;
+
+  ccmutex_lock(&self->mutex);
+  ccsqueue_pushqueue(&self->freeq, &self->rxq);
+  ccmutex_unlock(&self->mutex);
+
+  while ((msg = (struct ccmsgnode*)ccsqueue_pop(&self->freeq))) {
+    ll_msg_free_data(msg);
+    ccrawfree(msg);
+  }
+
   ccmutex_free(&self->mutex);
 }
 
@@ -254,7 +334,7 @@ static struct ccmsgnode* ll_new_msg() {
   return msg;
 }
 
-static void ll_msg_free_memory(struct ccmsgnode* self) {
+static void ll_msg_free_data(struct ccmsgnode* self) {
   self->extra = 0;
   if (self->ptr && (((unsign_ptr)self->ptr) & 0x01)) {
     ccrawfree((void*)((((unsign_ptr)self->ptr) >> 1) << 1));
@@ -287,7 +367,7 @@ static void ll_free_msgs(struct ccsqueue* msgq) {
   head = &msgq->head;
   for (elem = head->next; elem != head; elem = elem->next) {
     count += 1;
-    ll_msg_free_memory((struct ccmsgnode*)elem);
+    ll_msg_free_data((struct ccmsgnode*)elem);
   }
 
   if (count) {
@@ -381,37 +461,6 @@ static void ll_free_coroutine(struct ccthread* thread, struct ccluaco* co) {
   thread->freecosz += 1;
 }
 
-void ccthread_init(struct ccthread* self) {
-  cczeron(self, sizeof(struct ccthread));
-  cclinknode_init(&self->node);
-  ccdqueue_init(&self->srvcrxq);
-  ccdqueue_init(&self->srvcq);
-  ccsqueue_init(&self->msgq);
-  ccsqueue_init(&self->freeco);
-  self->freecosz = self->totalco = 0;
-
-  ccmutex_init(&self->mutex);
-  cccondv_init(&self->condv);
-
-  self->L = cclua_newstate();
-  self->defstr = ccemptystr();
-  self->index = ll_new_thread_index();
-}
-
-void ccthread_free(struct ccthread* self) {
-  struct ccluaco* co = 0;
-  self->start = 0;
-  if (self->L) {
-   cclua_close(self->L);
-   self->L = 0;
-  }
-  while ((co = (struct ccluaco*)ccsqueue_pop(&self->freeco))) {
-    ccluaco_free(co);
-    ccrawfree(co);
-  }
-  ccstring_free(&self->defstr);
-}
-
 struct ccthread* ccthread_getself() {
   return (struct ccthread*)ccthrkey_getdata(&ccG->thrkey);
 }
@@ -435,14 +484,6 @@ void ccthread_exit() {
 
 int ccthread_join(struct ccthread* self) {
   return ccplat_threadjoin(&self->id);
-}
-
-static void ll_lock_thread(struct ccthread* self) {
-  ccmutex_lock(&self->mutex);
-}
-
-static void ll_unlock_thread(struct ccthread* self) {
-  ccmutex_unlock(&self->mutex);
 }
 
 static void ll_parse_command_line(int argc, char** argv) {
