@@ -13,11 +13,11 @@ struct ccluaco {
   int coref;
   int (*func)(struct ccluaco*);
   int (*kfunc)(struct ccluaco*);
-  void* work;
+  void* srvc;
   void* msg;
 };
 
-CORE_API struct ccluaco ccluaco_create(struct lua_State* L, int (*func)(struct ccluaco*), void* work);
+CORE_API nauty_bool ccluaco_init(struct ccluaco* co, struct lua_State* L, int (*func)(struct ccluaco*), void* srvc);
 CORE_API void ccluaco_free(struct ccluaco* co);
 CORE_API int ccluaco_resume(struct ccluaco* co);
 CORE_API int ccluaco_yield(struct ccluaco* co, int (*kfunc)(struct ccluaco*));

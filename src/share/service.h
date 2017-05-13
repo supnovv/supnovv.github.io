@@ -2,6 +2,7 @@
 #define CCLIB_SERVICE_H_
 #include "thatcore.h"
 
+#define CCMSGID_SVDONE 0x01
 struct ccmsgnode {
   struct ccsmplnode node;
   void* extra; /* dont move this field */
@@ -13,6 +14,7 @@ struct ccmsgnode {
 
 struct ccthread;
 CORE_API void ccthread_init(struct ccthread* self);
+CORE_API void ccthread_free(struct ccthread* self);
 CORE_API int ccthread_join(struct ccthread* self);
 CORE_API void ccthread_sleep(uright_int us);
 CORE_API void ccthread_exit();
@@ -25,8 +27,8 @@ CORE_API struct ccstring* ccthread_getdefstr();
 
 struct ccservice;
 CORE_API struct ccionfmgr* ccgetionfmgr();
-CORE_API void ccservice_sendmsg(struct ccservice* self, umedit_int destsvid, sright_int data, void* ptr);
-CORE_API void ccservice_sendtomaster(struct ccservice* self, sright_int data);
+CORE_API void ccservice_sendmsg(struct ccservice* self, umedit_int destsvid, uright_int data, void* ptr, nauty_bool needfreeptr);
+CORE_API void ccservice_sendmsgtomaster(struct ccservice* self, uright_int data);
 
 #endif /* CCLIB_SERVICE_H_ */
 

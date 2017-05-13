@@ -20,26 +20,25 @@ void cclua_close(lua_State* L) {
   if (L) lua_close(L);
 }
 
-static void llluaco_init(struct ccluaco* co) {
+static void ll_init_luaco(struct ccluaco* co) {
   cczeron(co, sizeof(struct ccluaco));
   ccsmplnode_init(&co->node);
   co->coref = LUA_NOREF;
 }
 
-struct ccluaco ccluaco_create(lua_State* L, int (*func)(struct ccluaco*), void* work) {
-  struct ccluaco ccco;
+nauty_bool ccluaco_init(struct ccluaco* ccco, lua_State* L, int (*func)(struct ccluaco*), void* srvc) {
   lua_State* co = 0;
-  llluaco_init(&ccco);
+  ll_init_luaco(ccco);
   if ((co = lua_newthread(L)) == 0) {
     ccloge("lua_newthread failed");
-    return ccco;
+    return false;
   }
-  ccco.L = L;
-  ccco.co = co;
-  ccco.coref = luaL_ref(L, LUA_REGISTRYINDEX);
-  ccco.func = func;
-  ccco.work = work;
-  return ccco;
+  ccco->L = L;
+  ccco->co = co;
+  ccco->coref = luaL_ref(L, LUA_REGISTRYINDEX);
+  ccco->func = func;
+  ccco->srvc = srvc;
+  return true;
 }
 
 void ccluaco_free(struct ccluaco* co) {
@@ -194,7 +193,8 @@ static int llluaco_testfunc(struct ccluaco* co) {
 
 void ccluatest() {
   lua_State* L = cclua_newstate();
-  struct ccluaco co = ccluaco_create(L, llluaco_testfunc, 0);
+  struct ccluaco co;
+  ccluaco_init(&co, L, llluaco_testfunc, 0);
   ccluaco_resume(&co);
   ccluaco_resume(&co);
   ccluaco_resume(&co);
