@@ -133,6 +133,7 @@ The 32-bit signed integer's biggest value is 2147483647.
 For seconds/milliseconds/microseconds/nanoseconds, it can
 represent more than 67-year/24-day/35-min/2-sec. */
 
+#define CCNSECS_OF_SECOND (1000000000L)
 struct cctime {
   sright_int sec;
   umedit_int nsec;
@@ -382,7 +383,7 @@ CORE_API void ccrwlock_unlock(struct ccrwlock* self);
 CORE_API nauty_bool cccondv_init(struct cccondv* self);
 CORE_API void cccondv_free(struct cccondv* self);
 CORE_API nauty_bool cccondv_wait(struct cccondv* self, struct ccmutex* mutex);
-CORE_API nauty_bool cccondv_timedwait(struct cccondv* self, struct ccmutex* mutex, struct cctime time);
+CORE_API nauty_bool cccondv_timedwait(struct cccondv* self, struct ccmutex* mutex, sright_int ns);
 CORE_API void cccondv_signal(struct cccondv* self);
 CORE_API void cccondv_broadcast(struct cccondv* self);
 

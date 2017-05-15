@@ -11,10 +11,14 @@
 #define CCIONFERR 0x20
 #define CCIONFINT 0x40
 
+#define CCSOCK_LISTEN  0x1000
+#define CCSOCK_CONNECT 0x2000
+
 struct ccionfevt {
-  handle_int hdl;
-  umedit_int masks;
+  struct ccsmplnode node;
+  handle_int fd;
   umedit_int udata;
+  umedit_int masks;
 };
 
 struct ccionfmgr {

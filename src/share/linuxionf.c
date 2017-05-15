@@ -474,14 +474,14 @@ static umedit_int llgetionfmasks(struct epoll_event* event) {
 }
 
 static uint64_t llgetepolludata(struct ccionfevt* event) {
-  uint32_t hdl = event->hdl;
+  uint32_t fd = event->fd;
   uint64_t udata = event->udata;
-  return ((udata << 32) | hdl);
+  return ((udata << 32) | fd);
 }
 
 static handle_int llgetionfhandle(struct epoll_event* event) {
-  uint32_t hdl = (uint32_t)(event->data.u64 & 0xFFFFFFFF);
-  return (handle_int)hdl;
+  uint32_t fd = (uint32_t)(event->data.u64 & 0xFFFFFFFF);
+  return (handle_int)fd;
 }
 
 static umedit_int llgetionfudata(struct epoll_event* event) {
@@ -555,7 +555,7 @@ nauty_bool ccionfmgr_add(struct ccionfmgr* self, struct ccionfevt* event) {
   struct epoll_event e;
   e.events = (EPOLLHUP | EPOLLERR | llgetepollmasks(event));
   e.data.u64 = llgetepolludata(event);
-  return llepollmgr_add(mgr->epfd, (int)event->hdl, &e);
+  return llepollmgr_add(mgr->epfd, (int)event->fd, &e);
 }
 
 nauty_bool ccionfmgr_mod(struct ccionfmgr* self, struct ccionfevt* event) {
@@ -563,12 +563,12 @@ nauty_bool ccionfmgr_mod(struct ccionfmgr* self, struct ccionfevt* event) {
   struct epoll_event e;
   e.events = (EPOLLHUP | EPOLLERR | llgetepollmasks(event));
   e.data.u64 = llgetepolludata(event);
-  return llepollmgr_mod(mgr->epfd, (int)event->hdl, &e);
+  return llepollmgr_mod(mgr->epfd, (int)event->fd, &e);
 }
 
 nauty_bool ccionfmgr_del(struct ccionfmgr* self, struct ccionfevt* event) {
   struct llepollmgr* mgr = (struct llepollmgr*)self;
-  return llepollmgr_del(mgr->epfd, (int)event->hdl);
+  return llepollmgr_del(mgr->epfd, (int)event->fd);
 }
 
 /* return > 0 success, -1 block, -2 error, -3 already signaled */
@@ -606,7 +606,7 @@ int ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccionf
   struct epoll_event* start = 0;
   struct epoll_event* beyond = 0;
   struct ccionfevt event;
-  int nevent = 0, n = 0;
+  int n = 0;
 
   /* timeout cannot be negative except infinity (-1) */
   if (ms < 0 && ms != -1) {
@@ -649,14 +649,13 @@ int ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccionf
       ccmutex_unlock((struct ccmutex*)&(mgr->mutex));
       continue;
     }
-    nevent += 1;
     event.masks = llgetionfmasks(start);
-    event.hdl = llgetionfhandle(start);
+    event.fd = llgetionfhandle(start);
     event.udata = llgetionfudata(start);
     cb(&event);
   }
 
-  return nevent;
+  return mgr->nready;
 }
 
 int ccionfmgr_wait(struct ccionfmgr* self, void (*cb)(struct ccionfevt*)) {

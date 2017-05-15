@@ -29,6 +29,8 @@ struct ccservice;
 CORE_API struct ccionfmgr* ccgetionfmgr();
 CORE_API void ccservice_sendmsg(struct ccservice* self, umedit_int destsvid, uright_int data, void* ptr, nauty_bool needfreeptr);
 CORE_API void ccservice_sendmsgtomaster(struct ccservice* self, uright_int data);
+CORE_API void ccmaster_dispatch_msg();
+CORE_API void ccworker_handle_msg();
 
 #endif /* CCLIB_SERVICE_H_ */
 

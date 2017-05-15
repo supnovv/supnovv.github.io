@@ -20,12 +20,9 @@ struct ccservice {
   /* thread own use */
   ushort_int flag;
   umedit_int svid;
-  void* udata;
+  struct ccionfevt* event;
   struct ccluaco* co;
-  union {
-  int (*func)(void* udata, void* msg);
   int (*cofunc)(struct ccluaco*);
-  } u;
 };
 
 static void ccservice_init(struct ccservice* self) {
@@ -48,7 +45,9 @@ struct ccthread {
   struct cclinknode node;
   umedit_int weight;
   /* shared with master */
-  struct ccdqueue srvcrxq;
+  nauty_bool missionassigned;
+  struct ccdqueue servicerxq;
+  struct ccmutex iolock;
   struct ccmutex mutex;
   struct cccondv condv;
   /* free access */
@@ -57,7 +56,7 @@ struct ccthread {
   /* thread own use */
   struct lua_State* L;
   int (*start)();
-  struct ccdqueue srvcq;
+  struct ccdqueue serviceq;
   struct ccsqueue msgq;
   struct ccsqueue freeco;
   umedit_int freecosz;
@@ -85,8 +84,8 @@ static void ll_free_msgs(struct ccsqueue* msgq);
 void ccthread_init(struct ccthread* self) {
   cczeron(self, sizeof(struct ccthread));
   cclinknode_init(&self->node);
-  ccdqueue_init(&self->srvcrxq);
-  ccdqueue_init(&self->srvcq);
+  ccdqueue_init(&self->servicerxq);
+  ccdqueue_init(&self->serviceq);
   ccsqueue_init(&self->msgq);
   ccsqueue_init(&self->freeco);
   self->freecosz = self->totalco = 0;
@@ -251,6 +250,70 @@ static void ll_service_is_finished(struct ccservice* srvc) {
   ccmutex_unlock(&self->mutex);
 }
 
+
+/**
+ * events container
+ */
+
+struct llevents {
+  struct ccsqueue freeq;
+  umedit_int freesize;
+  umedit_int total;
+  struct ccmutex mutex;
+};
+
+static struct llevents* ll_ccg_events();
+
+static void llevents_init(struct llevents* self) {
+  ccsqueue_init(&self->freeq);
+  ccmutex_init(&self->mutex);
+  self->freesize = self->total = 0;
+}
+
+static void llevents_free(struct llevents* self) {
+  struct ccionfevt* event;
+
+  ccmutex_lock(&self->mutex);
+  while ((event = ccsqueue_pop(&self->freeq))) {
+    ccrawfree(event);
+  }
+  self->freesize = 0;
+  ccmutex_unlock(&self->mutex);
+
+  ccmutex_free(&self->mutex);
+}
+
+static struct ccionfevt* ll_new_event() {
+  struct llevents* self = ll_ccg_events();
+  struct ccionfevt* event = 0;
+
+  ccmutex_lock(&self->mutex);
+  event = (struct ccionfevt*)ccsqueue_pop(&self->freeq);
+  if (self->freesize) {
+    self->freesize -= 1;
+  }
+  ccmutex_unlock(&self->mutex);
+
+  if (event == 0) {
+    event = ccrawalloc(sizeof(struct ccionfevt));
+    self->total += 1;
+  }
+
+  cczero(event, sizeof(struct ccionfevt));
+  return event;
+}
+
+static void ll_free_event(struct ccionfevt* event) {
+  struct llevents* self = ll_ccg_events();
+  if (event == 0) return;
+
+  ccmutex_lock(&self->mutex);
+  ccsqueue_push(&self->freeq, &event->node);
+  self->freesize += 1;
+  ccmutex_unlock(&self->mutex);
+}
+
+
 /**
  * messages container
  */
@@ -378,6 +441,7 @@ static void ll_free_msgs(struct ccsqueue* msgq) {
   }
 }
 
+
 /**
  * global
  */
@@ -385,6 +449,7 @@ static void ll_free_msgs(struct ccsqueue* msgq) {
 struct ccglobal {
   struct llthreads threads;
   struct llservices services;
+  struct llevents events;
   struct llmessages messages;
   struct ccionfmgr ionf;
   struct ccthrkey thrkey;
@@ -394,15 +459,19 @@ struct ccglobal {
 static struct ccglobal* ccG;
 
 static struct llthreads* ll_ccg_threads() {
-  return &(ccG->threads);
+  return &ccG->threads;
 }
 
 static struct llservices* ll_ccg_services() {
-  return &(ccG->services);
+  return &ccG->services;
+}
+
+static struct llevents* ll_ccg_events() {
+  return &ccG->events;
 }
 
 static struct llmessages* ll_ccg_messages() {
-  return &(ccG->messages);
+  return &ccG->messages;
 }
 
 static nauty_bool ll_set_thread_data(struct ccthread* thread) {
@@ -452,7 +521,7 @@ static struct ccluaco* ll_new_coroutine(struct ccthread* thread, struct ccservic
     co = (struct ccluaco*)ccrawalloc(sizeof(struct ccluaco));
     thread->totalco += 1;
   }
-  ccluaco_init(co, thread->L, srvc->u.cofunc, srvc);
+  ccluaco_init(co, thread->L, srvc->cofunc, srvc);
   return co;
 }
 
@@ -484,40 +553,6 @@ void ccthread_exit() {
 
 int ccthread_join(struct ccthread* self) {
   return ccplat_threadjoin(&self->id);
-}
-
-static void ll_parse_command_line(int argc, char** argv) {
-  (void)argc;
-  (void)argv;
-}
-
-int startmainthreadcv(int (*start)(), int argc, char** argv) {
-  int n = 0;
-  struct ccglobal G;
-  struct ccthread master;
-
-  /* init global first */
-  ccglobal_init(&G);
-
-  /* init master thread */
-  ccthread_init(&master);
-  master.id = ccplat_selfthread();
-
-  /* attach master thread */
-  ccglobal_setmaster(&master);
-
-  /* call start func */
-  ll_parse_command_line(argc, argv);
-  n = start();
-
-  /* clean */
-  ccthread_free(&master);
-  ccglobal_free(&G);
-  return n;
-}
-
-int startmainthread(int (*start)()) {
-  return startmainthreadcv(start, 0, 0);
 }
 
 static void* ll_thread_func(void* para) {
@@ -593,185 +628,253 @@ void ccservice_sendmsgtomaster(struct ccservice* self, uright_int data) {
   ll_send_message(msg);
 }
 
-void ccmaster_dispatch() {
-  struct ccsqueue queue;
-  struct ccsqueue freeq;
-  struct ccmsgnode* msg;
-  struct ccservice* sv;
-  struct ccthread* master = ccthread_getmaster();
+static void ccmaster_dispatch_event(struct ccionfevt* event) {
+  umedit_int svid = event->udata;
+  struct ccservice* sv = 0;
 
-  /* get all global messages */
-  queue = ll_get_current_rx_msgs();
-
-  /* prepare master's messages */
-  while ((msg = (struct ccmsgnode*)ccsqueue_pop(&queue))) {
-    if (msg->dstid == 0) {
-      ccsqueue_push(&master->msgq, &msg->node);
-    }
+  sv = ll_find_service(svid);
+  if (sv == 0) {
+    ccloge("service not found");
+    return;
   }
 
-  /* handle master's messages */
-  ccsqueue_init(&freeq);
-  while ((msg = (struct ccmsgnode*)ccsqueue_pop(&master->msgq))) {
-    sv = (struct ccservice*)msg->extra;
-    switch (msg->data) {
-    case CCMSGID_SVDONE:
-      /* service's received msgs (if any) */
-      ccsqueue_pushqueue(&freeq, &sv->rxmq);
-      /* remove service out from hash table and insert to free queue */
-      ll_service_is_finished(sv);
-      /* reset the service */
-      sv->belong = 0;
-      break;
-    default:
-      ccloge("unknow message id");
-      break;
-    }
-    ccsqueue_push(&freeq, &msg->node);
+  if (event->fd != sv->event->fd) {
+    ccloge("fd mismatch");
+    return;
   }
 
-  /* dispatch service's messages */
-  while ((msg = (struct ccmsgnode*)ccsqueue_pop(&queue))) {
-    nauty_bool newattach = false;
-
-    /* get message's dest service */
-    sv = ll_find_service(msg->dstid);
-    if (sv == 0) {
-      ccsqueue_push(&freeq, &msg->node);
-      continue;
-    }
-
-    if (sv->belong) {
-      nauty_bool done = false;
-
-      ll_lock_thread(sv->belong);
-      done = (sv->outflag & CCSERVICE_DONE) != 0;
-      ll_unlock_thread(sv->belong);
-
-      if (done) {
-        /* free current msg and service's received msgs (if any) */
-        ccsqueue_push(&freeq, &msg->node);
-        ccsqueue_pushqueue(&freeq, &sv->rxmq);
-
-        /* when service is done, the service is already removed out from thread's service queue.
-        here delete service from the hash table and insert into service's free queue */
-        ll_service_is_finished(sv);
-
-        /* reset the service */
-        sv->belong = 0;
-        continue;
-      }
-    } else {
-      /* attach a thread to handle the service */
-      sv->belong = ll_get_thread_for_new_service();
-      newattach = true;
-    }
-
-    /* queue the service to its belong thread */
-    ll_lock_thread(sv->belong);
-    msg->extra = sv;
-    ccsqueue_push(&sv->rxmq, &msg->node);
-    if (newattach) {
-      sv->outflag = sv->flag = 0;
-      ccdqueue_push(&sv->belong->srvcrxq, &sv->node);
-    }
-    ll_unlock_thread(sv->belong);
-    /* TODO: signal the thread to handle */
-  }
-
-  ll_free_msgs(&freeq);
 }
 
-int ccthread_dispatch(struct ccthread* thread) {
+void ccmaster_start() {
+  struct ccsqueue queue;
+  struct ccsqueue freeq;
+  struct ccmsgnode* msg = 0;
+  struct ccservice* sv = 0;
+  struct ccthread* master = ccthread_getmaster();
+
+  /* read parameters from config file and start worker threads */
+
+
+  /* start main loop */
+  for (; ;) {
+    ccionfmgr_wait(ccgetionfmgr(), ccmaster_dispatch_event);
+
+    /* get all global messages */
+    queue = ll_get_current_rx_msgs();
+
+    /* prepare master's messages */
+    while ((msg = (struct ccmsgnode*)ccsqueue_pop(&queue))) {
+      if (msg->dstid == 0) {
+        ccsqueue_push(&master->msgq, &msg->node);
+      }
+    }
+
+    /* handle master's messages */
+    ccsqueue_init(&freeq);
+    while ((msg = (struct ccmsgnode*)ccsqueue_pop(&master->msgq))) {
+      sv = (struct ccservice*)msg->extra;
+      switch (msg->data) {
+      case CCMSGID_SVDONE:
+        /* service's received msgs (if any) */
+        ccsqueue_pushqueue(&freeq, &sv->rxmq);
+        /* remove service out from hash table and insert to free queue */
+        ll_service_is_finished(sv);
+        /* reset the service */
+        sv->belong = 0;
+        break;
+      default:
+        ccloge("unknow message id");
+        break;
+      }
+      ccsqueue_push(&freeq, &msg->node);
+    }
+
+    /* dispatch service's messages */
+    while ((msg = (struct ccmsgnode*)ccsqueue_pop(&queue))) {
+      nauty_bool newattach = false;
+
+      /* get message's dest service */
+      sv = ll_find_service(msg->dstid);
+      if (sv == 0) {
+        cclogw("service not found");
+        ccsqueue_push(&freeq, &msg->node);
+        continue;
+      }
+
+      if (sv->belong) {
+        nauty_bool done = false;
+
+        ll_lock_thread(sv->belong);
+        done = (sv->outflag & CCSERVICE_DONE) != 0;
+        ll_unlock_thread(sv->belong);
+
+        if (done) {
+          /* free current msg and service's received msgs (if any) */
+          ccsqueue_push(&freeq, &msg->node);
+          ccsqueue_pushqueue(&freeq, &sv->rxmq);
+
+          /* when service is done, the service is already removed out from thread's service queue.
+          here delete service from the hash table and insert into service's free queue */
+          ll_service_is_finished(sv);
+
+          /* reset the service */
+          sv->belong = 0;
+          continue;
+        }
+      } else {
+        /* attach a thread to handle the service */
+        sv->belong = ll_get_thread_for_new_service();
+        newattach = true;
+      }
+
+      /* queue the service to its belong thread */
+      ll_lock_thread(sv->belong);
+      if (newattach) {
+        sv->outflag = sv->flag = 0;
+        ccdqueue_push(&sv->belong->servicerxq, &sv->node);
+      }
+      msg->extra = sv;
+      ccsqueue_push(&sv->rxmq, &msg->node);
+      sv->belong->missionassigned = true;
+      ll_unlock_thread(sv->belong);
+      /* signal the thread to handle */
+      cccondv_signal(&(sv->belong->condv));
+    }
+
+    ll_free_msgs(&freeq);
+  }
+}
+
+void ccworker_start() {
   struct ccdqueue doneq;
   struct ccsqueue freemq;
-  struct ccservice* sv;
-  struct cclinknode* head, * elem;
-  struct ccmsgnode* msg;
-  int n = 0, count = 0;
+  struct ccservice* sv = 0;
+  struct cclinknode* head = 0;
+  struct cclinknode* elem = 0;
+  struct ccmsgnode* msg = 0;
+  struct ccthread* thread = ccthread_getself();
+  int n = 0;
 
-  ll_lock_thread(thread);
-  ccdqueue_pushqueue(&thread->srvcq, &thread->srvcrxq);
-  ll_unlock_thread(thread);
-
-  if (ccdqueue_isempty(&thread->srvcq)) {
-    /* no services need to run */
-    return 0;
-  }
-
-  head = &(thread->srvcq.head);
-  for (elem = head->next; elem != head; elem = elem->next) {
-    sv = (struct ccservice*)elem;
-    if (!ccsqueue_isempty(&sv->rxmq)) {
-      ll_lock_thread(thread);
-      ccsqueue_pushqueue(&thread->msgq, &sv->rxmq);
-      ll_unlock_thread(thread);
+  for (; ;) {
+    ccmutex_lock(&thread->mutex);
+    while (!thread->missionassigned) {
+      cccondv_wait(&thread->condv, &thread->mutex);
     }
-  }
+    /* mission waited, reset false */
+    thread->missionassigned = false;
+    ccdqueue_pushqueue(&thread->serviceq, &thread->servicerxq);
+    ccmutex_unlock(&thread->mutex);
 
-  if (ccsqueue_isempty(&thread->msgq)) {
-    /* services have no messages */
-    return 0;
-  }
+    head = &(thread->serviceq.head);
+    for (elem = head->next; elem != head; elem = elem->next) {
+      sv = (struct ccservice*)elem;
+      if (!ccsqueue_isempty(&sv->rxmq)) {
+        ll_lock_thread(thread);
+        ccsqueue_pushqueue(&thread->msgq, &sv->rxmq);
+        ll_unlock_thread(thread);
+      }
+    }
 
-  ccdqueue_init(&doneq);
-  ccsqueue_init(&freemq);
-  while ((msg = (struct ccmsgnode*)ccsqueue_pop(&thread->msgq))) {
-    sv = (struct ccservice*)msg->extra;
-    if (sv->flag & CCSERVICE_DONE) {
-      ccsqueue_push(&freemq, &msg->node);
+    if (ccsqueue_isempty(&thread->msgq)) {
+      /* there are no messages received */
       continue;
     }
 
-    if (sv->flag & CCSERVICE_CCCO) {
-      if (sv->co == 0) {
-        sv->co = ll_new_coroutine(thread, sv);
-      }
-      if (sv->co->L != thread->L) {
-        ccloge("wrong lua state");
+    ccdqueue_init(&doneq);
+    ccsqueue_init(&freemq);
+    while ((msg = (struct ccmsgnode*)ccsqueue_pop(&thread->msgq))) {
+      sv = (struct ccservice*)msg->extra;
+      if (sv->flag & CCSERVICE_DONE) {
         ccsqueue_push(&freemq, &msg->node);
         continue;
       }
-      sv->co->srvc = sv;
-      sv->co->msg = msg;
-      n = ccluaco_resume(sv->co);
-      sv->co->srvc = sv->co->msg = 0;
-    } else if (sv->flag & CCSERVICE_FUNC) {
-      n = sv->u.func(sv->udata, &msg->node);
-    } else if (sv->flag & CCSERVICE_LUAF) {
 
-    }
-    else {
-      ccloge("invalide service type");
-    }
+      if (sv->flag & CCSERVICE_CCCO) {
+        if (sv->co == 0) {
+          sv->co = ll_new_coroutine(thread, sv);
+        }
+        if (sv->co->L != thread->L) {
+          ccloge("wrong lua state");
+          ccsqueue_push(&freemq, &msg->node);
+          continue;
+        }
+        sv->co->srvc = sv;
+        sv->co->msg = msg;
+        n = ccluaco_resume(sv->co);
+        sv->co->srvc = sv->co->msg = 0;
+      } else if (sv->flag & CCSERVICE_FUNC) {
 
-    /* service run completed */
-    if (n == 0) {
-      sv->flag |= CCSERVICE_DONE;
-      ccdqueue_push(&doneq, cclinknode_remove(&sv->node));
-      if (sv->co) {
-        ll_free_coroutine(thread, sv->co);
-        sv->co = 0;
+      } else if (sv->flag & CCSERVICE_LUAF) {
+
       }
+      else {
+        ccloge("invalide service type");
+      }
+
+      /* service run completed */
+      if (n == 0) {
+        sv->flag |= CCSERVICE_DONE;
+        ccdqueue_push(&doneq, cclinknode_remove(&sv->node));
+        if (sv->co) {
+          ll_free_coroutine(thread, sv->co);
+          sv->co = 0;
+        }
+      }
+
+      /* free handled message */
+      ccsqueue_push(&freemq, &msg->node);
     }
 
-    /* free handled message */
-    ccsqueue_push(&freemq, &msg->node);
-    count += 1;
+    while ((sv = (struct ccservice*)ccdqueue_pop(&doneq))) {
+      ll_lock_thread(thread);
+      sv->outflag |= CCSERVICE_DONE;
+      ll_unlock_thread(thread);
+
+      /* currently the finished service is removed out from thread's
+      service queue, but the service still pointer to this thread.
+      send SVDONE message to master to reset and free this service. */
+      ccservice_sendmsgtomaster(sv, CCMSGID_SVDONE);
+    }
+
+    ll_free_msgs(&freemq);
   }
+}
 
-  while ((sv = (struct ccservice*)ccdqueue_pop(&doneq))) {
-    ll_lock_thread(thread);
-    sv->outflag |= CCSERVICE_DONE;
-    ll_unlock_thread(thread);
+static void ll_parse_command_line(int argc, char** argv) {
+  (void)argc;
+  (void)argv;
+}
 
-    /* currently the finished service is removed out from thread's
-    service queue, but the service still pointer to this thread.
-    send SVDONE message to master to reset and free this service. */
-    ccservice_sendmsgtomaster(sv, CCMSGID_SVDONE);
-  }
+int startmainthreadcv(int (*start)(), int argc, char** argv) {
+  int n = 0;
+  struct ccglobal G;
+  struct ccthread master;
 
-  ll_free_msgs(&freemq);
-  return count;
+  /* init global first */
+  ccglobal_init(&G);
+
+  /* init master thread */
+  ccthread_init(&master);
+  master.id = ccplat_selfthread();
+
+  /* attach master thread */
+  ccglobal_setmaster(&master);
+
+  /* call start func */
+  ll_parse_command_line(argc, argv);
+  n = start();
+
+  /* clean */
+  ccthread_free(&master);
+  ccglobal_free(&G);
+  return n;
+}
+
+int startmainthread(int (*start)()) {
+  return startmainthreadcv(start, 0, 0);
+}
+
+int main(int argc, char** argv) {
+  return startmainthreadcv(ccmaster_start, argc, argv);
 }
 

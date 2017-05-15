@@ -655,25 +655,45 @@ nauty_bool cccondv_wait(struct cccondv* self, struct ccmutex* mutex) {
   return true;
 }
 
-nauty_bool cccondv_timedwait(struct cccondv* self, struct ccmutex* mutex, struct cctime time) {
+nauty_bool cccondv_timedwait(struct cccondv* self, struct ccmutex* mutex, sright_int ns) {
   pthread_cond_t* c = (pthread_cond_t*)self;
   pthread_mutex_t* m = (pthread_mutex_t*)mutex;
+  struct cctime curtime = ccsystime();
   struct timespec tm;
-  tm.tv_sec = (time_t)time.sec;
-  tm.tv_nsec = (long)time.nsec;
-  int n = pthread_cond_timedwait(c, m, &tm);
-  if (n == 0) {
+  int n = 0;
+
+  /* caculate the absolute time */
+  ns += curtime.nsec + curtime.sec * CCNSECS_OF_SECOND;
+  if (ns < 0) {
+    ns = 0;
+    ccloge("invalid timeout value");
+  }
+  tm.tv_sec = (time_t)(ns / CCNSECS_OF_SECOND);
+  tm.tv_nsec = (long)(ns - tm.tv_sec * CCNSECS_OF_SECOND);
+
+  /* int pthread_cond_timedwait(pthread_cond_t* cond,
+  pthread_mutex_t* mutex, const struct timespec* abstime); */
+  n = pthread_cond_timedwait(c, m, &tm);
+  if (n == 0 || n == ETIMEDOUT) {
     return true;
   }
-  if (n != ETIMEDOUT) {
-    ccloge("pthread_cond_timedwait %d", strerror(n));
-    return false;
-  }
-  return true;
+  ccloge("pthread_cond_timedwait %d", strerror(n));
+  return false;
 }
 
 void cccondv_signal(struct cccondv* self) {
   pthread_cond_t* cond = (pthread_cond_t*)self;
+  /* pthread_cond_signal() shall unblock at least one of the threads
+  that are blocked on the specified condition variable cond (if any
+  threads are blocked on cond).
+  pthread_cond_broadcast() and pthread_cond_signal() functions shall
+  have no effect if there are no threads currently blocked on cond.
+  It is not safe to use the pthread_cond_signal() function in a signal
+  handler that is invoked asynchronously. Even if it were safe, there
+  would still be a race between the test of the Boolean pthread_cond_wait()
+  that could not be efficiently eliminated.
+  Mutexes and condition variables are thus not suitable for releasing
+  a waiting thread by signaling from code running in a signal handler. */
   int n = pthread_cond_signal(cond);
   if (n != 0) {
     ccloge("pthread_cond_signal %s", strerror(n));

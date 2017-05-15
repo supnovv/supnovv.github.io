@@ -1115,6 +1115,7 @@ void ccthattest() {
   char* a = buffer;
   struct ccfrom from;
   struct ccheap heap = {0};
+  struct ccheap* pheap = &heap;
   uoctet_int ainit[4] = {0};
 #if defined(CCDEBUG)
   cclogd("CCDEBUG true");
@@ -1123,6 +1124,10 @@ void ccthattest() {
 #endif
   ccassert(heap.start == 0);
   ccassert(heap.beyond == 0);
+  pheap->start = (nauty_byte*)buffer;
+  ccassert(*pheap->start == '0');
+  ccassert(*pheap->start == *(pheap->start));
+  ccassert(&pheap->start == &(pheap->start));
   ccassert(ainit[0] == 0);
   ccassert(ainit[1] == 0);
   ccassert(ainit[2] == 0);
