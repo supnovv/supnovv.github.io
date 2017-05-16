@@ -2,23 +2,24 @@
 #define CCLIB_IONOTIFY_H_
 #include "thatcore.h"
 
-#define CCIONFRD  0x01
-#define CCIONFWR  0x02
-#define CCIONFRW  0x03
-#define CCIONFPRI 0x04
-#define CCIONFRDH 0x08
-#define CCIONFHUP 0x10
-#define CCIONFERR 0x20
-#define CCIONFINT 0x40
+#define CCIONFRD  0x0001
+#define CCIONFWR  0x0002
+#define CCIONFRW  0x0003
+#define CCIONFPRI 0x0004
+#define CCIONFRDH 0x0008
+#define CCIONFHUP 0x0010
+#define CCIONFERR 0x0020
+#define CCIONFINT 0x0040
 
-#define CCSOCK_LISTEN  0x1000
-#define CCSOCK_CONNECT 0x2000
+#define CCSOCK_LISTEN  0x01
+#define CCSOCK_CONNECT 0x02
 
 struct ccionfevt {
   struct ccsmplnode node;
   handle_int fd;
   umedit_int udata;
-  umedit_int masks;
+  ushort_int masks;
+  ushort_int flags;
 };
 
 struct ccionfmgr {

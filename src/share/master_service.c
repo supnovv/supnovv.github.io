@@ -222,10 +222,6 @@ int ccnodemain(struct ccstate* s) {
   if (G.iofd == -1) return -1;
 }
 
-static int ccmaster_start() {
-
-}
-
 int main(int argc, char** argv) {
   return startmainthreadcv(ccmaster_start, argc, argv);
 }

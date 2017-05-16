@@ -26,7 +26,7 @@ static void ll_init_luaco(struct ccluaco* co) {
   co->coref = LUA_NOREF;
 }
 
-nauty_bool ccluaco_init(struct ccluaco* ccco, lua_State* L, int (*func)(struct ccluaco*), void* srvc) {
+nauty_bool ccluaco_init(struct ccluaco* ccco, lua_State* L, int (*func)(struct ccluaco*), struct ccservice* srvc) {
   lua_State* co = 0;
   ll_init_luaco(ccco);
   if ((co = lua_newthread(L)) == 0) {

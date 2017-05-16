@@ -23,7 +23,7 @@ CORE_API ushort_int ccsockaddr_getport(struct ccsockaddr* self);
 CORE_API nauty_bool ccsockaddr_getipstr(struct ccsockaddr* self, struct ccstring* out);
 
 CORE_API struct ccsocket ccsocket_listen(const struct ccsockaddr* addr, int backlog);
-CORE_API void ccsocket_accept(struct ccsocket* sock, int (*cb)(struct ccsockconn*));
+CORE_API void ccsocket_accept(struct ccsocket* sock, void (*cb)(void*, struct ccsockconn*), void* ud);
 CORE_API void ccsocket_close(struct ccsocket* sock);
 CORE_API void ccsocket_shutdown(struct ccsocket* sock, nauty_char r_w_a);
 CORE_API void ccsocketconn_init(struct ccsockconn* self, struct ccfrom ip, ushort_int port);

@@ -694,7 +694,7 @@ caused connection abort）。POSIX作出修正的理由在于，流子系统（s
 不把该错误传递给进程的做法所涉及的步骤在TCPv2中得到阐述，引发该错误的RST在第964
 页到达处理，导致tcp_close被调用。*/
 
-void ccsocket_accept(struct ccsocket* sock, int (*cb)(struct ccsockconn*)) {
+void ccsocket_accept(struct ccsocket* sock, void (*cb)(void*, struct ccsockconn*), void* ud) {
   int n = 0;
   struct ccsockconn conn;
   struct llsockaddr* sa = (struct llsockaddr*)&(conn.remote);
@@ -708,7 +708,7 @@ void ccsocket_accept(struct ccsocket* sock, int (*cb)(struct ccsockconn*)) {
         sa->len = providedlen;
       }
       llsetnonblock(conn.sock.id);
-      if (cb(&conn)) return;
+      cb(ud, &conn);
       continue;
     }
 
