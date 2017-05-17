@@ -9,6 +9,20 @@
 #define CCMSGID_CONNRSP 0x12
 #define CCMSGFLAG_FREEPTR 0x01
 
+#define MESSAGE_ID_CONNIND 0x11
+#define MESSAGE_ID_CONNRSP 0x12
+#define MESSAGE_ID_IOEVENT 0x10
+
+#define ROBOT_DONE     0x00
+#define ROBOT_CONTINUE 0x01
+
+#define ROBOT_FLAG_FREEDATA 0x01
+
+#if 0
+void robot_set_specific(struct ccrobot* self, void* data);
+void robot_set_allocated_specific(struct ccrobot* self, void* data);
+#endif
+
 union ccmsgdata {
   handle_int fd;
   uoctet_int ub;
@@ -28,7 +42,7 @@ union ccmsgdata {
   void* ptr;
 };
 
-struct ccmsgnode {
+struct ccmessage {
   struct ccsmplnode node;
   void* extra; /* dont move this field */
   umedit_int srcid;
@@ -53,11 +67,11 @@ CORE_API struct ccstring* ccthread_getdefstr();
 
 struct ccservice;
 CORE_API struct ccionfmgr* ccgetionfmgr();
-CORE_API struct ccluaco* ccservice_getco(struct ccservice* self);
-CORE_API struct ccmsgnode* ccnewmessage(umedit_int destsvid, umedit_int type);
-CORE_API struct ccmsgnode* ccnewmessage_allocated(umedit_int destsvid, umedit_int type, void* ptr);
-CORE_API void ccservice_sendmsg(struct ccservice* self, struct ccmsgnode* msg);
-CORE_API void ccservice_sendmsgtomaster(struct ccservice* self, struct ccmsgnode* msg);
+CORE_API struct ccstate* ccservice_getstate(struct ccservice* self);
+CORE_API struct ccmessage* ccnewmessage(umedit_int destsvid, umedit_int type);
+CORE_API struct ccmessage* ccnewmessage_allocated(umedit_int destsvid, umedit_int type, void* ptr);
+CORE_API void ccservice_sendmsg(struct ccservice* self, struct ccmessage* msg);
+CORE_API void ccservice_sendmsgtomaster(struct ccservice* self, struct ccmessage* msg);
 CORE_API void ccservice_sendtomaster(struct ccservice* self, umedit_int type);
 CORE_API void ccmaster_dispatch_msg();
 CORE_API void ccworker_handle_msg();

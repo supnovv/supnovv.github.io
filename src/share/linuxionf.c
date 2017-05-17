@@ -462,7 +462,7 @@ static ushort_int llionfrdh[] = {0, CCIONFRDH};
 static ushort_int llionfhup[] = {0, CCIONFHUP};
 static ushort_int llionferr[] = {0, CCIONFERR};
 
-static uint32_t llgetepollmasks(struct ccionfevt* event) {
+static uint32_t llgetepollmasks(struct ccioevent* event) {
   return (llepollmasks[event->masks & CCIONFRD] | llepollmasks[event->masks & CCIONFWR] |
     llepollmasks[event->masks & CCIONFPRI] | llepollmasks[event->masks & CCIONFRDH]);
 }
@@ -473,7 +473,7 @@ static ushort_int llgetionfmasks(struct epoll_event* event) {
     llionfrdh[(masks&EPOLLRDHUP)!=0] | llionfhup[(masks&EPOLLHUP)!=0] | llionferr[(masks&CCIONFERR)!=0]);
 }
 
-static uint64_t llgetepolludata(struct ccionfevt* event) {
+static uint64_t llgetepolludata(struct ccioevent* event) {
   uint32_t fd = event->fd;
   uint64_t udata = event->udata;
   return ((udata << 32) | fd);
@@ -488,7 +488,7 @@ static umedit_int llgetionfudata(struct epoll_event* event) {
   return (umedit_int)(event->data.u64 >> 32);
 }
 
-nauty_bool ccionfmgr_add(struct ccionfmgr* self, struct ccionfevt* event) {
+nauty_bool ccionfmgr_add(struct ccionfmgr* self, struct ccioevent* event) {
   /** event masks **
   The bit masks can be composed using the following event types:
   EPOLLIN - The associated file is available for read operations.
@@ -555,20 +555,20 @@ nauty_bool ccionfmgr_add(struct ccionfmgr* self, struct ccionfevt* event) {
   struct epoll_event e;
   e.events = (EPOLLHUP | EPOLLERR | llgetepollmasks(event));
   e.data.u64 = llgetepolludata(event);
-  return llepollmgr_add(mgr->epfd, (int)event->fd, &e);
+  return llepollmgr_add(mgr->epfd, event->fd, &e);
 }
 
-nauty_bool ccionfmgr_mod(struct ccionfmgr* self, struct ccionfevt* event) {
+nauty_bool ccionfmgr_mod(struct ccionfmgr* self, struct ccioevent* event) {
   struct llepollmgr* mgr = (struct llepollmgr*)self;
   struct epoll_event e;
   e.events = (EPOLLHUP | EPOLLERR | llgetepollmasks(event));
   e.data.u64 = llgetepolludata(event);
-  return llepollmgr_mod(mgr->epfd, (int)event->fd, &e);
+  return llepollmgr_mod(mgr->epfd, event->fd, &e);
 }
 
-nauty_bool ccionfmgr_del(struct ccionfmgr* self, struct ccionfevt* event) {
+nauty_bool ccionfmgr_del(struct ccionfmgr* self, struct ccioevent* event) {
   struct llepollmgr* mgr = (struct llepollmgr*)self;
-  return llepollmgr_del(mgr->epfd, (int)event->fd);
+  return llepollmgr_del(mgr->epfd, event->fd);
 }
 
 /* return > 0 success, -1 block, -2 error, -3 already signaled */
@@ -601,11 +601,11 @@ int ccionfmgr_wakeup(struct ccionfmgr* self) {
 }
 
 /* return number of events waited and handled */
-int ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccionfevt*)) {
+int ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccioevent*)) {
   struct llepollmgr* mgr = (struct llepollmgr*)self;
   struct epoll_event* start = 0;
   struct epoll_event* beyond = 0;
-  struct ccionfevt event;
+  struct ccioevent event;
   int n = 0;
 
   /* timeout cannot be negative except infinity (-1) */
@@ -658,11 +658,11 @@ int ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccionf
   return mgr->nready;
 }
 
-int ccionfmgr_wait(struct ccionfmgr* self, void (*cb)(struct ccionfevt*)) {
+int ccionfmgr_wait(struct ccionfmgr* self, void (*cb)(struct ccioevent*)) {
   return ccionfmgr_timedwait(self, -1, cb);
 }
 
-int ccionfmgr_trywait(struct ccionfmgr* self, void (*cb)(struct ccionfevt*)) {
+int ccionfmgr_trywait(struct ccionfmgr* self, void (*cb)(struct ccioevent*)) {
   return ccionfmgr_timedwait(self, 0, cb);
 }
 

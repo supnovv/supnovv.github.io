@@ -7,21 +7,21 @@ struct lua_State;
 CORE_API struct lua_State* cclua_newstate();
 CORE_API void cclua_close(struct lua_State* L);
 
-struct ccluaco {
+struct ccstate {
   struct ccsmplnode node;
   struct lua_State* L;
   struct lua_State* co;
   int coref;
-  int (*func)(struct ccluaco*);
-  int (*kfunc)(struct ccluaco*);
+  int (*func)(struct ccstate*);
+  int (*kfunc)(struct ccstate*);
   struct ccservice* srvc;
-  struct ccmsgnode* msg;
+  struct ccmessage* msg;
 };
 
-CORE_API nauty_bool ccluaco_init(struct ccluaco* co, struct lua_State* L, int (*func)(struct ccluaco*), struct ccservice* srvc);
-CORE_API void ccluaco_free(struct ccluaco* co);
-CORE_API int ccluaco_resume(struct ccluaco* co);
-CORE_API int ccluaco_yield(struct ccluaco* co, int (*kfunc)(struct ccluaco*));
+CORE_API nauty_bool ccstate_init(struct ccstate* co, struct lua_State* L, int (*func)(struct ccstate*), struct ccservice* srvc);
+CORE_API void ccstate_free(struct ccstate* co);
+CORE_API int ccstate_resume(struct ccstate* co);
+CORE_API int ccstate_yield(struct ccstate* co, int (*kfunc)(struct ccstate*));
 CORE_API void ccluatest();
 
 #endif /* CCLIB_LUACAPI_H_ */

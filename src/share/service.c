@@ -2,9 +2,10 @@
 #include "service.h"
 #include "luacapi.h"
 #include "ionotify.h"
+#include "socket.h"
 
 #define LLSERVICE_START_SVID 0x2001
-#define LLSERVICE_INITSIZEBITS 10 /* 1024 */
+#define LLSERVICE_INITSIZEBITS 8 /* 256 */
 #define CCSERVICE_DONE 0x01
 #define CCSERVICE_SAMETHREAD 0x02
 #define CCSERVICE_FUNC 0x10
@@ -21,9 +22,9 @@ struct ccservice {
   /* thread own use */
   ushort_int flag;
   umedit_int svid;
-  struct ccionfevt* event;
-  struct ccluaco* co;
-  int (*func)(void*, struct ccmsgnode*);
+  struct ccioevent* event;
+  struct ccstate* co;
+  int (*func)(struct ccstate*);
   void* udata;
 };
 
@@ -42,7 +43,7 @@ static int ll_service_tlink_offset() {
   return offsetof(struct ccservice, tlink);
 }
 
-struct ccluaco* ccservice_getco(struct ccservice* self) {
+struct ccstate* ccservice_getstate(struct ccservice* self) {
   return self->co;
 }
 
@@ -52,7 +53,7 @@ struct ccthread {
   umedit_int weight;
   /* shared with master */
   nauty_bool missionassigned;
-  struct ccdqueue servicerxq;
+  struct ccdqueue workrxq;
   struct ccmutex mutex;
   struct cccondv condv;
   /* free access */
@@ -61,7 +62,7 @@ struct ccthread {
   /* thread own use */
   struct lua_State* L;
   int (*start)();
-  struct ccdqueue serviceq;
+  struct ccdqueue workq;
   struct ccsqueue msgq;
   struct ccsqueue freeco;
   umedit_int freecosz;
@@ -89,8 +90,8 @@ static void ll_free_msgs(struct ccsqueue* msgq);
 void ccthread_init(struct ccthread* self) {
   cczeron(self, sizeof(struct ccthread));
   cclinknode_init(&self->node);
-  ccdqueue_init(&self->servicerxq);
-  ccdqueue_init(&self->serviceq);
+  ccdqueue_init(&self->workrxq);
+  ccdqueue_init(&self->workq);
   ccsqueue_init(&self->msgq);
   ccsqueue_init(&self->freeco);
   self->freecosz = self->totalco = 0;
@@ -104,7 +105,7 @@ void ccthread_init(struct ccthread* self) {
 }
 
 void ccthread_free(struct ccthread* self) {
-  struct ccluaco* co = 0;
+  struct ccstate* co = 0;
 
   self->start = 0;
   if (self->L) {
@@ -119,8 +120,8 @@ void ccthread_free(struct ccthread* self) {
   it is no need to free them here */
 
   /* free all coroutines */
-  while ((co = (struct ccluaco*)ccsqueue_pop(&self->freeco))) {
-    ccluaco_free(co);
+  while ((co = (struct ccstate*)ccsqueue_pop(&self->freeco))) {
+    ccstate_free(co);
     ccrawfree(co);
   }
 
@@ -205,8 +206,8 @@ static void ll_service_free_memory(void* service) {
 
 static void llservices_free(struct llservices* self) {
   struct ccservice* sv = 0;
-  cchashtable_foreach(&(self->table.a), ll_service_free_memory);
-  cchashtable_foreach(&(self->table.b), ll_service_free_memory);
+  cchashtable_foreach(&self->table.a, ll_service_free_memory);
+  cchashtable_foreach(&self->table.b, ll_service_free_memory);
 
   while ((sv = (struct ccservice*)ccdqueue_pop(&self->freeq))) {
     ll_service_free_memory(sv);
@@ -277,10 +278,10 @@ static void llevents_init(struct llevents* self) {
 }
 
 static void llevents_free(struct llevents* self) {
-  struct ccionfevt* event;
+  struct ccioevent* event;
 
   ccmutex_lock(&self->mutex);
-  while ((event = ccsqueue_pop(&self->freeq))) {
+  while ((event = (struct ccioevent*)ccsqueue_pop(&self->freeq))) {
     ccrawfree(event);
   }
   self->freesize = 0;
@@ -289,27 +290,28 @@ static void llevents_free(struct llevents* self) {
   ccmutex_free(&self->mutex);
 }
 
-static struct ccionfevt* ll_new_event() {
+struct ccioevent* ll_new_event() {
   struct llevents* self = ll_ccg_events();
-  struct ccionfevt* event = 0;
+  struct ccioevent* event = 0;
 
   ccmutex_lock(&self->mutex);
-  event = (struct ccionfevt*)ccsqueue_pop(&self->freeq);
+  event = (struct ccioevent*)ccsqueue_pop(&self->freeq);
   if (self->freesize) {
     self->freesize -= 1;
   }
   ccmutex_unlock(&self->mutex);
 
   if (event == 0) {
-    event = ccrawalloc(sizeof(struct ccionfevt));
+    event = ccrawalloc(sizeof(struct ccioevent));
     self->total += 1;
   }
 
-  cczero(event, sizeof(struct ccionfevt));
+  cczeron(event, sizeof(struct ccioevent));
+  event->fd = -1;
   return event;
 }
 
-static void ll_free_event(struct ccionfevt* event) {
+void ll_free_event(struct ccioevent* event) {
   struct llevents* self = ll_ccg_events();
   if (event == 0) return;
 
@@ -319,6 +321,26 @@ static void ll_free_event(struct ccionfevt* event) {
   ccmutex_unlock(&self->mutex);
 }
 
+void ccservice_detach_event(struct ccservice* self) {
+  struct ccionfmgr* mgr = ccgetionfmgr();
+  if (self->event && ccsocket_isopen(self->event->fd) && (self->event->flags & CCIOFLAG_ADDED)) {
+    self->event->flags &= (~(ushort_int)CCIOFLAG_ADDED);
+    ccionfmgr_del(mgr, self->event);
+  }
+}
+
+void ccservice_attach_event(struct ccservice* self, handle_int fd, ushort_int masks, ushort_int flags) {
+  ccservice_detach_event(self);
+  if (!self->event) {
+    self->event = ll_new_event();
+  }
+  self->event->fd = fd;
+  self->event->udata = self->svid;
+  self->event->masks = (masks | IOEVENT_ERR);
+  self->event->flags = flags;
+  ccionfmgr_add(ccgetionfmgr(), self->event);
+  self->event->flags |= IOEVENT_FLAG_ADDED;
+}
 
 /**
  * messages container
@@ -333,7 +355,7 @@ struct llmessages {
 };
 
 static struct llmessages* ll_ccg_messages();
-static void ll_msg_free_data(struct ccmsgnode* self);
+static void ll_msg_free_data(struct ccmessage* self);
 
 static void llmessages_init(struct llmessages* self) {
   ccsqueue_init(&self->rxq);
@@ -343,13 +365,13 @@ static void llmessages_init(struct llmessages* self) {
 }
 
 static void llmessages_free(struct llmessages* self) {
-  struct ccmsgnode* msg = 0;
+  struct ccmessage* msg = 0;
 
   ccmutex_lock(&self->mutex);
   ccsqueue_pushqueue(&self->freeq, &self->rxq);
   ccmutex_unlock(&self->mutex);
 
-  while ((msg = (struct ccmsgnode*)ccsqueue_pop(&self->freeq))) {
+  while ((msg = (struct ccmessage*)ccsqueue_pop(&self->freeq))) {
     ll_msg_free_data(msg);
     ccrawfree(msg);
   }
@@ -362,7 +384,7 @@ static void ll_wakeup_master() {
   ccionfmgr_wakeup(ionf);
 }
 
-static void ll_send_message(struct ccmsgnode* msg) {
+static void ll_send_message(struct ccmessage* msg) {
   struct llmessages* self = ll_ccg_messages();
 
   /* push the message */
@@ -386,31 +408,31 @@ static struct ccsqueue ll_get_current_msgs() {
   return q;
 }
 
-static struct ccmsgnode* ll_new_msg() {
+static struct ccmessage* ll_new_msg() {
   struct llmessages* self = ll_ccg_messages();
-  struct ccmsgnode* msg = 0;
+  struct ccmessage* msg = 0;
 
   ccmutex_lock(&self->mutex);
-  msg = (struct ccmsgnode*)ccsqueue_pop(&self->freeq);
+  msg = (struct ccmessage*)ccsqueue_pop(&self->freeq);
   if (self->freesize > 0) {
     self->freesize -= 1;
   }
   ccmutex_unlock(&self->mutex);
 
   if (msg == 0) {
-    msg = (struct ccmsgnode*)ccrawalloc(sizeof(struct ccmsgnode));
+    msg = (struct ccmessage*)ccrawalloc(sizeof(struct ccmessage));
     self->total += 1;
   }
   msg->node.next = msg->extra = 0;
   return msg;
 }
 
-static void ll_msg_free_data(struct ccmsgnode* self) {
-  if (self->data.ptr && (self->flags & CCMSGFLAG_FREEPTR)) {
+static void ll_msg_free_data(struct ccmessage* self) {
+  if (self->data.ptr && (self->flag & CCMSGFLAG_FREEPTR)) {
     ccrawfree(self->data.ptr);
   }
   self->extra = self->data.ptr = 0;
-  self->flags = self->type = 0;
+  self->flag = self->type = 0;
 }
 
 static void ll_free_msgs(struct ccsqueue* msgq) {
@@ -421,7 +443,7 @@ static void ll_free_msgs(struct ccsqueue* msgq) {
   head = &msgq->head;
   for (elem = head->next; elem != head; elem = elem->next) {
     count += 1;
-    ll_msg_free_data((struct ccmsgnode*)elem);
+    ll_msg_free_data((struct ccmessage*)elem);
   }
 
   if (count) {
@@ -473,6 +495,7 @@ static void ccglobal_init(struct ccglobal* self) {
   cczeron(self, sizeof(struct ccglobal));
   llthreads_init(&self->threads);
   llservices_init(&self->services, LLSERVICE_INITSIZEBITS);
+  llevents_init(&self->events);
   llmessages_init(&self->messages);
 
   ccionfmgr_init(&self->ionf);
@@ -489,6 +512,7 @@ static void ccglobal_setmaster(struct ccthread* master) {
 static void ccglobal_free(struct ccglobal* self) {
   llthreads_free(&self->threads);
   llservices_free(&self->services);
+  llevents_free(&self->events);
   llmessages_free(&self->messages);
 
   ccionfmgr_free(&self->ionf);
@@ -504,19 +528,19 @@ struct ccionfmgr* ccgetionfmgr() {
  * thread
  */
 
-static struct ccluaco* ll_new_coroutine(struct ccthread* thread, struct ccservice* srvc) {
-  struct ccluaco* co = 0;
-  if ((co = (struct ccluaco*)ccsqueue_pop(&thread->freeco))) {
+static struct ccstate* ll_new_coroutine(struct ccthread* thread, struct ccservice* srvc) {
+  struct ccstate* co = 0;
+  if ((co = (struct ccstate*)ccsqueue_pop(&thread->freeco))) {
     thread->freecosz -= 1;
   } else {
-    co = (struct ccluaco*)ccrawalloc(sizeof(struct ccluaco));
+    co = (struct ccstate*)ccrawalloc(sizeof(struct ccstate));
     thread->totalco += 1;
   }
-  ccluaco_init(co, thread->L, srvc->func, srvc);
+  ccstate_init(co, thread->L, srvc->func, srvc);
   return co;
 }
 
-static void ll_free_coroutine(struct ccthread* thread, struct ccluaco* co) {
+static void ll_free_coroutine(struct ccthread* thread, struct ccstate* co) {
   ccsqueue_push(&thread->freeco, &co->node);
   thread->freecosz += 1;
 }
@@ -591,42 +615,40 @@ static struct ccservice* ll_new_service(umedit_int svid) {
   return srvc;
 }
 
-struct ccservice* ccservice_new(void* udata, int (*func)(void*, struct ccmsgnode*)) {
+struct ccservice* ccservice_new(void* udata, int (*func)(struct ccstate*)) {
   struct ccservice* srvc = ll_new_service(0);
-  struct ccmsgnode* msg = 0;
+  struct ccmessage* msg = 0;
   srvc->udata = udata;
   srvc->func = func;
-  msg = ccnewmessage(0, CCMSGID_ADDSRVC, 0);
+  msg = ccnewmessage(0, CCMSGID_ADDSRVC);
   msg->data.ptr = srvc;
   ccservice_sendmsgtomaster(srvc, msg);
   return srvc;
 }
 
-struct ccservice* ccservice_newfrom(umedit_int svid, void* udata, int (*func)(void*, struct ccmsgnode*)) {
+struct ccservice* ccservice_newfrom(umedit_int svid, void* udata, int (*func)(struct ccstate*)) {
   struct ccservice* sv = ll_new_service(0);
-  struct ccmsgnode* msg = 0;
+  struct ccmessage* msg = 0;
   sv->udata = udata;
   sv->func = func;
   sv->flag = CCSERVICE_SAMETHREAD;
-  msg = ccnewmessage(0, CCMSGID_ADDSRVC, 0);
+  msg = ccnewmessage(0, CCMSGID_ADDSRVC);
   msg->data.ptr = sv;
   msg->flag = svid;
   ccservice_sendmsgtomaster(sv, msg);
+  return sv;
 }
 
-void ccservice_setevent();
-void ccservice_delevent();
-
-struct ccmsgnode* ccnewmessage(umedit_int destsvid, umedit_int type) {
-  struct ccmsgnode* msg = ll_new_msg();
+struct ccmessage* ccnewmessage(umedit_int destsvid, umedit_int type) {
+  struct ccmessage* msg = ll_new_msg();
   msg->dstid = destsvid;
   msg->type = type;
   msg->flag = 0;
   return msg;
 }
 
-struct ccmsgnode* ccnewmessage_allocated(umedit_int destsvid, umedit_int type, void* ptr) {
-  struct ccmsgnode* msg = ll_new_msg();
+struct ccmessage* ccnewmessage_allocated(umedit_int destsvid, umedit_int type, void* ptr) {
+  struct ccmessage* msg = ll_new_msg();
   msg->dstid = destsvid;
   msg->type = type;
   msg->flag = CCMSGFLAG_FREEPTR;
@@ -634,34 +656,35 @@ struct ccmsgnode* ccnewmessage_allocated(umedit_int destsvid, umedit_int type, v
   return msg;
 }
 
-void ccservice_sendmsg(struct ccservice* self, struct ccmsgnode* msg) {
+void ccservice_sendmsg(struct ccservice* self, struct ccmessage* msg) {
   msg->srcid = self->svid;
   ll_send_message(msg);
 }
 
-void ccservice_sendmsgtomaster(struct ccservice* self, struct ccmsgnode* msg) {
+void ccservice_sendmsgtomaster(struct ccservice* self, struct ccmessage* msg) {
   msg->srcid = self->svid;
   msg->dstid = 0;
   ll_send_message(msg);
 }
 
 void ccservice_sendtomaster(struct ccservice* self, umedit_int type) {
-  struct ccmsgnode* msg = 0;
-  msg = ccnewmessage(0, type, 0);
+  struct ccmessage* msg = 0;
+  msg = ccnewmessage(0, type);
   msg->data.ptr = self;
   ccservice_sendmsgtomaster(self, msg);
 }
 
 static void ll_accept_connection(void* ud, struct ccsockconn* conn) {
   struct ccservice* sv = (struct ccservice*)ud;
-  union ccmsgdata data;
-  data.fd = conn->sock.id;
-  ccservice_sendmsg(sv, sv->svid, CCMSGID_CONNIND, 0, &data);
+  struct ccmessage* msg = ccnewmessage(sv->svid, CCMSGID_CONNIND);
+  msg->data.fd = conn->sock;
+  ccservice_sendmsg(sv, msg);
 }
 
-static void ccmaster_dispatch_event(struct ccionfevt* event) {
+static void ccmaster_dispatch_event(struct ccioevent* event) {
   umedit_int svid = event->udata;
   struct ccservice* sv = 0;
+  struct ccmessage* msg = 0;
   umedit_int type = 0;
 
   sv = ll_find_service(svid);
@@ -676,32 +699,34 @@ static void ccmaster_dispatch_event(struct ccionfevt* event) {
   }
 
   ll_lock_thread(sv->belong);
-  if (sv->event->flags & CCSOCK_LISTEN) {
+  if (sv->event->flags & IOEVENT_FLAG_LISTEN) {
     if (event->masks & CCIONFRD) {
-      type = CCSOCK_CONNIND;
+      type = CCMSGID_CONNIND;
     }
-  } else if (sv->event->flags & CCSOCK_CONNECT) {
+  } else if (sv->event->flags & IOEVENT_FLAG_CONNECT) {
     if (event->masks & CCIONFWR) {
-      sv->event->flags &= (~((ushort_int)CCSOCK_CONNECT));
-      type = CCSOCK_CONNRSP;
+      sv->event->flags &= (~((ushort_int)IOEVENT_FLAG_CONNECT));
+      type = CCMSGID_CONNRSP;
     }
   } else {
     if (sv->event->masks == 0) {
-      type = CCSOCK_IOEVENT;
+      type = CCMSGID_IOEVENT;
     }
     sv->event->masks |= event->masks;
   }
   ll_unlock_thread(sv->belong);
 
   switch (type) {
-  case CCSOCK_CONNIND:
+  case CCMSGID_CONNIND:
     ccsocket_accept(sv->event->fd, ll_accept_connection, sv);
     break;
-  case CCSOCK_CONNRSP:
-    ccservice_sendmsg(sv, sv->svid, CCSOCK_CONNRSP, 0, 0);
+  case CCMSGID_CONNRSP:
+    msg = ccnewmessage(sv->svid, CCMSGID_CONNRSP);
+    ccservice_sendmsg(sv, msg);
     break;
-  case CCSOCK_IOEVENT:
-    ccservice_sendmsg(sv, sv->svid, CCSOCK_IOEVENT, 0, 0);
+  case CCMSGID_IOEVENT:
+    msg = ccnewmessage(sv->svid, CCMSGID_IOEVENT);
+    ccservice_sendmsg(sv, msg);
     break;
   }
 }
@@ -710,7 +735,7 @@ void ccmaster_start() {
   struct ccsqueue queue;
   struct ccsqueue svmsgs;
   struct ccsqueue freeq;
-  struct ccmsgnode* msg = 0;
+  struct ccmessage* msg = 0;
   struct ccservice* sv = 0;
   struct ccthread* master = ccthread_getmaster();
 
@@ -724,7 +749,7 @@ void ccmaster_start() {
 
     /* prepare master's messages */
     ccsqueue_init(&svmsgs);
-    while ((msg = (struct ccmsgnode*)ccsqueue_pop(&queue))) {
+    while ((msg = (struct ccmessage*)ccsqueue_pop(&queue))) {
       if (msg->dstid == 0) {
         ccsqueue_push(&master->msgq, &msg->node);
       } else {
@@ -734,7 +759,7 @@ void ccmaster_start() {
 
     /* handle master's messages */
     ccsqueue_init(&freeq);
-    while ((msg = (struct ccmsgnode*)ccsqueue_pop(&master->msgq))) {
+    while ((msg = (struct ccmessage*)ccsqueue_pop(&master->msgq))) {
       sv = (struct ccservice*)msg->data.ptr;
       switch (msg->type) {
       case CCMSGID_ADDSRVC:
@@ -761,7 +786,7 @@ void ccmaster_start() {
     }
 
     /* dispatch service's messages */
-    while ((msg = (struct ccmsgnode*)ccsqueue_pop(&svmsgs))) {
+    while ((msg = (struct ccmessage*)ccsqueue_pop(&svmsgs))) {
       nauty_bool newattach = false;
 
       /* get message's dest service */
@@ -802,14 +827,14 @@ void ccmaster_start() {
       ll_lock_thread(sv->belong);
       if (newattach) {
         sv->outflag = sv->flag = 0;
-        ccdqueue_push(&sv->belong->servicerxq, &sv->node);
+        ccdqueue_push(&sv->belong->workrxq, &sv->node);
       }
       msg->extra = sv;
       ccsqueue_push(&sv->rxmq, &msg->node);
       sv->belong->missionassigned = true;
       ll_unlock_thread(sv->belong);
       /* signal the thread to handle */
-      cccondv_signal(&(sv->belong->condv));
+      cccondv_signal(&sv->belong->condv);
     }
 
     ll_free_msgs(&freeq);
@@ -822,7 +847,7 @@ void ccworker_start() {
   struct ccservice* sv = 0;
   struct cclinknode* head = 0;
   struct cclinknode* elem = 0;
-  struct ccmsgnode* msg = 0;
+  struct ccmessage* msg = 0;
   struct ccthread* thread = ccthread_getself();
   int n = 0;
 
@@ -833,10 +858,10 @@ void ccworker_start() {
     }
     /* mission waited, reset false */
     thread->missionassigned = false;
-    ccdqueue_pushqueue(&thread->serviceq, &thread->servicerxq);
+    ccdqueue_pushqueue(&thread->workq, &thread->workrxq);
     ccmutex_unlock(&thread->mutex);
 
-    head = &(thread->serviceq.head);
+    head = &(thread->workq.head);
     for (elem = head->next; elem != head; elem = elem->next) {
       sv = (struct ccservice*)elem;
       if (!ccsqueue_isempty(&sv->rxmq)) {
@@ -853,7 +878,7 @@ void ccworker_start() {
 
     ccdqueue_init(&doneq);
     ccsqueue_init(&freemq);
-    while ((msg = (struct ccmsgnode*)ccsqueue_pop(&thread->msgq))) {
+    while ((msg = (struct ccmessage*)ccsqueue_pop(&thread->msgq))) {
       sv = (struct ccservice*)msg->extra;
       if (sv->flag & CCSERVICE_DONE) {
         ccsqueue_push(&freemq, &msg->node);
@@ -882,8 +907,9 @@ void ccworker_start() {
         }
         sv->co->srvc = sv;
         sv->co->msg = msg;
-        n = ccluaco_resume(sv->co);
-        sv->co->srvc = sv->co->msg = 0;
+        n = ccstate_resume(sv->co);
+        sv->co->srvc = 0;
+        sv->co->msg = 0;
       } else if (sv->flag & CCSERVICE_FUNC) {
 
       } else if (sv->flag & CCSERVICE_LUAF) {
