@@ -26,7 +26,7 @@ static void ll_init_state(struct ccstate* co) {
   co->coref = LUA_NOREF;
 }
 
-nauty_bool ccstate_init(struct ccstate* ccco, lua_State* L, int (*func)(struct ccstate*), struct ccservice* srvc) {
+nauty_bool ccstate_init(struct ccstate* ccco, lua_State* L, int (*func)(struct ccstate*), struct ccrobot* srvc) {
   lua_State* co = 0;
   ll_init_state(ccco);
   if ((co = lua_newthread(L)) == 0) {
@@ -119,9 +119,12 @@ static int ll_state_kfunc(lua_State* co, int status, lua_KContext ctx) {
 }
 
 int ccstate_yield(struct ccstate* co, int (*kfunc)(struct ccstate*)) {
+  int n = 0;
   co->kfunc = kfunc;
   /* int lua_yieldk(lua_State* co, int nresults, lua_KContext ctx, lua_KFunction k) */
-  return lua_yieldk(co->co, 0, (lua_KContext)co, ll_state_kfunc);
+  n = lua_yieldk(co->co, 0, (lua_KContext)co, ll_state_kfunc);
+  /* the code never goes here */
+  return n;
 }
 
 /** push stack functions **

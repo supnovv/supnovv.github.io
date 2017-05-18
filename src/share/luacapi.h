@@ -14,11 +14,11 @@ struct ccstate {
   int coref;
   int (*func)(struct ccstate*);
   int (*kfunc)(struct ccstate*);
-  struct ccservice* srvc;
+  struct ccrobot* srvc;
   struct ccmessage* msg;
 };
 
-CORE_API nauty_bool ccstate_init(struct ccstate* co, struct lua_State* L, int (*func)(struct ccstate*), struct ccservice* srvc);
+CORE_API nauty_bool ccstate_init(struct ccstate* co, struct lua_State* L, int (*func)(struct ccstate*), struct ccrobot* srvc);
 CORE_API void ccstate_free(struct ccstate* co);
 CORE_API int ccstate_resume(struct ccstate* co);
 CORE_API int ccstate_yield(struct ccstate* co, int (*kfunc)(struct ccstate*));

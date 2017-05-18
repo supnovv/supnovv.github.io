@@ -1,5 +1,11 @@
 #include "socket.h"
 
+/* 三种robot类型
+1. 不接收消息，也不监听事件，只挂在当前线程下，与同线程下的多个robot协同工作（通过调用robot_resume和robot_yield）
+2. 接收消息，不监听事件，可以与同线程robot协同工作
+3. 接收消息，也监听事件，也可以与通线程robot协同工作
+*/
+
 #define HTTP_LISTEN_BACKLOG (32)
 
 struct httplisten {
@@ -17,21 +23,25 @@ struct httpconnect {
   ushort_int remoteport;
 };
 
-int　ll_http_receive_connection(struct ccstate* s) {
+nauty_bool ll_http_filter_connection(struct ccstate* state, handle_int sock, struct httpconnect* conn) {
+
+}
+
+void　ll_http_receive_connection(struct ccstate* s) {
   struct httplisten* self = (struct httplisten*)robot_get_specific(s);
   struct ccmessage* msg = robot_get_message(s);
-  if (msg->type == MESSAGE_ID_CONNIND) {
-    struct httpconnect* conn;
-    struct ccrobot* robot;
-    conn = (struct httpconnect*)ccrawalloc_init(sizeof(struct httpconnect));
-    conn->sock = msg->data.fd;
-    robot = robot_create(0, self->connind, ROBOT_YIELDABLE);
-    robot_set_allocated_specific(robot, conn);
-    robot_attach_event(robot, conn->sock, IOEVENT_RDWR, 0);
-  } else {
-    ccloge("http invalid message");
+  struct httpconnect conn;
+  struct httpconnect* specific = 0;
+  struct ccrobot* robot = 0;
+  ccassert(msg->type == MESSAGE_ID_CONNIND);
+  if (!ll_http_filter_connection(s, msg->data->fd, &conn)) {
+    return;
   }
-  return ROBOT_CONTINUE;
+  robot = robot_create_new(self->connind, ROBOT_YIELDABLE);
+  specific = (struct httpconnect*)robot_set_allocated_specific(robot, sizeof(struct httpconnect));
+  *specific = conn;
+  robot_set_event(robot, conn.sock, IOEVENT_RDWR, 0);
+  robot_start_run(robot);
 }
 
 struct ccrobot* http_listen(struct httplisten* self) {
@@ -48,10 +58,15 @@ struct ccrobot* http_listen(struct httplisten* self) {
   if (!ccsocket_isopen(sock)) {
     return 0;
   }
-  robot = robot_create(0, ll_http_receive_connection);
+  robot = robot_create_new(ll_http_receive_connection, 0);
   robot->udata = self;
-  robot_attach_event(robot, sock, IOEVENT_READ, IOEVENT_FLAG_LISTEN);
+  robot_set_event(robot, sock, IOEVENT_READ, IOEVENT_FLAG_LISTEN);
+  robot_start_run(robot);
   return robot;
+}
+
+void user_read_request_header(struct ccstate* state) {
+  robot_yield(state, user_read_request_data);
 }
 
 
