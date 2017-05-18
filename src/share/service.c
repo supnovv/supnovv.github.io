@@ -12,6 +12,7 @@
 #define CCSERVICE_CCCO 0x20
 #define CCSERVICE_LUAF 0x40
 
+#define ROBOT_COMPLETED  0x01
 #define ROBOT_NOT_START  0x02
 #define ROBOT_SAMETHREAD 0x04
 #define ROBOT_YIELDABLE  0x08
@@ -712,6 +713,11 @@ void robot_start_run(struct ccrobot* robot) {
   }
 }
 
+void robot_run_completed(struct ccstate* state) {
+  /* robot->flag is accessed by thread itself */
+  state->srvc->flag |= ROBOT_COMPLETED;
+}
+
 void robot_yield(struct ccstate* state, int (*kfunc)(struct ccstate*)) {
   ccstate_yield(state, kfunc);
 }
@@ -921,12 +927,11 @@ void ccmaster_start() {
 void ccworker_start() {
   struct ccdqueue doneq;
   struct ccsqueue freemq;
-  struct ccrobot* sv = 0;
+  struct ccrobot* robot = 0;
   struct cclinknode* head = 0;
   struct cclinknode* elem = 0;
   struct ccmessage* msg = 0;
   struct ccthread* thread = ccthread_getself();
-  int n = 0;
 
   for (; ;) {
     ccmutex_lock(&thread->mutex);
@@ -940,10 +945,10 @@ void ccworker_start() {
 
     head = &(thread->workq.head);
     for (elem = head->next; elem != head; elem = elem->next) {
-      sv = (struct ccrobot*)elem;
-      if (!ccsqueue_isempty(&sv->rxmq)) {
+      robot = (struct ccrobot*)elem;
+      if (!ccsqueue_isempty(&robot->rxmq)) {
         ll_lock_thread(thread);
-        ccsqueue_pushqueue(&thread->msgq, &sv->rxmq);
+        ccsqueue_pushqueue(&thread->msgq, &robot->rxmq);
         ll_unlock_thread(thread);
       }
     }
@@ -956,16 +961,16 @@ void ccworker_start() {
     ccdqueue_init(&doneq);
     ccsqueue_init(&freemq);
     while ((msg = (struct ccmessage*)ccsqueue_pop(&thread->msgq))) {
-      sv = (struct ccrobot*)msg->extra;
-      if (sv->flag & CCSERVICE_DONE) {
+      robot = (struct ccrobot*)msg->extra;
+      if (robot->flag & ROBOT_COMPLETED) {
         ccsqueue_push(&freemq, &msg->node);
         continue;
       }
 
       if (msg->type == CCMSGID_IOEVENT) {
         ll_lock_thread(thread);
-        msg->data.us = sv->event->masks;
-        sv->event->masks = 0;
+        msg->data.us = robot->event->masks;
+        robot->event->masks = 0;
         ll_unlock_thread(thread);
         if (msg->data.us == 0) {
           ccsqueue_push(&freemq, &msg->node);
@@ -973,23 +978,23 @@ void ccworker_start() {
         }
       }
 
-      if (sv->flag & CCSERVICE_CCCO) {
-        if (sv->co == 0) {
-          sv->co = ll_new_coroutine(thread, sv);
+      if (robot->flag & CCSERVICE_CCCO) {
+        if (robot->co == 0) {
+          robot->co = ll_new_coroutine(thread, robot);
         }
-        if (sv->co->L != thread->L) {
+        if (robot->co->L != thread->L) {
           ccloge("wrong lua state");
           ccsqueue_push(&freemq, &msg->node);
           continue;
         }
-        sv->co->srvc = sv;
-        sv->co->msg = msg;
-        n = ccstate_resume(sv->co);
-        sv->co->srvc = 0;
-        sv->co->msg = 0;
-      } else if (sv->flag & CCSERVICE_FUNC) {
+        robot->co->srvc = robot;
+        robot->co->msg = msg;
+        ccstate_resume(robot->co);
+        robot->co->srvc = 0;
+        robot->co->msg = 0;
+      } else if (robot->flag & CCSERVICE_FUNC) {
 
-      } else if (sv->flag & CCSERVICE_LUAF) {
+      } else if (robot->flag & CCSERVICE_LUAF) {
 
       }
       else {
@@ -997,12 +1002,11 @@ void ccworker_start() {
       }
 
       /* service run completed */
-      if (n == 0) {
-        sv->flag |= CCSERVICE_DONE;
-        ccdqueue_push(&doneq, cclinknode_remove(&sv->node));
-        if (sv->co) {
-          ll_free_coroutine(thread, sv->co);
-          sv->co = 0;
+      if (robot->flag & ROBOT_COMPLETED) {
+        ccdqueue_push(&doneq, cclinknode_remove(&robot->node));
+        if (robot->co) {
+          ll_free_coroutine(thread, robot->co);
+          robot->co = 0;
         }
       }
 
@@ -1010,15 +1014,15 @@ void ccworker_start() {
       ccsqueue_push(&freemq, &msg->node);
     }
 
-    while ((sv = (struct ccrobot*)ccdqueue_pop(&doneq))) {
+    while ((robot = (struct ccrobot*)ccdqueue_pop(&doneq))) {
       ll_lock_thread(thread);
-      sv->outflag |= CCSERVICE_DONE;
+      robot->outflag |= ROBOT_COMPLETED;
       ll_unlock_thread(thread);
 
       /* currently the finished service is removed out from thread's
       service queue, but the service still pointer to this thread.
       send SVDONE message to master to reset and free this service. */
-      ccrobot_sendtomaster(sv, CCMSGID_DELSRVC);
+      ccrobot_sendtomaster(robot, CCMSGID_DELSRVC);
     }
 
     ll_free_msgs(&freemq);
