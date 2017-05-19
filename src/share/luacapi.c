@@ -26,7 +26,7 @@ static void ll_init_state(struct ccstate* co) {
   co->coref = LUA_NOREF;
 }
 
-nauty_bool ccstate_init(struct ccstate* ccco, lua_State* L, int (*func)(struct ccstate*), struct ccrobot* srvc) {
+nauty_bool ccstate_init(struct ccstate* ccco, lua_State* L, void (*func)(struct ccstate*), struct ccrobot* bot) {
   lua_State* co = 0;
   ll_init_state(ccco);
   if ((co = lua_newthread(L)) == 0) {
@@ -37,7 +37,7 @@ nauty_bool ccstate_init(struct ccstate* ccco, lua_State* L, int (*func)(struct c
   ccco->co = co;
   ccco->coref = luaL_ref(L, LUA_REGISTRYINDEX);
   ccco->func = func;
-  ccco->srvc = srvc;
+  ccco->bot = bot;
   return true;
 }
 
@@ -48,7 +48,7 @@ void ccstate_free(struct ccstate* co) {
   }
 }
 
-static int ll_state_resume(struct ccstate* co, int nargs) {
+static void ll_state_resume(struct ccstate* co, int nargs) {
   /** lua_resume **
   int lua_resume(lua_State* L, lua_State* from, int nargs);
   Starts and resumes a coroutine in the given thread L.
@@ -76,24 +76,23 @@ static int ll_state_resume(struct ccstate* co, int nargs) {
     the message handler (as this kind of error typically has no relation with the function
     being called). */
     ccloge("lua_resume %s", lua_tostring(co->co, -1));
-    lua_pop(co->co, 1);
+    lua_pop(co->co, 1); /* pop the error object */
   }
-  return n;
 }
 
 static int ll_state_func(lua_State* co) {
-  int n = 0;
   struct ccstate* ccco = 0;
   ccco = (struct ccstate*)lua_touserdata(co, -1);
   lua_pop(co, 1);
-  n = ccco->func(ccco);
+  ccco->func(ccco);
   /* never goes here if ccco->func is yield inside */
-  return n;
+  return 0;
 }
 
-int ccstate_resume(struct ccstate* co) {
+void ccstate_resume(struct ccstate* co) {
   int nargs = 0;
   int costatus = 0;
+
   /** int lua_status(lua_State* L) **
   LUA_OK - start a new coroutine or restart it, or can call functions
   LUA_YIELD - can resume a suspended coroutine */
@@ -103,28 +102,38 @@ int ccstate_resume(struct ccstate* co) {
     lua_pushlightuserdata(co->co, co);
     return ll_state_resume(co, nargs+1);
   }
+
   if (costatus == LUA_YIELD) {
     /* no need to provide func again when coroutine is suspended */
     return ll_state_resume(co, 0);
   }
+
   ccloge("coroutine cannot be resumed");
-  return LUA_ERRRUN;
 }
 
 static int ll_state_kfunc(lua_State* co, int status, lua_KContext ctx) {
   struct ccstate* ccco = (struct ccstate*)ctx;
   (void)co; /* not used here, it should be equal to co->co */
   (void)status; /* status always is LUA_YIELD when kfunc is called after lua_yieldk */
-  return ccco->kfunc(ccco);
+  ccco->kfunc(ccco);
+  return 0;
 }
 
-int ccstate_yield(struct ccstate* co, int (*kfunc)(struct ccstate*)) {
-  int n = 0;
+void ccstate_yield(struct ccstate* co, void (*kfunc)(struct ccstate*)) {
   co->kfunc = kfunc;
-  /* int lua_yieldk(lua_State* co, int nresults, lua_KContext ctx, lua_KFunction k) */
-  n = lua_yieldk(co->co, 0, (lua_KContext)co, ll_state_kfunc);
-  /* the code never goes here */
-  return n;
+  /* int lua_yieldk(lua_State* co, int nresults, lua_KContext ctx, lua_KFunction k);
+  Usually, this function does not return; when the coroutine eventually resumes, it
+  continues executing the continuation function. However, there is one special case,
+  which is when this function is called from inside a line or a count hook. In that
+  case, lua_yielkd should be called with no continuation (probably in the form of
+  lua_yield) and no results, and the hook should return immediately after the call.
+  Lua will yield and, when the coroutine resumes again, it will continue the normal
+  execution of the (Lua) function that triggered the hook.
+  This function can raise an error if it is called from a thread with a pending C
+  call with no continuation function, or it is called from a thread that is not
+  running inside a resume (e.g., the main thread). */
+  lua_yieldk(co->co, 0, (lua_KContext)co, ll_state_kfunc);
+  ccloge("lua_yieldk never returns to here"); /* the code never goes here */
 }
 
 /** push stack functions **
@@ -173,25 +182,25 @@ const char* lua_tostring(lua_State* L, int index); // get cstr or NULL
 lua_State* lua_tothread(lua_State* L, int index); // get thread or NULL
 void* lua_touserdata(lua_State* L, int index); // get userdata or NULL */
 
-static int ll_state_testfunc(struct ccstate* co) {
+static void ll_state_testfunc(struct ccstate* co) {
   static int i = 0;
   cclogd("ll_state_testfunc arguments in stack %s", ccitos(lua_gettop(co->co)));
   switch (i) {
   case 0:
     cclogd("ll_state_testfunc called %s", ccitos(i++));
-    return ccstate_yield(co, ll_state_testfunc);
+    ccstate_yield(co, ll_state_testfunc);
   case 1:
     cclogd("ll_state_testfunc called %s", ccitos(i++));
-    return ccstate_yield(co, ll_state_testfunc);
+    ccstate_yield(co, ll_state_testfunc);
   case 2:
     cclogd("ll_state_testfunc called %s", ccitos(i++));
-    return ccstate_yield(co, ll_state_testfunc);
+    ccstate_yield(co, ll_state_testfunc);
   default:
     cclogd("ll_state_testfunc called %s", ccitos(i++));
     i = 0;
-    break;
+    return;
   }
-  return 0;
+  ccloge("ll_state_testfunc never goes here");
 }
 
 void ccluatest() {
