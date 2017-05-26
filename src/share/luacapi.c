@@ -1,6 +1,7 @@
 #include "lua.h"
 #include "lauxlib.h"
 #include "luacapi.h"
+#include "service.h"
 
 /** Continuations **
 Through lua_pcall and lua_call, a C function called from Lua can call Lua back.

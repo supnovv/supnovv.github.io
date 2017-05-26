@@ -70,3 +70,28 @@ void user_read_request_header(struct ccstate* state) {
 }
 
 
+#if 0
+"<scheme>://<user>:<password>@<host>:<port>/<path>;<params>?<query>#<frag>"
+/hammers;sale=0;color=red?item=1&size=m
+/hammers;sale=false/index.html;graphics=true
+/check.cgi?item=12731&color=blue&size=large
+/tools.html#drills
+
+URL编码机制，为了使用不安全字符，使用%和两个两个十六进制字符表示，例如空格可使用%20表示，根据浏览器的不同组合成的字符可能使用不同的编码
+保留字符有 % / . .. # ? ; : $ + @ & =
+受限字符有 {} | \ ^ ~ [ ] ' < > "　以及不可打印字符 0x00~0x1F >=0x7F，而且不能使用空格，通常使用+来替代空格
+0~9A~Za~z_-
+
+---
+<method> <request-url> HTTP/<major>.<minor>
+<headers> header: value<crlf>
+<crlf>
+<entity-body>
+---
+HTTP/<major>.<minor> <status-code> <status-text>
+<headers> header: value<crlf>
+<crlf>
+<entity-body>
+---
+#endif
+

@@ -805,7 +805,6 @@ static void ll_accept_connection(void* ud, struct ccsockconn* conn) {
 static void ccmaster_dispatch_event(struct ccioevent* event) {
   umedit_int roid = event->udata;
   struct ccrobot* ro = 0;
-  struct ccmessage* msg = 0;
   umedit_int type = 0;
 
   ro = ll_find_robot(roid);
@@ -869,7 +868,7 @@ void ccmaster_start() {
     /* prepare master's messages */
     ccsqueue_init(&romsgs);
     while ((msg = (struct ccmessage*)ccsqueue_pop(&queue))) {
-      if (msg->dstid == 0) {
+      if (msg->dstid == ROBOT_ID_MASTER) {
         ccsqueue_push(&master->msgq, &msg->node);
       } else {
         ccsqueue_push(&romsgs, &msg->node);
@@ -879,9 +878,9 @@ void ccmaster_start() {
     /* handle master's messages */
     ccsqueue_init(&freeq);
     while ((msg = (struct ccmessage*)ccsqueue_pop(&master->msgq))) {
-      ro = (struct ccrobot*)msg->data.ptr;
       switch (msg->type) {
       case MESSAGE_RUNROBOT:
+        ro = (struct ccrobot*)msg->data.ptr;
         if (ro->event) {
           ccionfmgr_add(ll_get_ionfmgr(), ro->event);
         }
@@ -902,6 +901,7 @@ void ccmaster_start() {
         }
         break;
       case MESSAGE_DELROBOT:
+        ro = (struct ccrobot*)msg->data.ptr;
         /* robot's received msgs (if any) */
         ccsqueue_pushqueue(&freeq, &ro->rxmq);
         /* detach and free event if any */

@@ -1,12 +1,13 @@
 #ifndef CCLIB_LUACAPI_H_
 #define CCLIB_LUACAPI_H_
 #include "thatcore.h"
-#include "service.h"
 
 struct lua_State;
 CORE_API struct lua_State* cclua_newstate();
 CORE_API void cclua_close(struct lua_State* L);
 
+struct ccrobot;
+struct ccmessage;
 struct ccstate {
   struct ccsmplnode node;
   struct lua_State* L;

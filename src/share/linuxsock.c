@@ -1111,7 +1111,7 @@ sright_int ccsocket_read(const struct ccsockconn* conn, void* out, sright_int co
     }
     break;
   }
-  errno = (n >= 0 ? 0 : (n == -1 ? CCEAGAIN : CCERROR));
+  /* errno = (n >= 0 ? 0 : (n == -1 ? CCEAGAIN : CCERROR)); */
   return sum;
 }
 
@@ -1127,7 +1127,7 @@ sright_int ccsocket_write(const struct ccsockconn* conn, const void* from, srigh
     }
     break;
   }
-  errno = (n >= 0 ? 0 : (n == -1 ? CCEAGAIN : CCERROR));
+  /* errno = (n >= 0 ? 0 : (n == -1 ? CCEAGAIN : CCERROR)); */
   return sum;
 }
 
