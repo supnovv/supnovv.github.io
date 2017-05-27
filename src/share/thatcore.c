@@ -628,7 +628,6 @@ nauty_bool ccstring_containp(const struct ccfrom* s, nauty_char ch) {
   return false;
 }
 
-
 /** List and queue **/
 
 /**

@@ -1099,10 +1099,10 @@ sright_int ll_write(handle_int fd, const void* buf, sright_int count) {
   return -2;
 }
 
-sright_int ccsocket_read(const struct ccsockconn* conn, void* out, sright_int count) {
+sright_int ccsocket_read(handle_int sock, void* out, sright_int count) {
   nauty_byte* buf = (nauty_byte*)out;
   sright_int n = 0, sum = 0;
-  while ((n = ll_read(conn->sock, buf, count)) > 0) {
+  while ((n = ll_read(sock, buf, count)) > 0) {
     sum += n;
     if (n < count) {
       buf += n;
@@ -1115,10 +1115,10 @@ sright_int ccsocket_read(const struct ccsockconn* conn, void* out, sright_int co
   return sum;
 }
 
-sright_int ccsocket_write(const struct ccsockconn* conn, const void* from, sright_int count) {
+sright_int ccsocket_write(handle_int sock, const void* from, sright_int count) {
   sright_int n = 0, sum = 0;
   const nauty_byte* buf = (const nauty_byte*)from;
-  while ((n = ll_write(conn->sock, buf, count)) > 0) {
+  while ((n = ll_write(sock, buf, count)) > 0) {
     sum += n;
     if (n < count) {
       buf += n;

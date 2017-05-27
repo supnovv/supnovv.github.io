@@ -5,6 +5,7 @@
 
 #undef CORE_API
 #define CORE_API extern
+#define CC_INLINE static
 
 #undef CLUA_API
 #if defined(CCLUASHARED)
@@ -207,6 +208,38 @@ CORE_API void ccstring_setcstr(struct ccstring* self, const void* cstr);
 CORE_API nauty_bool ccstring_contain(struct ccfrom s, nauty_char ch);
 CORE_API nauty_bool ccstring_containp(const struct ccfrom* s, nauty_char ch);
 
+CC_INLINE nauty_char cclower(nauty_char ch) {
+  return (ch >= 'A' && ch <= 'Z') ? (ch + 32) : ch;
+}
+
+CC_INLINE void cclowerp(nauty_char* ch) {
+  *ch = cclower(*ch);
+}
+
+CC_INLINE nauty_char ccupper(nauty_char ch) {
+  return (ch >= 'a' && ch <= 'z') ? (ch - 32) : ch;
+}
+
+CC_INLINE void ccupperp(nauty_char* ch) {
+  *ch = ccupper(*ch);
+}
+
+CC_INLINE void ccstring_lower(nauty_char* s, int len) {
+  while (len > 0) {
+    cclowerp(s + (--len));
+  }
+}
+
+CC_INLINE void ccstring_upper(nauty_char* s, int len) {
+  while (len > 0) {
+    ccupperp(s + (--len));
+  }
+}
+
+CC_INLINE int ccisblank(int ch) {
+  if (ch == ' ' || ch == '\t' || ch == '\v' || ch == '\f') return 1;
+  return 0;
+}
 
 /** List and queue **/
 

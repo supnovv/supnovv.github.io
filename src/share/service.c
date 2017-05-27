@@ -65,6 +65,10 @@ struct ccmessage* robot_get_message(struct ccstate* state) {
   return state->msg;
 }
 
+handle_int robot_get_eventfd(struct ccstate* state) {
+  return state->bot->event->fd;
+}
+
 struct ccthread {
   /* access by master only */
   struct cclinknode node;

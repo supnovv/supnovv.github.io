@@ -73,6 +73,7 @@ CORE_API void robot_start_run(struct ccrobot* robot);
 
 CORE_API void* robot_get_specific(struct ccstate* state);
 CORE_API struct ccmessage* robot_get_message(struct ccstate* state);
+CORE_API handle_int robot_get_eventfd(struct ccstate* state);
 CORE_API void robot_listen_event(struct ccstate* state, handle_int fd, ushort_int masks, ushort_int flags);
 CORE_API void robot_remove_listen(struct ccstate* state);
 CORE_API void robot_resume(struct ccstate* state, const char* robot);
