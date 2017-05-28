@@ -23,6 +23,10 @@ struct httpconnect {
   struct ccstring remoteip;
   ushort_int localport;
   ushort_int remoteport;
+  nauty_byte method;
+  nauty_byte httpver;
+  struct ccstring rstr;
+  nauty_byte* method;
 };
 
 #define HTTP_METHOD_GET  (1)
@@ -192,12 +196,6 @@ HTTP/1.1规定用户Agent代理应该在接收且检测到无效长度时通知�
 HTTP允许对实体内容进行编码，比如可以使之更安全或进行压缩以节省空间，如果主体进行了编码，Content-Length应该说明编码后的主体字节长度
 不幸的是，HTTP/1.1规范中没有首部可以用来说明原始未编码的主体长度，这就客户端难以验证解码过程的完整性　*/
 
-struct httprequest {
-  nauty_byte method;
-  nauty_byte httpver;
-  const char* url;
-};
-
 nauty_bool ll_http_filter_connection(struct ccstate* state, handle_int sock, struct httpconnect* conn) {
 
 }
@@ -211,14 +209,15 @@ int http_read_headers(struct ccstate* state, struct httprequest* r) {
 
 }
 
-void ll_http_connection_indication(struct ccstate* state) {
+void ll_http_connection_indication(struct ccstate* s) {
+  struct httpconnect* conn = (struct httplisten*)robot_get_specific(s);
   nauty_byte rxbuf[HTTP_RX_BUFSIZE+1];
   /** http request packet formt
   <method> <request-url> HTTP/<major>.<minor>
   <headers> header: value<crlf>
   <crlf>
   <entity-body> */
-  handle_int sock = robot_get_eventfd(state);
+  handle_int sock = robot_get_eventfd(s);
   sright_int len = HTTP_RX_BUFSIZE, n = 0;
   sright_int n = ccsocket_read(sock, rxbuf, len);
   ll_http_read_startline(state);

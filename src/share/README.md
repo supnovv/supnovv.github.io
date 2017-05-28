@@ -540,6 +540,189 @@ Lua
 * 在提供多线程的系统中，一个有趣的设计是为每个线程创建一个独立的 LUA 状态，这样每个线程相互独立且可拥有多个协程
 ```
 
+LUA字符串
+```
+LUA初始化的字符串哈希表的大小为MINSTRTABSIZE即128
+LUA字符串哈希表大小调整规则是元素个数大于等于哈希表大小时将哈希表扩大1倍（一个例外是哈希表大小已经大于等于MAX_INT/2了）
+而当元素个数小于哈希表大小的1/4时，将哈希表缩小到原来的1/2
+---
+struct ccstringtable {
+  struct ccsmplnode* slot;
+  umedit_int nslot; /* prime number */
+  umedit_int nelem; /* number of elements */
+};
+#define ccstring_newliteral(s) (ccstring_newlstr("" s, (sizeof(s)/sizeof(char))-1)
+struct ccstring {
+  union {
+    struct ccstring* hnext; /* linked list for shrot string hash table */
+    sright_int lnglen; /* long string length */
+    struct cceight align; /* align for 8-byte boundary */
+  } u;
+  umedit_int hash;
+  nauty_byte type;
+  nauty_byte extra; /* long string is hashed or not, this string is reserved word or not for short string */
+  nauty_byte shrlen; /* short string length */
+　　nauty_char s[1]; /* the string started here */
+};
+---
+
+LUA字符串哈希值的计算方法使用JSHash函数，并使用字符串长度l异或G(L)->seed作为哈希的初始值
+并且不是字符串中的每个字符都用来计算哈希值，而是有一个step间隔，每隔多少个字符才取一个字符来计算哈希值
+下面字符间隔的计算相当于（字符串长度/32）＋１，例如长度小于32将使用1个字符计算哈希值
+长度在范围[32,64)内将将使用2个字符计算哈希值，长度在[64,96)内将使用3个字符计算哈希值，依次类推
+如果长度时能是32位的整数的化，最多会使用134217727（1亿3）个字符来计算哈希值
+旧版本没有使用G(L)->seed，存在Hash DoS，见http://lua-users.org/lists/lua-l/2012-01/msg00497.html
+新版的G(L)->seed即保存在global_State中，这个种子的构造方法可查看函数makeseed()
+---
+unsigned int luaS_hash (const char *str, size_t l, unsigned int seed) {
+  unsigned int h = seed ^ cast(unsigned int, l); /* 使用长度异或seed作为hash初始值 */
+  size_t step = (l >> LUAI_HASHLIMIT) + 1; /* 计算取字符的间隔，LUAI_HASHLIMIT的值为5 */
+  for (; l >= step; l -= step)
+    h ^= ((h<<5) + (h>>2) + cast_byte(str[l - 1]));
+  return h;
+}
+unsigned int JSHash(char *str) {
+    unsigned int hash = 1315423911;
+    while (*str) {
+        hash ^= ((hash << 5) + (*str++) + (hash >> 2));
+    }
+    return (hash & 0x7FFFFFFF);
+}
+unsigned int BKDRHash(char *str) {
+    unsigned int seed = 131; // 31 131 1313 13131 131313 etc..
+    unsigned int hash = 0;
+    while (*str) {
+        hash = hash * seed + (*str++);
+    }
+    return (hash & 0x7FFFFFFF);
+}
+---
+
+哈希种子的初始化方法利用了各种内存地址的随机性以及用户可配置的一个随机量来初始化这个种子
+---
+#if !defined(luai_makeseed)
+#include <time.h>
+#define luai_makeseed()　cast(unsigned int, time(NULL))
+#endif
+#define addbuff(b,p,e) { size_t t = cast(size_t, e); memcpy(b + p, &t, sizeof(t)); p += sizeof(t); }
+unsigned int makeseed (lua_State *L) {
+  char buff[4 * sizeof(size_t)];
+  unsigned int h = luai_makeseed();
+  int p = 0;　/* 字符串的长度 */
+  addbuff(buff, p, L);  /* heap variable */
+  addbuff(buff, p, &h);  /* local variable */
+  addbuff(buff, p, luaO_nilobject);  /* global variable */
+  addbuff(buff, p, &lua_newstate);  /* public function */
+  lua_assert(p == sizeof(buff));
+  return luaS_hash(buff, p, h);
+}
+---
+
+短字符串是否相等只需判断类型是否是短字符串并且指针指向的是否是同一个字符串对象
+而长字符串的比较，如果指向同一个字符串对象当然也想等，如果不是则需要长度相同且内容一样
+---
+int luaS_eqlngstr(TString* a, TString* b) {
+  size_t len = a->u.lnglen;
+  lua_assert(a->tt == LUA_TLNGSTR && b->tt == LUA_TLNGSTR);
+  return (a == b) ||  /* same instance or... */
+    ((len == b->u.lnglen) &&  /* equal length and ... */
+     (memcmp(getstr(a), getstr(b), len) == 0));  /* equal contents */
+}
+---
+
+创建一个以str为内容的字符串，如果这个字符串在cached中直接返回
+否则调用luaS_newlstr真正去生成一个新字符串，并将新生成的字符串cache到对应slot的第一个字符串
+字符串缓存以字符串的首地址为键，哈希值的计算如 str%53
+---
+TString* strcache[STRCACHE_N][STRCACHE_M];  /* cache for strings in API 53*2 */
+TString *luaS_new (lua_State *L, const char *str) {
+  unsigned int i = point2uint(str) % STRCACHE_N;  /* hash */
+  int j;
+  TString **p = G(L)->strcache[i];
+  for (j = 0; j < STRCACHE_M; j++) {
+    if (strcmp(str, getstr(p[j])) == 0)  /* hit? */
+      return p[j];  /* that is it */
+  }
+  /* normal route */
+  for (j = STRCACHE_M - 1; j > 0; j--)
+    p[j] = p[j - 1];  /* move out last element */
+  /* new element is first in the list */
+  p[0] = luaS_newlstr(L, str, strlen(str));
+  return p[0];
+}
+---
+
+如果字符串的长度不超过40，则创建一个短字符串，创建短字符串时首先看哈希表中有没有这个字符串
+如果有直接返回这个字符串，否则调用createstrobj实际创建一个字符串并加它加到哈希表中
+哈希表的大小总是2的倍数，即(size&(size-1))一定等于0，如果确定对应哈希值的字符串该存储在哈希表的那个位置呢？
+LUA的计算方法是哈希值与上(size-1)，即 (h & (size-1)),它没有使用除以一个素数取余数的方法
+例如size为128，二进制数为1000,0000，则(size-1)的值为0111,1111，与上哈希值h即得到哈希值的最低7位来作为存储位置
+在大多数应用场合,长字符串都是文本处理的对象,不会做比较操作，这是将字符串分为短字符串和长字符串的一个原因
+注意，LUA字符串一旦创建以后，是不可修改的
+---
+static TString *internshrstr (lua_State *L, const char *str, size_t l) {
+  TString *ts;
+  global_State *g = G(L);
+　　/* 计算哈希值，并找到对应哈希表的slot，然后查看这个slot中有没有这个字符串，如果有直接返回该字符串 */
+  unsigned int h = luaS_hash(str, l, g->seed);
+  TString **list = &g->strt.hash[lmod(h, g->strt.size)];
+  lua_assert(str != NULL);  /* otherwise 'memcmp'/'memcpy' are undefined */
+  for (ts = *list; ts != NULL; ts = ts->u.hnext) {
+    if (l == ts->shrlen &&
+        (memcmp(str, getstr(ts), l * sizeof(char)) == 0)) {
+      /* found! */
+      if (isdead(g, ts))  /* dead (but not collected yet)? */
+        changewhite(ts);  /* resurrect it */
+      return ts;
+    }
+  }
+　　/* 实际存储的元素大于等于表的大小则先扩展表大小（注意标的大小不能找过MAX_INT，因此表大小已达到MAX_INT时不能再扩张）*/
+  if (g->strt.nuse >= g->strt.size && g->strt.size <= MAX_INT/2) {
+    luaS_resize(L, g->strt.size * 2);
+    list = &g->strt.hash[lmod(h, g->strt.size)];  /* recompute with new size */
+  }
+  /* 表中没有该字符串，新创建一个字符串，并将字符串插入哈希表 */
+  ts = createstrobj(L, l, LUA_TSHRSTR, h);
+  memcpy(getstr(ts), str, l * sizeof(char));
+  ts->shrlen = cast_byte(l);
+  ts->u.hnext = *list;
+  *list = ts;
+  g->strt.nuse++;
+  return ts;
+}
+---
+
+否则超过40就创建一个长字符串，然而长度也不能过分长，如果超过一定限度会报错
+创建长字符串时，先调用luaS_createlngstrobj分配空间然后将字符串拷贝到空间中
+长字符串不会放进哈希表，是一个普通的可垃圾回收的LUA对象
+---
+TString *ts;
+if (l >= (MAX_SIZE - sizeof(TString))/sizeof(char))
+  luaM_toobig(L);
+ts = luaS_createlngstrobj(L, l);
+memcpy(getstr(ts), str, l * sizeof(char));
+return ts;
+---
+
+真正用于创建字符串对象的函数是createstrobj，l是字符串的长度，tag是表示字符串的类型
+如果是短字符串，tag为LUA_TSHRSTR，哈希值h为已计算出的短字符串的哈希值
+如果是长字符串，tag是LUA_TLNGSTR，哈希值存储用于计算哈希值的种子G(L)->seed
+---
+static TString *createstrobj (lua_State *L, size_t l, int tag, unsigned int h) {
+  TString *ts;
+  GCObject *o;
+  size_t totalsize;  /* total size of TString object */
+  totalsize = sizelstring(l);
+  o = luaC_newobj(L, tag, totalsize);
+  ts = gco2ts(o);
+  ts->hash = h;
+  ts->extra = 0;
+  getstr(ts)[l] = '\0';  /* ending 0 */
+  return ts;
+}
+---
+```
+
 网络套接字
 ```
 * socket (socket.lua) => socketdriver (lua-socket.c) => skynet_socket.c => skynet_server.c
