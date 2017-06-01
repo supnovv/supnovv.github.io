@@ -9,24 +9,38 @@
 #define HTTP_LISTEN_BACKLOG (32)
 #define HTTP_RX_BUFSIZE (1024)
 
+#define HTTP_STAGE_READ_METHOD 1
+#define HTTP_STAGE_READ_URL    2
+#define HTTP_STAGE_READ_VERION 3
+#define HTTP_STAGE_READ_HEADER 4
+#define HTTP_STAGE_READ_BODY   5
+#define HTTP_STAGE_RESPONSE    6
+
 struct httplisten {
   struct ccstring ip;
   ushort_int port;
   void (*connind)(struct ccstate*);
   void* ud;
   int backlog;
+  int initreqsize;
+  int maxreqsize;
 };
 
 struct httpconnect {
+  struct httplisten* listen;
   handle_int sock;
   struct ccstring localip;
   struct ccstring remoteip;
   ushort_int localport;
   ushort_int remoteport;
+  nauty_byte stage;
   nauty_byte method;
   nauty_byte httpver;
-  struct ccstring rstr;
-  nauty_byte* method;
+  struct ccdynbuf rxbuf;
+  ushort_int ss, se;
+  ushort_int ms, me;
+  ushort_int us, ue;
+  struct ccdynbuf txbuf;
 };
 
 #define HTTP_METHOD_GET  (1)
@@ -205,22 +219,67 @@ int http_read_startline(struct ccstate* state, struct httprequest* r) {
   return ll_http_read_startline(state);
 }
 
-int http_read_headers(struct ccstate* state, struct httprequest* r) {
-
+static void ll_http_read_headers(struct ccstate* state) {
+  /* <name>: <value><crlf>
+     <name>: <value><crlf>
+     ...
+     <crlf>
+     <entity-body>
+  */
 }
 
-void ll_http_connection_indication(struct ccstate* s) {
-  struct httpconnect* conn = (struct httplisten*)robot_get_specific(s);
-  nauty_byte rxbuf[HTTP_RX_BUFSIZE+1];
-  /** http request packet formt
-  <method> <request-url> HTTP/<major>.<minor>
-  <headers> header: value<crlf>
-  <crlf>
-  <entity-body> */
+struct ccdynbuf {
+  nauty_byte* a;
+  nauty_byte* cur;
+  nauty_byte* end;
+};
+
+void ccbuffer_ensuremaxlen(struct ccbuffer* self, sright_int maxlen);
+
+static void ll_http_read_startline(struct ccstate* state) {
+  /* <method> <request-url> HTTP/<major>.<minor><crlf>
+  Carriage Return (CR) 13 '\r', Line Feed (LF) 10 '\n' */
+  struct httpconnect* conn = (struct httpconnect*)robot_get_specific(s);
   handle_int sock = robot_get_eventfd(s);
-  sright_int len = HTTP_RX_BUFSIZE, n = 0;
-  sright_int n = ccsocket_read(sock, rxbuf, len);
+  sright_int n = 0, status = 0;
+  struct ccbuffer* rxbf = &conn->rxbuf;
+  ccbuffer_ensuremaxlen(rxbf, 1024);
+  n = ccsocket_read(sock, rxbf->cur, rxbf->end - rxbf->cur, &status);
+  if (status < 0) {
+  }
+}
+
+static void ll_http_read_request(struct ccstate* state) {
   ll_http_read_startline(state);
+}
+
+void ll_http_connection_proc(struct ccrobot* robot, struct ccmessage* msg) {
+  int n = 0;
+  switch (msg->type) {
+  case MESSAGE_IOEVENT: {
+      ushort_int masks = msg->data->us;
+      if (masks & (CCIONFERR | CCIONFHUP | CCIONFRDH)) {
+        robot_run_complete(s);
+        return;
+      }
+      if (conn->stage < HTTP_STAGE_RESPONSE) {
+        if (!(masks & CCIONFREAD)) return;
+        n = robot_resume(robot, ll_http_read_request);
+        if (n == 0) {
+          conn->stage = HTTP_STAGE_RESPONSE;
+        } else if (n < 0) {
+          robot_run_complete(s);
+        }
+        return;
+      }
+      if (masks & CCIONFWRITE) {
+        robot_resume(robot, ll_http_write_response);
+      }
+      return;
+    }
+  default:
+    break;
+  }
 }
 
 void　ll_http_receive_connection(struct ccstate* s) {
@@ -233,7 +292,7 @@ void　ll_http_receive_connection(struct ccstate* s) {
   if (!ll_http_filter_connection(s, msg->data->fd, &conn)) {
     return;
   }
-  robot = robot_create_new(ll_http_connection_indication, ROBOT_YIELDABLE);
+  robot = robot_create(ll_http_connection_proc, ROBOT_YIELDABLE);
   specific = (struct httpconnect*)robot_set_allocated_specific(robot, sizeof(struct httpconnect));
   *specific = conn;
   robot_set_event(robot, conn.sock, IOEVENT_RDWR, 0);
@@ -254,7 +313,7 @@ struct ccrobot* http_listen(struct httplisten* self) {
   if (!ccsocket_isopen(sock)) {
     return 0;
   }
-  robot = robot_create_new(ll_http_receive_connection, 0);
+  robot = robot_create(ll_http_receive_connection, 0);
   robot->udata = self;
   robot_set_event(robot, sock, IOEVENT_READ, IOEVENT_FLAG_LISTEN);
   robot_start_run(robot);

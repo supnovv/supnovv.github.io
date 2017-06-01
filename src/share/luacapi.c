@@ -49,7 +49,7 @@ void ccstate_free(struct ccstate* co) {
   }
 }
 
-static void ll_state_resume(struct ccstate* co, int nargs) {
+static int ll_state_resume(struct ccstate* co, int nargs) {
   /** lua_resume **
   int lua_resume(lua_State* L, lua_State* from, int nargs);
   Starts and resumes a coroutine in the given thread L.
@@ -63,22 +63,25 @@ static void ll_state_resume(struct ccstate* co, int nargs) {
   if (n == LUA_OK) {
     /* coroutine finishes its execution without errors, the stack in L contains
     all values returned by the coroutine main function 'func'. */
-  } else if (n == LUA_YIELD) {
-    /* coroutine yields, the stack in L contains all values passed to lua_yield. */
-  } else {
-    /* error code is returned and the stack in L contains the error object on the top.
-    Lua itself only generates errors whose error object is a string, but programs may
-    generate errors with any value as the error object. in case of errors, the stack
-    is not unwound, so you can use the debug api over it.
-    LUA_ERRRUN: a runtime error.
-    LUA_ERRMEM: memory allocation error. For such errors, Lua does not call the message handler.
-    LUA_ERRERR: error while running the message handler.
-    LUA_ERRGCMM: error while running a __gc metamethod. For such errors, Lua does not call
-    the message handler (as this kind of error typically has no relation with the function
-    being called). */
-    ccloge("lua_resume %s", lua_tostring(co->co, -1));
-    lua_pop(co->co, 1); /* pop the error object */
+    return 0;
   }
+  if (n == LUA_YIELD) {
+    /* coroutine yields, the stack in L contains all values passed to lua_yield. */
+    return 1;
+  }
+  /* error code is returned and the stack in L contains the error object on the top.
+  Lua itself only generates errors whose error object is a string, but programs may
+  generate errors with any value as the error object. in case of errors, the stack
+  is not unwound, so you can use the debug api over it.
+  LUA_ERRRUN: a runtime error.
+  LUA_ERRMEM: memory allocation error. For such errors, Lua does not call the message handler.
+  LUA_ERRERR: error while running the message handler.
+  LUA_ERRGCMM: error while running a __gc metamethod. For such errors, Lua does not call
+  the message handler (as this kind of error typically has no relation with the function
+  being called). */
+  ccloge("lua_resume %s", lua_tostring(co->co, -1));
+  lua_pop(co->co, 1); /* pop the error object */
+  return -1;
 }
 
 static int ll_state_func(lua_State* co) {
@@ -90,7 +93,7 @@ static int ll_state_func(lua_State* co) {
   return 0;
 }
 
-void ccstate_resume(struct ccstate* co) {
+int ccstate_resume(struct ccstate* co) {
   int nargs = 0;
   int costatus = 0;
 
@@ -110,6 +113,7 @@ void ccstate_resume(struct ccstate* co) {
   }
 
   ccloge("coroutine cannot be resumed");
+  return -1;
 }
 
 static int ll_state_kfunc(lua_State* co, int status, lua_KContext ctx) {

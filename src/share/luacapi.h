@@ -21,7 +21,7 @@ struct ccstate {
 
 CORE_API nauty_bool ccstate_init(struct ccstate* co, struct lua_State* L, void (*func)(struct ccstate*), struct ccrobot* bot);
 CORE_API void ccstate_free(struct ccstate* co);
-CORE_API void ccstate_resume(struct ccstate* co);
+CORE_API int ccstate_resume(struct ccstate* co);
 CORE_API void ccstate_yield(struct ccstate* co, void (*kfunc)(struct ccstate*));
 CORE_API void ccluatest();
 

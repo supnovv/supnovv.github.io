@@ -6,9 +6,6 @@
 
 #define LLSERVICE_START_SVID 0x2001
 #define LLSERVICE_INITSIZEBITS 8 /* 256 */
-#define CCSERVICE_FUNC 0x10
-#define CCSERVICE_CCCO 0x20
-#define CCSERVICE_LUAF 0x40
 
 #define MESSAGE_RUNROBOT 0x01
 #define MESSAGE_DELROBOT 0x02
@@ -34,7 +31,7 @@ struct ccrobot {
   umedit_int roid;
   struct ccthread* belong; /* set once when init */
   struct ccstate* co;
-  void (*func)(struct ccstate*);
+  void (*entry)(struct ccrobot*, struct ccmessage*);
   void* udata;
 };
 
@@ -90,6 +87,7 @@ struct ccthread {
   struct ccsqueue freeco;
   umedit_int freecosz;
   umedit_int totalco;
+  struct ccstate eptco;
   struct ccstring defstr;
 };
 
@@ -124,6 +122,8 @@ void ccthread_init(struct ccthread* self) {
   cccondv_init(&self->condv);
 
   self->L = cclua_newstate();
+  cczeron(&self->eptco, sizeof(struct ccstate));
+  self->eptco.L = L;
   self->defstr = ccemptystr();
   self->index = ll_new_thread_index();
 }
@@ -152,6 +152,7 @@ void ccthread_free(struct ccthread* self) {
   ccmutex_free(&self->elock);
   ccmutex_free(&self->mutex);
   cccondv_free(&self->condv);
+  self->eptco.L = 0;
   ccstring_free(&self->defstr);
 }
 
@@ -353,6 +354,11 @@ struct ccioevent* ll_new_event() {
 void ll_free_event(struct ccioevent* event) {
   struct llevents* self = ll_ccg_events();
   if (event == 0) return;
+
+  if (event->fd != -1) {
+    ccsocket_close(event->fd);
+    event->fd = -1;
+  }
 
   ccmutex_lock(&self->mutex);
   ccsqueue_push(&self->freeq, &event->node);
@@ -579,6 +585,19 @@ static struct ccstate* ll_new_coroutine(struct ccthread* thread, struct ccrobot*
   return co;
 }
 
+static struct ccstate* ll_new_state(struct ccrobot* bot, void (*func)(ccstate*)) {
+  struct ccstate* co;
+  struct ccthread* thr = bot->belong;
+  if ((co = (struct ccstate*)ccsqueue_pop(&thr->freeco)) {
+    thr->freecosz --;
+  } else {
+    co = (struct ccstate*)ccrawalloc(sizeof(struct ccstate));
+    thr->totalco += 1;
+  }
+  ccstate_init(co, thr->L, func, bot);
+  return co;
+}
+
 static void ll_free_coroutine(struct ccthread* thread, struct ccstate* co) {
   ccsqueue_push(&thread->freeco, &co->node);
   thread->freecosz += 1;
@@ -712,6 +731,17 @@ void robot_send_message_fd(struct ccstate* state, umedit_int destid, umedit_int 
   ll_robot_send_message_fd(state->bot, destid, type, fd);
 }
 
+struct ccrobot* robot_newfromlua(const void* chunk, int len) {
+
+}
+
+struct ccrobot* robot_new(void (*entry)(struct ccrobot*, struct ccmessage*)) {
+  struct ccrobot* robot = ll_new_robot(0);
+  robot->entry = entry;
+  robot->flag = ROBOT_NOT_START;
+  return robot;
+}
+
 struct ccrobot* robot_create(void (*func)(struct ccstate*), int yieldable) {
   struct ccrobot* robot = ll_new_robot(0);
   robot->func = func;
@@ -799,6 +829,16 @@ void robot_run_completed(struct ccstate* state) {
 
 void robot_yield(struct ccstate* state, void (*kfunc)(struct ccstate*)) {
   ccstate_yield(state, kfunc);
+}
+
+void robot_resume(struct ccrobot* robot, void (*func)(struct ccstate*)) {
+  struct ccthread* thread = robot->belong;
+  if (robot->co == 0) {
+    robot->co = ll_new_coroutine(thread, robot);
+  }
+  robot->co->bot = robot;
+  robot->co->func = func;
+  ccstate_resume(robot->co);
 }
 
 static void ll_accept_connection(void* ud, struct ccsockconn* conn) {
@@ -1036,7 +1076,7 @@ void ccworker_start() {
         }
       }
 
-      if (robot->flag & CCSERVICE_CCCO) {
+      if (robot->flag & ROBOT_YIELDABLE) {
         if (robot->co == 0) {
           robot->co = ll_new_coroutine(thread, robot);
         }
@@ -1048,15 +1088,11 @@ void ccworker_start() {
         robot->co->bot = robot;
         robot->co->msg = msg;
         ccstate_resume(robot->co);
-        robot->co->bot = 0;
-        robot->co->msg = 0;
-      } else if (robot->flag & CCSERVICE_FUNC) {
-
-      } else if (robot->flag & CCSERVICE_LUAF) {
-
-      }
-      else {
-        ccloge("invalide robot type");
+      } else {
+        robot->co = &robot->belong->eptco;
+        robot->co->bot = robot;
+        robot->co->msg = msg;
+        robot->func(robot->co);
       }
 
       /* robot run completed */
