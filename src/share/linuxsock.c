@@ -1099,6 +1099,7 @@ sright_int ll_write(handle_int fd, const void* buf, sright_int count) {
   return -2;
 }
 
+/* *status >=0 success, <0 CCSTATUS_ERROR */
 sright_int ccsocket_read(handle_int sock, void* out, sright_int count, sright_int* status) {
   nauty_byte* buf = (nauty_byte*)out;
   sright_int n = 0, sum = 0;
@@ -1111,11 +1112,12 @@ sright_int ccsocket_read(handle_int sock, void* out, sright_int count, sright_in
     }
   }
   if (status) {
-    *status = (count == 0 ? 0 : (n == -2 ? -1 : count));
+    *status = (count == 0 ? 0 : (n == -2 ? CCSTATUS_ERROR : count));
   }
   return sum;
 }
 
+/* *status >=0 success, <0 CCSTATUS_ERROR */
 sright_int ccsocket_write(handle_int sock, const void* from, sright_int count, sright_int* status) {
   sright_int n = 0, sum = 0;
   const nauty_byte* buf = (const nauty_byte*)from;
@@ -1128,7 +1130,7 @@ sright_int ccsocket_write(handle_int sock, const void* from, sright_int count, s
     }
   }
   if (status) {
-    *status = (count == 0 ? 0 : (n == -2 ? -1 : count));
+    *status = (count == 0 ? 0 : (n == -2 ? CCSTATUS_ERROR : count));
   }
   return sum;
 }

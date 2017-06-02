@@ -13,16 +13,16 @@ struct ccstate {
   struct lua_State* L;
   struct lua_State* co;
   int coref;
-  void (*func)(struct ccstate*);
-  void (*kfunc)(struct ccstate*);
+  int (*func)(struct ccstate*);
+  int (*kfunc)(struct ccstate*);
   struct ccrobot* bot;
   struct ccmessage* msg;
 };
 
-CORE_API nauty_bool ccstate_init(struct ccstate* co, struct lua_State* L, void (*func)(struct ccstate*), struct ccrobot* bot);
+CORE_API nauty_bool ccstate_init(struct ccstate* co, struct lua_State* L, int (*func)(struct ccstate*), struct ccrobot* bot);
 CORE_API void ccstate_free(struct ccstate* co);
 CORE_API int ccstate_resume(struct ccstate* co);
-CORE_API void ccstate_yield(struct ccstate* co, void (*kfunc)(struct ccstate*));
+CORE_API int ccstate_yield(struct ccstate* co, int (*kfunc)(struct ccstate*));
 CORE_API void ccluatest();
 
 #endif /* CCLIB_LUACAPI_H_ */

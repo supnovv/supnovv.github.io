@@ -7,8 +7,8 @@
 int cctest_start() {
   ccsetloglevel(4);
   ccthattest();
-  ccplattest();
   ccluatest();
+  ccplattest();
   ccplationftest();
   ccplatsocktest();
   return 0;

@@ -63,8 +63,7 @@ CORE_API void robot_send_message_sp(struct ccstate* state, umedit_int destid, um
 CORE_API void robot_send_message_um(struct ccstate* state, umedit_int destid, umedit_int type, umedit_int data);
 CORE_API void robot_send_message_fd(struct ccstate* state, umedit_int destid, umedit_int type, handle_int fd);
 
-CORE_API struct ccrobot* robot_create(void (*func)(struct ccstate*), int yieldable);
-CORE_API struct ccrobot* robot_create_from(struct ccstate* state, void (*func)(struct ccstate*), int yieldable);
+CORE_API struct ccrobot* robot_new(int (*entry)(struct ccrobot*, struct ccmessage*));
 CORE_API void* robot_set_specific(struct ccrobot* robot, void* udata);
 CORE_API void* robot_set_allocated_specific(struct ccrobot* robot, int bytes);
 CORE_API void robot_set_listen(struct ccrobot* robot, handle_int fd, ushort_int masks, ushort_int flags);
@@ -76,8 +75,7 @@ CORE_API struct ccmessage* robot_get_message(struct ccstate* state);
 CORE_API handle_int robot_get_eventfd(struct ccstate* state);
 CORE_API void robot_listen_event(struct ccstate* state, handle_int fd, ushort_int masks, ushort_int flags);
 CORE_API void robot_remove_listen(struct ccstate* state);
-CORE_API void robot_resume(struct ccstate* state, const char* robot);
-CORE_API void robot_yield(struct ccstate* state, void (*kfunc)(struct ccstate*));
+CORE_API void robot_yield(struct ccstate* state, int (*kfunc)(struct ccstate*));
 CORE_API void robot_run_completed(struct ccstate* state);
 
 

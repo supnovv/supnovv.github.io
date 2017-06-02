@@ -31,7 +31,7 @@ struct ccrobot {
   umedit_int roid;
   struct ccthread* belong; /* set once when init */
   struct ccstate* co;
-  void (*entry)(struct ccrobot*, struct ccmessage*);
+  int (*entry)(struct ccrobot*, struct ccmessage*);
   void* udata;
 };
 
@@ -87,7 +87,6 @@ struct ccthread {
   struct ccsqueue freeco;
   umedit_int freecosz;
   umedit_int totalco;
-  struct ccstate eptco;
   struct ccstring defstr;
 };
 
@@ -122,8 +121,6 @@ void ccthread_init(struct ccthread* self) {
   cccondv_init(&self->condv);
 
   self->L = cclua_newstate();
-  cczeron(&self->eptco, sizeof(struct ccstate));
-  self->eptco.L = L;
   self->defstr = ccemptystr();
   self->index = ll_new_thread_index();
 }
@@ -152,7 +149,6 @@ void ccthread_free(struct ccthread* self) {
   ccmutex_free(&self->elock);
   ccmutex_free(&self->mutex);
   cccondv_free(&self->condv);
-  self->eptco.L = 0;
   ccstring_free(&self->defstr);
 }
 
@@ -573,22 +569,10 @@ static struct ccionfmgr* ll_get_ionfmgr() {
  * thread
  */
 
-static struct ccstate* ll_new_coroutine(struct ccthread* thread, struct ccrobot* robot) {
-  struct ccstate* co = 0;
-  if ((co = (struct ccstate*)ccsqueue_pop(&thread->freeco))) {
-    thread->freecosz -= 1;
-  } else {
-    co = (struct ccstate*)ccrawalloc(sizeof(struct ccstate));
-    thread->totalco += 1;
-  }
-  ccstate_init(co, thread->L, robot->func, robot);
-  return co;
-}
-
-static struct ccstate* ll_new_state(struct ccrobot* bot, void (*func)(ccstate*)) {
+static struct ccstate* ll_new_state(struct ccrobot* bot, int (*func)(struct ccstate*)) {
   struct ccstate* co;
   struct ccthread* thr = bot->belong;
-  if ((co = (struct ccstate*)ccsqueue_pop(&thr->freeco)) {
+  if ((co = (struct ccstate*)ccsqueue_pop(&thr->freeco))) {
     thr->freecosz --;
   } else {
     co = (struct ccstate*)ccrawalloc(sizeof(struct ccstate));
@@ -731,20 +715,23 @@ void robot_send_message_fd(struct ccstate* state, umedit_int destid, umedit_int 
   ll_robot_send_message_fd(state->bot, destid, type, fd);
 }
 
+#if 0
 struct ccrobot* robot_newfromlua(const void* chunk, int len) {
 
 }
+#endif
 
-struct ccrobot* robot_new(void (*entry)(struct ccrobot*, struct ccmessage*)) {
+struct ccrobot* robot_new(int (*entry)(struct ccrobot*, struct ccmessage*)) {
   struct ccrobot* robot = ll_new_robot(0);
   robot->entry = entry;
   robot->flag = ROBOT_NOT_START;
   return robot;
 }
 
-struct ccrobot* robot_create(void (*func)(struct ccstate*), int yieldable) {
+#if 0
+struct ccrobot* robot_create(int (*entry)(struct ccstate*), int yieldable) {
   struct ccrobot* robot = ll_new_robot(0);
-  robot->func = func;
+  robot->entry = entry;
   robot->flag = (yieldable == ROBOT_YIELDABLE ? ROBOT_YIELDABLE : 0);
   robot->flag |= ROBOT_NOT_START;
   return robot;
@@ -756,6 +743,7 @@ struct ccrobot* robot_create_from(struct ccstate* state, void (*func)(struct ccs
   robot->flag |= ROBOT_SAMETHREAD;
   return robot;
 }
+#endif
 
 void* robot_set_specific(struct ccrobot* robot, void* udata) {
   robot->udata = udata;
@@ -827,14 +815,13 @@ void robot_run_completed(struct ccstate* state) {
   state->bot->flag |= ROBOT_COMPLETED;
 }
 
-void robot_yield(struct ccstate* state, void (*kfunc)(struct ccstate*)) {
+void robot_yield(struct ccstate* state, int (*kfunc)(struct ccstate*)) {
   ccstate_yield(state, kfunc);
 }
 
-void robot_resume(struct ccrobot* robot, void (*func)(struct ccstate*)) {
-  struct ccthread* thread = robot->belong;
+void robot_resume(struct ccrobot* robot, int (*func)(struct ccstate*)) {
   if (robot->co == 0) {
-    robot->co = ll_new_coroutine(thread, robot);
+    robot->co = ll_new_state(robot, func);
   }
   robot->co->bot = robot;
   robot->co->func = func;
@@ -1076,6 +1063,7 @@ void ccworker_start() {
         }
       }
 
+#if 0
       if (robot->flag & ROBOT_YIELDABLE) {
         if (robot->co == 0) {
           robot->co = ll_new_coroutine(thread, robot);
@@ -1089,11 +1077,11 @@ void ccworker_start() {
         robot->co->msg = msg;
         ccstate_resume(robot->co);
       } else {
-        robot->co = &robot->belong->eptco;
-        robot->co->bot = robot;
-        robot->co->msg = msg;
-        robot->func(robot->co);
+
       }
+#endif
+
+      robot->entry(robot, msg);
 
       /* robot run completed */
       if (robot->flag & ROBOT_COMPLETED) {

@@ -28,8 +28,8 @@ CORE_API void ccsocketconn_init(struct ccsockconn* self, struct ccfrom ip, ushor
 CORE_API nauty_bool ccsocket_connect(struct ccsockconn* conn);
 CORE_API nauty_bool ccsocket_isopen(handle_int sock);
 CORE_API struct ccsockaddr ccsocket_getlocaladdr(handle_int sock);
-CORE_API sright_int ccsocket_read(handle_int sock, void* out, sright_int count);
-CORE_API sright_int ccsocket_write(handle_int sock, const void* buf, sright_int count);
+CORE_API sright_int ccsocket_read(handle_int sock, void* out, sright_int count, sright_int* status);
+CORE_API sright_int ccsocket_write(handle_int sock, const void* buf, sright_int count, sright_int* status);
 
 CORE_API void ccsockettest();
 CORE_API void ccplatsocktest();

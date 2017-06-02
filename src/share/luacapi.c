@@ -27,7 +27,7 @@ static void ll_init_state(struct ccstate* co) {
   co->coref = LUA_NOREF;
 }
 
-nauty_bool ccstate_init(struct ccstate* ccco, lua_State* L, void (*func)(struct ccstate*), struct ccrobot* bot) {
+nauty_bool ccstate_init(struct ccstate* ccco, lua_State* L, int (*func)(struct ccstate*), struct ccrobot* bot) {
   lua_State* co = 0;
   ll_init_state(ccco);
   if ((co = lua_newthread(L)) == 0) {
@@ -49,6 +49,7 @@ void ccstate_free(struct ccstate* co) {
   }
 }
 
+/* return 0 OK, 1 YIELD, <0 CCTATUS_LUAERR or error code */
 static int ll_state_resume(struct ccstate* co, int nargs) {
   /** lua_resume **
   int lua_resume(lua_State* L, lua_State* from, int nargs);
@@ -59,16 +60,36 @@ static int ll_state_resume(struct ccstate* co, int nargs) {
   the function is called. The function results are pushed onto the
   stack when the function returns, and the last result is on the top
   of the stack. */
+  int nelems = 0;
   int n = lua_resume(co->co, co->L, nargs);
   if (n == LUA_OK) {
     /* coroutine finishes its execution without errors, the stack in L contains
     all values returned by the coroutine main function 'func'. */
-    return 0;
+    if ((nelems = lua_gettop(co->co)) > 0) {
+      lua_Integer nerror = lua_tointeger(co->co, -1); /* error code is on top */
+      lua_pop(co->co, nelems);
+      ccassert(nelems == 1);
+      if (nerror < 0) {
+        /* user program error code */
+        return (int)nerror;
+      }
+    }
+    return CCSTATUS_OK;
   }
+
   if (n == LUA_YIELD) {
     /* coroutine yields, the stack in L contains all values passed to lua_yield. */
-    return 1;
+    if ((nelems = lua_gettop(co->co)) > 0) {
+      lua_Integer code = lua_tointeger(co->co, -1); /* the code is on top */
+      lua_pop(co->co, nelems);
+      ccassert(nelems == 1);
+      if (code > 0) {
+        return (int)code;
+      }
+    }
+    return CCSTATUS_YIELD;
   }
+
   /* error code is returned and the stack in L contains the error object on the top.
   Lua itself only generates errors whose error object is a string, but programs may
   generate errors with any value as the error object. in case of errors, the stack
@@ -80,16 +101,21 @@ static int ll_state_resume(struct ccstate* co, int nargs) {
   the message handler (as this kind of error typically has no relation with the function
   being called). */
   ccloge("lua_resume %s", lua_tostring(co->co, -1));
-  lua_pop(co->co, 1); /* pop the error object */
-  return -1;
+  lua_pop(co->co, lua_gettop(co->co)); /* pop elems exist including the error object */
+  return CCSTATUS_LUAERR;
 }
 
 static int ll_state_func(lua_State* co) {
+  int status = 0;
   struct ccstate* ccco = 0;
   ccco = (struct ccstate*)lua_touserdata(co, -1);
   lua_pop(co, 1);
-  ccco->func(ccco);
+  status = ccco->func(ccco);
   /* never goes here if ccco->func is yield inside */
+  if (status < 0) {
+    lua_pushinteger(co, status);
+    return 1; /* return one result */
+  }
   return 0;
 }
 
@@ -113,18 +139,25 @@ int ccstate_resume(struct ccstate* co) {
   }
 
   ccloge("coroutine cannot be resumed");
-  return -1;
+  return CCSTATUS_LUAERR;
 }
 
 static int ll_state_kfunc(lua_State* co, int status, lua_KContext ctx) {
   struct ccstate* ccco = (struct ccstate*)ctx;
   (void)co; /* not used here, it should be equal to co->co */
   (void)status; /* status always is LUA_YIELD when kfunc is called after lua_yieldk */
-  ccco->kfunc(ccco);
+  status = ccco->kfunc(ccco);
+  /* never goes here if ccco->func is yield inside */
+  if (status < 0) {
+    lua_pushinteger(co, status);
+    return 1; /* return one result */
+  }
   return 0;
 }
 
-void ccstate_yield(struct ccstate* co, void (*kfunc)(struct ccstate*)) {
+int ccstate_yieldwithcode(struct ccstate* co, int (*kfunc)(struct ccstate*), int code) {
+  int status = 0;
+  int nresults = 0;
   co->kfunc = kfunc;
   /* int lua_yieldk(lua_State* co, int nresults, lua_KContext ctx, lua_KFunction k);
   Usually, this function does not return; when the coroutine eventually resumes, it
@@ -137,8 +170,17 @@ void ccstate_yield(struct ccstate* co, void (*kfunc)(struct ccstate*)) {
   This function can raise an error if it is called from a thread with a pending C
   call with no continuation function, or it is called from a thread that is not
   running inside a resume (e.g., the main thread). */
-  lua_yieldk(co->co, 0, (lua_KContext)co, ll_state_kfunc);
+  if (code > 0) {
+    lua_pushinteger(co->co, code);
+    nresults += 1;
+  }
+  status = lua_yieldk(co->co, nresults, (lua_KContext)co, ll_state_kfunc);
   ccloge("lua_yieldk never returns to here"); /* the code never goes here */
+  return status;
+}
+
+int ccstate_yield(struct ccstate* co, int (*kfunc)(struct ccstate*)) {
+  return ccstate_yieldwithcode(co, kfunc, 0);
 }
 
 /** push stack functions **
@@ -187,35 +229,70 @@ const char* lua_tostring(lua_State* L, int index); // get cstr or NULL
 lua_State* lua_tothread(lua_State* L, int index); // get thread or NULL
 void* lua_touserdata(lua_State* L, int index); // get userdata or NULL */
 
-static void ll_state_testfunc(struct ccstate* co) {
+static int ll_state_testfunc(struct ccstate* co) {
   static int i = 0;
-  cclogd("ll_state_testfunc arguments in stack %s", ccitos(lua_gettop(co->co)));
   switch (i) {
   case 0:
-    cclogd("ll_state_testfunc called %s", ccitos(i++));
-    ccstate_yield(co, ll_state_testfunc);
+    ++i;
+    return ccstate_yield(co, ll_state_testfunc);
   case 1:
-    cclogd("ll_state_testfunc called %s", ccitos(i++));
-    ccstate_yield(co, ll_state_testfunc);
+    ++i;
+    return ccstate_yieldwithcode(co, ll_state_testfunc, 3);
   case 2:
-    cclogd("ll_state_testfunc called %s", ccitos(i++));
-    ccstate_yield(co, ll_state_testfunc);
-  default:
-    cclogd("ll_state_testfunc called %s", ccitos(i++));
+    ++i;
+    return ccstate_yield(co, ll_state_testfunc);
+  case -1:
+    --i;
+    return ccstate_yieldwithcode(co, ll_state_testfunc, 5);
+  case -2:
+    --i;
+    return ccstate_yield(co, ll_state_testfunc);
+  case -3:
     i = 0;
-    return;
+    return -3;
+  default:
+    i = -1;
+    break;
   }
-  ccloge("ll_state_testfunc never goes here");
+  return 0;
+}
+
+static int ll_state_noyield(struct ccstate* co) {
+  static int i = 0;
+  (void)co;
+  switch (i) {
+  case 0:
+    ++i;
+    return 0;
+  case 1:
+    ++i;
+    return -2;
+  case 2:
+    ++i;
+    return -3;
+  default:
+    i = 0;
+    break;
+  }
+  return 0;
 }
 
 void ccluatest() {
   lua_State* L = cclua_newstate();
   struct ccstate co;
   ccstate_init(&co, L, ll_state_testfunc, 0);
-  ccstate_resume(&co);
-  ccstate_resume(&co);
-  ccstate_resume(&co);
-  ccstate_resume(&co);
+  ccassert(ccstate_resume(&co) == CCSTATUS_YIELD);
+  ccassert(ccstate_resume(&co) == 3); /* yield */
+  ccassert(ccstate_resume(&co) == CCSTATUS_YIELD);
+  ccassert(ccstate_resume(&co) == 0);
+  ccassert(ccstate_resume(&co) == 5); /* yield */
+  ccassert(ccstate_resume(&co) == CCSTATUS_YIELD);
+  ccassert(ccstate_resume(&co) == -3);
+  co.func = ll_state_noyield;
+  ccassert(ccstate_resume(&co) == 0);
+  ccassert(ccstate_resume(&co) == -2);
+  ccassert(ccstate_resume(&co) == -3);
+  ccassert(ccstate_resume(&co) == 0);
   ccstate_free(&co);
   ccassert(sizeof(lua_KContext) >= sizeof(void*));
 }
