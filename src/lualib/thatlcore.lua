@@ -145,7 +145,7 @@ local BlankTable = {
   "\xE1\x9A\x80", -- 0x1680 ogham space mark
   "\xE2\x80\xAF", -- 0x202F narrow no-break space
   "\xE2\x81\x9F", -- 0x205F medium mathematical space
-  "\xE3\x80\x80", -- 0x3000 ideographic space
+  "\xE3\x80\x80", -- 0x3000 ideographic space (chinese blank character)
   L.P"\xE2\x80" * L.R"\x80\x8A", -- [0x2000, 0x200A]
   -- byte order mark
   "\xFE\xFF",
