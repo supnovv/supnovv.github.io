@@ -12,6 +12,10 @@ struct cccharset {
   umedit_int e[256];
 };
 
+umedit_int rightmostbitofone(umedit_int n) {
+  return n & (-n);
+}
+
 #define HTTP_METHOD_MAX_CHARS (8)
 static struct cccharset methodmapset[HTTP_METHOD_MAX_CHARS];
 
@@ -72,11 +76,12 @@ static const char* const ccstringtooshort = (const char* const)(signed_ptr)(-1);
 
 const char* string_match(struct stringormap* ormap, const char* s, int len) {
   umedit_int prevmatch = 0xFFFFFFFF;
-  umedit_int curmatch = 0;
+  umedit_int curmatch = 0, headmatch = 0;
 
   struct cccharset* set = 0;
   int i = 0, end = len;
   nauty_byte ch = 0;
+  const char* p = 0;
 
   if (ormap->size < len) {
     end = ormap->size;
@@ -88,23 +93,70 @@ const char* string_match(struct stringormap* ormap, const char* s, int len) {
 
     curmatch = prevmatch & set->t[ch];
     if (!curmatch) {
-      return 0;
+      return p;
     }
 
-    if (set->e[ch]) {
-      return s + i + 1;
+    if (set->e[ch] & curmatch) {
+      p = s + i + 1;
+      headmatch = curmatch & (-curmatch); /* ordered chice */
+      if (set->e[ch] & headmatch) {
+        return p;
+      }
     }
 
     prevmatch = curmatch;
     ++i;
   }
 
-  /* too short to match */
-  return ccstringtooshort;
+  if (p) return p;
+  return ccstringtooshort; /* too short to match */
 }
+
+const char* ccspaces[] = {
+  "\x09", /* \t */
+  "\x0B", /* \v */
+  "\x0C", /* \f */
+  /* Zs 'Separator, Space' Category - www.fileformat.info/info/unicode/category/Zs/list.htm */
+  "\x20", /* 0x20 space */
+  "\xC2\xA0", /* 0xA0 no-break space */
+  "\xE1\x9A\x80", /* 0x1680 ogham space mark */
+  "\xE2\x80\xAF", /* 0x202F narrow no-break space */
+  "\xE2\x81\x9F", /* 0x205F medium mathematical space */
+  "\xE3\x80\x80", /* 0x3000 ideographic space (chinese blank character) */
+  "\xE2\x80\x80", /* 0x2000 en quad */
+  "\xE2\x80\x81", /* 0x2001 em quad */
+  "\xE2\x80\x82", /* 0x2002 en space */
+  "\xE2\x80\x83", /* 0x2003 em space */
+  "\xE2\x80\x84", /* 0x2004 three-per-em space */
+  "\xE2\x80\x85", /* 0x2005 four-per-em space */
+  "\xE2\x80\x86", /* 0x2006 six-per-em space */
+  "\xE2\x80\x87", /* 0x2007 figure space */
+  "\xE2\x80\x88", /* 0x2008 punctuation space */
+  "\xE2\x80\x89", /* 0x2009 thin space */
+  "\xE2\x80\x8A", /* 0x200A hair space */
+  /* byte order marks */
+  "\xFE\xFF",
+  "\xFF\xFE",
+  "\xEF\xBB\xBF",
+  0
+};
+
+const char* ccnewlines[] = {
+  "\x0A\x0D", /* \n\r */
+  "\x0D\x0A", /* \r\n */
+  "\x0A", /* \r */
+  "\x0D", /* \n */
+  "\xE2\x80\xA8", /* line separator 0x2028 00100000_00101000 -> 1110'0010_10'000000_10'101000 (0xE280A8) */
+  "\xE2\x80\xA9", /* paragraph separator 0x2029 00100000_00101001 */
+  0
+};
 
 static const char* cchttpmethods[] = {
  "GET", "HEAD", "POST", 0
+};
+
+static const char* orderedchice[] = {
+  "mankind", "man", "got", "gotten", "pick", "tick", "cook", 0 
 };
 
 void matchtest() {
@@ -115,27 +167,55 @@ void matchtest() {
   string_setormap(methodmapset, HTTP_METHOD_MAX_CHARS, cchttpmethods, false);
   ormap.set = methodmapset;
   ormap.size = HTTP_METHOD_MAX_CHARS;
-
   s = string_match(&ormap, subject, 3);
   printf("get - %s\n", s);
-
   s = string_match(&ormap, subject+1, 3);
   ccassert(s == 0);
-
   s = string_match(&ormap, subject+4, 3);
   ccassert(s == ccstringtooshort);
-
   s = string_match(&ormap, subject+4, 4);
   printf("head - %s\n", s);
-
   s = string_match(&ormap, subject+9, 3);
   ccassert(s == ccstringtooshort);
-
   s = string_match(&ormap, subject+9, 5);
   printf("post - %s\n", s);
-
   s = string_match(&ormap, subject+14, 3);
   ccassert(s == 0);
+
+  string_setormap(methodmapset, HTTP_METHOD_MAX_CHARS, orderedchice, true);
+  s = string_match(&ormap, "mankind", 7);
+  ccassert(*s == 0);
+  s = string_match(&ormap, "mankin", 6);
+  ccassert(*s == 'k');
+  s = string_match(&ormap, "gotten", 6);
+  ccassert(*s == 't');
+  s = string_match(&ormap, "pon", 3);
+  ccassert(s == 0);
+  s = string_match(&ormap, "con", 3);
+  ccassert(s == 0);
+  s = string_match(&ormap, "tiok", 4);
+  ccassert(s == 0);
+  s = string_match(&ormap, "tick", 4);
+  ccassert(*s == 0);
+}
+
+void bitoptest() {
+  ccassert(rightmostbitofone(0x0000) == 0x0000);
+  ccassert(rightmostbitofone(0x0001) == 0x0001);
+  ccassert(rightmostbitofone(0x0010) == 0x0010);
+  ccassert(rightmostbitofone(0x0011) == 0x0001);
+  ccassert(rightmostbitofone(0x0100) == 0x0100);
+  ccassert(rightmostbitofone(0x0101) == 0x0001);
+  ccassert(rightmostbitofone(0x0110) == 0x0010);
+  ccassert(rightmostbitofone(0x0111) == 0x0001);
+  ccassert(rightmostbitofone(0x1000) == 0x1000);
+  ccassert(rightmostbitofone(0x1001) == 0x0001);
+  ccassert(rightmostbitofone(0x1010) == 0x0010);
+  ccassert(rightmostbitofone(0x1011) == 0x0001);
+  ccassert(rightmostbitofone(0x1100) == 0x0100);
+  ccassert(rightmostbitofone(0x1101) == 0x0001);
+  ccassert(rightmostbitofone(0x1110) == 0x0010);
+  ccassert(rightmostbitofone(0x1111) == 0x0001);
 }
 
 int cctest_start() {
@@ -146,6 +226,7 @@ int cctest_start() {
   ccplationftest();
   ccplatsocktest();
   matchtest();
+  bitoptest();
   return 0;
 }
 
