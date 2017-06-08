@@ -40,12 +40,16 @@
 
 /** Error status **/
 
-#define CCSTATUS_OK     (0)
-#define CCSTATUS_YIELD  (1)
+#define CCSTATUS_OK       (0)
+#define CCSTATUS_YIELD    (1)
+#define CCSTATUS_WAITMORE (2)
+#define CCSTATUS_CONTREAD (3)
 
 #define CCSTATUS_LUAERR (-1)
 #define CCSTATUS_ERROR  (-2)
-
+#define CCSTATUS_EREAD  (-3)
+#define CCSTATUS_EWRITE (-4)
+#define CCSTATUS_ELIMIT (-5)
 
 /** Debugger and logger **/
 

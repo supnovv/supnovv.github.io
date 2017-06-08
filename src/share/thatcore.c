@@ -220,11 +220,7 @@ void* ccrawalloc_init(sright_int size) {
 void* ccrawrelloc(void* buffer, sright_int oldsize, sright_int newsize) {
   size_t bytes;
 
-  if (buffer == 0) {
-    return ccrawalloc_init(newsize);
-  }
-
-  if (oldsize < 0 || (bytes = llgetallocsize(newsize)) == 0) {
+  if (!buffer || oldsize < 0 || (bytes = llgetallocsize(newsize)) == 0) {
     ccloge("ccrawrelloc invalid argument %s", ccitos(newsize));
     return 0;
   }

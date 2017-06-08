@@ -50,6 +50,20 @@ CORE_API struct ccthread* ccthread_getself();
 CORE_API struct ccthread* ccthread_getmaster();
 CORE_API struct ccstring* ccthread_getdefstr();
 
+struct ccbuffer {
+  struct ccsmplnode node;
+  umedit_int maxlimit;
+  umedit_int capacity;
+  umedit_int size;
+  nauty_byte a[4];
+};
+
+CORE_API void ccbuffer_ensurecapacity(struct ccbuffer** self, nauty_int size);
+CORE_API void ccbuffer_ensuresizeremain(struct ccbuffer** self, nauty_int remainsize);
+CORE_API struct ccbuffer* ccnewbuffer(struct ccthread* thread, umedit_int maxlimit);
+CORE_API void ccfreebuffer(struct ccthread* thread, struct ccbuffer* p);
+
+
 struct ccrobot;
 CORE_API void ccmaster_dispatch_msg();
 CORE_API void ccworker_handle_msg();

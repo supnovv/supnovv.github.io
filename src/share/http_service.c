@@ -33,14 +33,12 @@ struct httpconnect {
   struct ccstring remoteip;
   ushort_int localport;
   ushort_int remoteport;
-  nauty_byte stage;
   nauty_byte method;
   nauty_byte httpver;
-  struct ccdynbuf rxbuf;
-  ushort_int ss, se;
-  ushort_int ms, me;
-  ushort_int us, ue;
-  struct ccdynbuf txbuf;
+  struct ccbuffer* rxbuf;
+  umedit_int lstart, lnewline, lend; /* line */
+  umedit_int mstart; /* match start */
+  umedit_int ustart, uend; /* url */
 };
 
 #define HTTP_METHOD_GET  (1)
@@ -228,25 +226,109 @@ static void ll_http_read_headers(struct ccstate* state) {
   */
 }
 
-struct ccdynbuf {
-  nauty_byte* a;
-  nauty_byte* cur;
-  nauty_byte* end;
-};
+static int ll_http_read_line(struct ccstate* s) {
+  struct httpconnect* conn = robot_get_specific(s);
+  handle_int sock = robot_get_eventfd(s);
+  struct ccbuffer* rxbuf = 0;
+  const char* end = 0;
+  nauty_int count = 0, n = 0;
+  int status = 0, len = 0;
 
-void ccbuffer_ensuremaxlen(struct ccbuffer* self, sright_int maxlen);
+  if (!conn->rxbuf) {
+    conn->rxbuf = ccnewbuffer(ccgetthread(s), conn->maxlimit);
+  }
 
-static void ll_http_read_startline(struct ccstate* state) {
+  if (conn->lstart == -1) {
+    conn->lstart = conn->rxbuf->size;
+    conn->mstart = conn->lstart;
+  }
+
+ReadSocket:
+  ccbufer_ensureremainsize(&conn->rxbuf, 128);
+  rxbuf = conn->rxbuf;
+
+  count = rxbuf->capacity - rxbuf->size;
+  n = ccsocket_read(sock, rxbuf->a + rxbuf->size, count, &status);
+  if (status < 0) {
+    return CCSTATUS_EREAD;
+  }
+
+  end = ccstring_matchuntil(ccnewlines, rxbuf->a + conn->mstart, rxbuf->size + n - conn->mstart, &len);
+
+  if (end == 0) { /* cannot find newline */
+    rxbuf->size += n;
+    if (rxbuf->size > conn->maxlimit) {
+      return CCSTATUS_ELIMIT;
+    }
+
+    conn->mstart = len; /* prev non-newline char pos */
+
+    if (n < count) { /* no more data can be read from socket */
+      return CCSTATUS_WAITMORE;
+    }
+
+    goto ReadSocket;
+  }
+
+  /* newline matched */
+  conn->lnewline = end - len - rxbuf->a;
+  conn->lend = end - rxbuf->a;
+
+  if (n < count) {
+    return 0; /* read line success and no more data exist */
+  }
+
+  /* read line success and has more data */
+  return CCSTATUS_CONTREAD;
+}
+
+int ll_http_read_startline(struct ccstate* s) {
   /* <method> <request-url> HTTP/<major>.<minor><crlf>
   Carriage Return (CR) 13 '\r', Line Feed (LF) 10 '\n' */
-  struct httpconnect* conn = (struct httpconnect*)robot_get_specific(s);
-  handle_int sock = robot_get_eventfd(s);
-  sright_int n = 0, status = 0;
-  struct ccbuffer* rxbf = &conn->rxbuf;
-  ccbuffer_ensuremaxlen(rxbf, 1024);
-  n = ccsocket_read(sock, rxbf->cur, rxbf->end - rxbf->cur, &status);
-  if (status < 0) {
+  const char* e = 0;
+  struct httpconnect* conn = 0;
+  struct ccbuffer* rxbuf = 0;
+  int n = 0, strid = 0, len = 0;
+
+  if ((n = ll_http_read_line(s)) < 0) {
+    return n;
   }
+
+  if (n == CCSTATUS_WAITMORE) {
+    return robot_yield(s, ll_http_read_startline);
+  }
+
+  conn = robot_get_specific(s);
+  rxbuf = conn->rxbuf;
+
+  /* the start line is read */
+  e = string_skipheadspacesmatch(ccmethods, rxbuf->a + conn->lstart, conn->lnewline - conn->lstart, &strid, 0);
+  if (e == 0) {
+    return CCSTATUS_EMATCH;
+  }
+  conn->method = strid;
+
+  /* url */
+  e = string_skipheadspacesmatch(ccnonblanks, e, rxbuf->a + conn->lnewline - e, 0, &len);
+  if (e == 0) {
+    return CCSTATUS_EMATCH;
+  }
+  conn->ustart = e - len - rxbuf->a;
+  conn->uend = e - rxbuf->a;
+
+  /* http version */
+  e = string_skipheadspacematch(cchttpver, e, rxbuf->a + conn->lnewline - e, &strid, 0);
+  if (e == 0) {
+    conn->httpver = HTTP_VER_0_9;
+    return 0; /* head read finished for v0.9 */
+  }
+  conn->httpver = strid;
+
+  /* read headers */
+  if (n == CCSTATUS_CONTREAD) {
+    return ll_http_read_headers(s);
+  }
+  return robot_yield(s, ll_http_read_headers);
 }
 
 static void ll_http_read_request(struct ccstate* state) {

@@ -88,7 +88,79 @@ struct ccthread {
   umedit_int freecosz;
   umedit_int totalco;
   struct ccstring defstr;
+  /* buffer queue */
+  struct ccsqueue freebufq;
+  nauty_int freememsize;
+  nauty_int maxfreemem;
 };
+
+#define LL_THREAD_MAX_MEMORY (1024 * 1024 * 2) /* 2MB */
+
+static void ll_thread_initbufferq(struct ccthread* thread) {
+  ccsqueue_init(&thread->freebufq);
+  thread->freememsize = 0;
+  thread->maxfreemem = LL_THREAD_MAX_MEMORY;
+}
+
+static void ll_thread_freebufferq(struct ccthread* thread) {
+  struct ccbuffer* p = 0;
+  while ((p = (struct ccbuffer*)ccsqueue_pop(&thread->freebufq))) {
+    ccrawfree(p);
+  }
+}
+
+static struct ccbuffer* ll_thread_getfreebuffer(struct ccthread* thread) {
+  struct ccbuffer* p = 0;
+  if ((p = (struct ccbuffer*)ccsqueue_pop(&thread->freebufq))) {
+    if (thread->freememsize > p->capacity) {
+      thread->freememsize -= p->capacity;
+    }
+  }
+  return p;
+}
+
+void ccbuffer_ensurecapacity(struct ccbuffer** self, nauty_int size) {
+  nauty_int newcap = (*self)->capacity;
+  if (newcap >= size) return;
+  while ((newcap *= 2) < size) {
+    if (newcap > LL_THREAD_MAX_MEMORY) {
+      ccloge("buffer too large");
+      return;
+    }
+  }
+  *self = (struct ccbuffer*)ccrawrelloc(*self, sizeof(struct ccbuffer) + (*self)->capacity, sizeof(struct ccbuffer) + newcap);
+  (*self)->capacity = newcap;
+}
+
+void ccbuffer_ensuresizeremain(struct ccbuffer** self, nauty_int remainsize) {
+  ccbuffer_ensurecapacity(self, (*self)->size + remainsize);
+}
+
+#define LL_BUFFER_INIT_SIZE (64)
+
+struct ccbuffer* ccnewbuffer(struct ccthread* thread, umedit_int maxlimit) {
+  struct ccbuffer* p = 0;
+  if ((p = ll_thread_getfreebuffer(thread))) {
+    ccbuffer_ensurecapacity(&p, LL_BUFFER_INIT_SIZE);
+  } else {
+    p = (struct ccbuffer*)ccrawalloc(sizeof(struct ccbuffer) + LL_BUFFER_INIT_SIZE);
+    p->capacity = LL_BUFFER_INIT_SIZE;
+  }
+  p->maxlimit = maxlimit;
+  p->size = 0;
+  return p;
+}
+
+void ccfreebuffer(struct ccthread* thread, struct ccbuffer* p) {
+  ccsqueue_push(&thread->freebufq, &p->node);
+  thread->freememsize += p->capacity;
+  while (thread->freememsize > thread->maxfreemem) {
+    if (!(p = ll_thread_getfreebuffer(thread))) {
+      break;
+    }
+    ccrawfree(p);
+  }
+}
 
 static nauty_bool ll_thread_less(void* elem, void* elem2) {
   struct ccthread* thread = (struct ccthread*)elem;
@@ -123,6 +195,7 @@ void ccthread_init(struct ccthread* self) {
   self->L = cclua_newstate();
   self->defstr = ccemptystr();
   self->index = ll_new_thread_index();
+  ll_thread_initbufferq(self);
 }
 
 void ccthread_free(struct ccthread* self) {
@@ -150,6 +223,7 @@ void ccthread_free(struct ccthread* self) {
   ccmutex_free(&self->mutex);
   cccondv_free(&self->condv);
   ccstring_free(&self->defstr);
+  ll_thread_freebufferq(self);
 }
 
 

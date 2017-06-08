@@ -159,11 +159,14 @@ int main(void) {
   ccwriteline(file, "%s/* sright_int uright_int - 64-bit */", CCNEWLINE);
   ccwriteline(file, "#undef sright_int");
   ccwriteline(file, "#undef uright_int");
+  ccwriteline(file, "#undef nauty_int");
   if (sizeof(unsigned long) == 8 && sizeof(long) == 8) {
     ccwriteline(file, "#define sright_int long");
+    ccwriteline(file, "#define nauty_int long");
     ccwriteline(file, "#define uright_int unsigned long");
   } else if (sizeof(unsigned long long) == 8 && sizeof(long long) == 8) {
     ccwriteline(file, "#define sright_int long long");
+    ccwriteline(file, "#define nauty_int long");
     ccwriteline(file, "#define uright_int unsigned long long");
   } else {
     ccloge("no 64-bit integer type found");

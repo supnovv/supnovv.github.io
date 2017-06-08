@@ -74,6 +74,7 @@ void string_setormap(struct cccharset* set, int size, const char** orlist, int c
 
 static const char* const ccstringtooshort = (const char* const)(signed_ptr)(-1);
 
+/* return 0 - doesn't match, -1 too short, >=s match success */
 const char* string_match(struct stringormap* ormap, const char* s, int len) {
   umedit_int prevmatch = 0xFFFFFFFF;
   umedit_int curmatch = 0, headmatch = 0;
@@ -82,6 +83,10 @@ const char* string_match(struct stringormap* ormap, const char* s, int len) {
   int i = 0, end = len;
   nauty_byte ch = 0;
   const char* p = 0;
+
+  if (len <= 0) {
+    return ccstringtooshort;
+  }
 
   if (ormap->size < len) {
     end = ormap->size;
@@ -114,9 +119,9 @@ const char* string_match(struct stringormap* ormap, const char* s, int len) {
 
 /* match exactly n times, return >=s or ccstringtooshort */
 const char* string_matchtimes(struct stringormap* ormap, int n, const char* s, int len) {
-  const char* e = 0;
+  const char* e = s;
   int i = 0;
-  if (n <= 0) return s;
+
   while (i++ < n) {
     e = string_match(ormap, s, len);
     if (e == 0) {
@@ -128,6 +133,7 @@ const char* string_matchtimes(struct stringormap* ormap, int n, const char* s, i
     s = e;
     len -= e - s;
   }
+
   return e;
 }
 
@@ -149,6 +155,25 @@ const char* string_matchrepeat(struct stringormap* ormap, const char* s, int len
   }
 
   return prev;
+}
+
+/* return 0 - too short to match, >=s - match success, n is the length */
+const char* string_matchuntil(struct stringormap* ormap, const char* s, int len, int* n) {
+  const char* e = 0;
+  const char* cur = s;
+
+  while ((e = string_match(ormap, cur, len)) == 0) { /* continue only doesn't match */
+    ++cur;
+    --len;
+  }
+
+  if (e == ccstringtooshort) {
+    if (n) *n = cur - s;
+    return 0;
+  }
+
+  if (n) *n = e - cur;
+  return e;
 }
 
 const char* ccspaces[] = {
