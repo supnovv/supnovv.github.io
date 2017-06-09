@@ -19,163 +19,6 @@ umedit_int rightmostbitofone(umedit_int n) {
 #define HTTP_METHOD_MAX_CHARS (8)
 static struct cccharset methodmapset[HTTP_METHOD_MAX_CHARS];
 
-struct stringormap {
-  struct cccharset* set;
-  int size;
-};
-
-void string_setormap(struct cccharset* set, int size, const char** orlist, int casesensitive) {
-  int stridx = 0, charidx = 0;
-  const char* s = 0;
-  nauty_byte ch = 0;
-
-  cczeron(set, sizeof(struct cccharset)*size);
-
-  for (; (s = orlist[stridx]); ++stridx) {
-
-    if (stridx+1 > 32) {
-      ccloge("too many strings in orlist");
-      break;
-    }
-
-    /* "or" a empty string take no effect */
-    if (s[0] == 0) {
-      continue;
-    }
-
-    charidx = 0;
-    while ((ch = s[charidx])) {
-
-      if (charidx+1 > size) {
-        ccloge("too many chars in string");
-        ++charidx;
-        break;
-      }
-
-      /* each char in the string has a table */
-      set[charidx].t[ch] |= (1 << stridx);
-      if (!casesensitive) {
-        if (ch >= 'a' && ch <= 'z') set[charidx].t[ch-32] |= (1 << stridx);
-        else if (ch >= 'A' && ch <= 'Z') set[charidx].t[ch+32] |= (1 << stridx);
-      }
-
-      ++charidx;
-    }
-
-    /* the string ended with this char */
-    ch = s[--charidx];
-    set[charidx].e[ch] |= (1 << stridx);
-    if (!casesensitive) {
-      if (ch >= 'a' && ch <= 'z') set[charidx].e[ch-32] |= (1 << stridx);
-      else if (ch >= 'A' && ch <= 'Z') set[charidx].e[ch+32] |= (1 << stridx);
-    }
-  }
-}
-
-static const char* const ccstringtooshort = (const char* const)(signed_ptr)(-1);
-
-/* return 0 - doesn't match, -1 too short, >=s match success */
-const char* string_match(struct stringormap* ormap, const char* s, int len) {
-  umedit_int prevmatch = 0xFFFFFFFF;
-  umedit_int curmatch = 0, headmatch = 0;
-
-  struct cccharset* set = 0;
-  int i = 0, end = len;
-  nauty_byte ch = 0;
-  const char* p = 0;
-
-  if (len <= 0) {
-    return ccstringtooshort;
-  }
-
-  if (ormap->size < len) {
-    end = ormap->size;
-  }
-
-  while (i < end) {
-    set = ormap->set + i;
-    ch = s[i];
-
-    curmatch = prevmatch & set->t[ch];
-    if (!curmatch) {
-      return p;
-    }
-
-    if (set->e[ch] & curmatch) {
-      p = s + i + 1;
-      headmatch = curmatch & (-curmatch); /* ordered chice */
-      if (set->e[ch] & headmatch) {
-        return p;
-      }
-    }
-
-    prevmatch = curmatch;
-    ++i;
-  }
-
-  if (p) return p;
-  return ccstringtooshort; /* too short to match */
-}
-
-/* match exactly n times, return >=s or ccstringtooshort */
-const char* string_matchtimes(struct stringormap* ormap, int n, const char* s, int len) {
-  const char* e = s;
-  int i = 0;
-
-  while (i++ < n) {
-    e = string_match(ormap, s, len);
-    if (e == 0) {
-      return s;
-    }
-    if (e == ccstringtooshort) {
-      return e;
-    }
-    s = e;
-    len -= e - s;
-  }
-
-  return e;
-}
-
-/* return >=s */
-const char* string_matchrepeat(struct stringormap* ormap, const char* s, int len, int* lasttimematchfailed) {
-  const char* e = 0;
-  const char* prev = s;
-
-  while ((e = string_match(ormap, s, len)) != 0 && e != ccstringtooshort) {
-    prev = e;
-    s = e;
-    len -= e - s;
-  }
-
-  if (e == 0) {
-    if (lasttimematchfailed) *lasttimematchfailed = 1;
-  } else {
-    if (lasttimematchfailed) *lasttimematchfailed = 0;
-  }
-
-  return prev;
-}
-
-/* return 0 - too short to match, >=s - match success, n is the length */
-const char* string_matchuntil(struct stringormap* ormap, const char* s, int len, int* n) {
-  const char* e = 0;
-  const char* cur = s;
-
-  while ((e = string_match(ormap, cur, len)) == 0) { /* continue only doesn't match */
-    ++cur;
-    --len;
-  }
-
-  if (e == ccstringtooshort) {
-    if (n) *n = cur - s;
-    return 0;
-  }
-
-  if (n) *n = e - cur;
-  return e;
-}
-
 const char* ccspaces[] = {
   "\x09", /* \t */
   "\x0B", /* \v */
@@ -250,6 +93,250 @@ const char* ccblanks[] = {
   "\xE2\x80\xA9", /* paragraph separator 0x2029 00100000_00101001 */
   0
 };
+
+struct stringormap {
+  struct cccharset* set;
+  int size;
+};
+
+static struct cccharset ll_space_map[4];
+static struct stringormap ccspacemap = {ll_space_map, 4};
+
+void string_setormap(struct cccharset* set, int size, const char** orlist, int casesensitive) {
+  int stridx = 0, charidx = 0;
+  const char* s = 0;
+  nauty_byte ch = 0;
+
+  cczeron(set, sizeof(struct cccharset)*size);
+
+  for (; (s = orlist[stridx]); ++stridx) {
+
+    if (stridx+1 > 32) {
+      ccloge("too many strings in orlist");
+      break;
+    }
+
+    /* "or" a empty string take no effect */
+    if (s[0] == 0) {
+      continue;
+    }
+
+    charidx = 0;
+    while ((ch = s[charidx])) {
+
+      if (charidx+1 > size) {
+        ccloge("too many chars in string");
+        ++charidx;
+        break;
+      }
+
+      /* each char in the string has a table */
+      set[charidx].t[ch] |= (1 << stridx);
+      if (!casesensitive) {
+        if (ch >= 'a' && ch <= 'z') set[charidx].t[ch-32] |= (1 << stridx);
+        else if (ch >= 'A' && ch <= 'Z') set[charidx].t[ch+32] |= (1 << stridx);
+      }
+
+      ++charidx;
+    }
+
+    /* the string ended with this char */
+    ch = s[--charidx];
+    set[charidx].e[ch] |= (1 << stridx);
+    if (!casesensitive) {
+      if (ch >= 'a' && ch <= 'z') set[charidx].e[ch-32] |= (1 << stridx);
+      else if (ch >= 'A' && ch <= 'Z') set[charidx].e[ch+32] |= (1 << stridx);
+    }
+  }
+}
+
+static const char* const ccstringtooshort = (const char* const)(signed_ptr)(-1);
+
+static int ccpowtoindex(umedit_int n) {
+  switch (n) {
+  case 0x00000001: return 0;
+  case 0x00000002: return 1;
+  case 0x00000004: return 2;
+  case 0x00000008: return 3;
+  case 0x00000010: return 4;
+  case 0x00000020: return 5;
+  case 0x00000040: return 6;
+  case 0x00000080: return 7;
+  case 0x00000100: return 8;
+  case 0x00000200: return 9;
+  case 0x00000400: return 10;
+  case 0x00000800: return 11;
+  case 0x00001000: return 12;
+  case 0x00002000: return 13;
+  case 0x00004000: return 14;
+  case 0x00008000: return 15;
+  case 0x00010000: return 16;
+  case 0x00020000: return 17;
+  case 0x00040000: return 18;
+  case 0x00080000: return 19;
+  case 0x00100000: return 20;
+  case 0x00200000: return 21;
+  case 0x00400000: return 22;
+  case 0x00800000: return 23;
+  case 0x01000000: return 24;
+  case 0x02000000: return 25;
+  case 0x04000000: return 26;
+  case 0x08000000: return 27;
+  case 0x10000000: return 28;
+  case 0x20000000: return 29;
+  case 0x40000000: return 30;
+  case 0x80000000: return 31;
+  default: break;
+  }
+  ccassert(!"invalid number");
+  return 0;
+}
+
+/* return 0 - doesn't match, -1 too short, >=s match success */
+const char* string_matchex(struct stringormap* ormap, const char* s, int len, int* strid, int* mlen) {
+  umedit_int prevmatch = 0xFFFFFFFF;
+  umedit_int curmatch = 0, matches = 0, headmatch = 0;
+  struct cccharset* set = 0;
+  int i = 0, end = len;
+  nauty_byte ch = 0;
+  const char* p = 0;
+
+  /* (1) aabbcc (2) aabb (3) aa (4)zzbbcc
+  (a) curmatch = 0b0111;
+  (a) curmatch = 0b0111; set->e['a'] = 0b0100; headmatch = 0b0001;
+  (b) curmatch = 0b0011;
+  (b) curmatch = 0b0011; set->e['b'] = 0b1010; headmatch = 0b0001;
+  (c) curmatch = 0b0001;
+  (c) curmatch = 0b0001; set->e['c'] = 0b1001; headmatch = 0b0001;
+  */
+
+  if (len <= 0) {
+    return ccstringtooshort;
+  }
+
+  if (ormap->size < len) {
+    end = ormap->size;
+  }
+
+  while (i < end) {
+    set = ormap->set + i;
+    ch = s[i];
+
+    curmatch = prevmatch & set->t[ch];
+    if (!curmatch) {
+      if (p) {
+        headmatch = matches & (-matches);
+        goto MatchSuccess;
+      }
+      return 0;
+    }
+
+    if (set->e[ch] & curmatch) {
+      p = s + i + 1;
+      matches = set->e[ch] & curmatch;
+      headmatch = curmatch & (-curmatch); /* ordered choice */
+      if (matches & headmatch) {
+        goto MatchSuccess;
+      }
+    }
+
+    prevmatch = curmatch;
+    ++i;
+  }
+
+  if (p) {
+    headmatch = matches & (-matches);
+    goto MatchSuccess;
+  }
+  return ccstringtooshort; /* too short to match */
+
+MatchSuccess:
+  if (strid) *strid = ccpowtoindex(headmatch);
+  if (mlen) *mlen = p - s;
+  return p;
+}
+
+const char* string_match(struct stringormap* ormap, const char* s, int len) {
+  return string_matchex(ormap, s, len, 0, 0);
+}
+
+/* match exactly n times, return >=s or ccstringtooshort */
+const char* string_matchtimes(struct stringormap* ormap, int n, const char* s, int len) {
+  const char* e = s;
+  int i = 0;
+
+  while (i++ < n) {
+    e = string_match(ormap, s, len);
+    if (e == 0) {
+      return s;
+    }
+    if (e == ccstringtooshort) {
+      return e;
+    }
+    s = e;
+    len -= e - s;
+  }
+
+  return e;
+}
+
+/* return >=s */
+const char* string_matchrepeat(struct stringormap* ormap, const char* s, int len, int* lasttimematchfailed) {
+  const char* e = 0;
+  const char* prev = s;
+
+  while ((e = string_match(ormap, s, len)) != 0 && e != ccstringtooshort) {
+    prev = e;
+    s = e;
+    len -= e - s;
+  }
+
+  if (e == 0) {
+    if (lasttimematchfailed) *lasttimematchfailed = 1;
+  } else {
+    if (lasttimematchfailed) *lasttimematchfailed = 0;
+  }
+
+  return prev;
+}
+
+/* return 0 - too short to match, >=s - match success, n is the length */
+const char* string_matchuntil(struct stringormap* ormap, const char* s, int len, int* n) {
+  const char* e = 0;
+  const char* cur = s;
+
+  while ((e = string_match(ormap, cur, len)) == 0) { /* continue only doesn't match */
+    ++cur;
+    --len;
+  }
+
+  if (e == ccstringtooshort) {
+    if (n) *n = cur - s;
+    return 0;
+  }
+
+  if (n) *n = e - cur;
+  return e;
+}
+
+const char* string_skipheadspacesmatch(struct stringormap* ormap, const char* s, int len, int* strid, int* mlen) {
+  const char* e = 0;
+  while ((e = string_match(&ccspacemap, s, len)) != 0 && e != ccstringtooshort) {
+    ++s;
+    --len;
+  }
+
+  if (e == ccstringtooshort) {
+    return 0;
+  }
+
+  /* current char is not a space */
+  e = string_matchex(ormap, s, len, strid, mlen);
+  if (e == 0 || e == ccstringtooshort) {
+    return 0;
+  }
+  return e;
+}
 
 static const char* cchttpmethods[] = {
  "GET", "HEAD", "POST", 0
