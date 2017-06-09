@@ -1,8 +1,8 @@
 #define CCLIB_AUTOCONF_TOOL
-#define _CRT_SECURE_NO_WARNINGS
 #include "ccprefix.h"
 #include "plationf.h"
 #include "platsock.h"
+
 #if defined(CC_OS_WINDOWS)
 #define UNICODE
 #define _UNICODE
@@ -115,6 +115,10 @@ int main(void) {
   ccwriteline(file, "#undef nauty_byte");
   ccwriteline(file, "#undef uoctet_int");
   ccwriteline(file, "#undef soctet_int");
+  ccwriteline(file, "#undef ccoctet_int");
+  ccwriteline(file, "#undef ccoctet_uint");
+  ccwriteline(file, "#undef ccnauty_byte");
+  ccwriteline(file, "#undef ccnauty_char");
   ccwriteline(file, "#define false 0");
   ccwriteline(file, "#define true 1");
   if (sizeof(unsigned char) == 1 && sizeof(signed char) == 1) {
@@ -123,6 +127,10 @@ int main(void) {
     ccwriteline(file, "#define nauty_byte unsigned char");
     ccwriteline(file, "#define uoctet_int unsigned char");
     ccwriteline(file, "#define soctet_int signed char");
+    ccwriteline(file, "#define ccoctet_int signed char");
+    ccwriteline(file, "#define ccoctet_uint unsigned char");
+    ccwriteline(file, "#define ccnauty_byte unsigned char");
+    ccwriteline(file, "#define ccnauty_char unsigned char");
   } else {
     ccloge("the size of char shall be 1-byte");
     ccwriteline(file, "#error \"the size of char shall be 1-byte\"");
@@ -131,12 +139,18 @@ int main(void) {
   ccwriteline(file, "%s/* sshort_int ushort_int - 16-bit */", CCNEWLINE);
   ccwriteline(file, "#undef sshort_int");
   ccwriteline(file, "#undef ushort_int");
+  ccwriteline(file, "#undef ccshort_int");
+  ccwriteline(file, "#undef ccshort_uint");
   if (sizeof(unsigned short) == 2 && sizeof(short) == 2) {
     ccwriteline(file, "#define sshort_int short");
     ccwriteline(file, "#define ushort_int unsigned short");
+    ccwriteline(file, "#define ccshort_int short");
+    ccwriteline(file, "#define ccshort_uint unsigned short");
   } else if (sizeof(unsigned int) == 2 && sizeof(int) == 2) {
     ccwriteline(file, "#define sshort_int int");
     ccwriteline(file, "#define ushort_int unsigned int");
+    ccwriteline(file, "#define ccshort_int int");
+    ccwriteline(file, "#define ccshort_uint unsigned int");
   } else {
     ccloge("no 16-bit integer type found");
     ccwriteline(file, "#error \"no 16-bit integer type found\"");
@@ -145,12 +159,18 @@ int main(void) {
   ccwriteline(file, "%s/* smedit_int umedit_int - 32-bit */", CCNEWLINE);
   ccwriteline(file, "#undef smedit_int");
   ccwriteline(file, "#undef umedit_int");
+  ccwriteline(file, "#undef ccmedit_int");
+  ccwriteline(file, "#undef ccmedit_uint");
   if (sizeof(unsigned int) == 4 && sizeof(int) == 4) {
     ccwriteline(file, "#define smedit_int int");
     ccwriteline(file, "#define umedit_int unsigned int");
+    ccwriteline(file, "#define ccmedit_int int");
+    ccwriteline(file, "#define ccmedit_uint unsigned int");
   } else if (sizeof(unsigned long) == 4 && sizeof(long) == 4) {
     ccwriteline(file, "#define smedit_int long");
     ccwriteline(file, "#define umedit_int unsigned long");
+    ccwriteline(file, "#define ccmedit_int long");
+    ccwriteline(file, "#define ccmedit_uint unsigned long");
   } else {
     ccloge("no 32-bit integer type found");
     ccwriteline(file, "#error \"no 32-bit integer type found\"");
@@ -159,14 +179,17 @@ int main(void) {
   ccwriteline(file, "%s/* sright_int uright_int - 64-bit */", CCNEWLINE);
   ccwriteline(file, "#undef sright_int");
   ccwriteline(file, "#undef uright_int");
-  ccwriteline(file, "#undef nauty_int");
+  ccwriteline(file, "#undef ccnauty_int");
+  ccwriteline(file, "#undef ccnauty_uint");
   if (sizeof(unsigned long) == 8 && sizeof(long) == 8) {
     ccwriteline(file, "#define sright_int long");
-    ccwriteline(file, "#define nauty_int long");
+    ccwriteline(file, "#define ccnauty_int long");
+    ccwriteline(file, "#define ccnauty_uint unsigned long");
     ccwriteline(file, "#define uright_int unsigned long");
   } else if (sizeof(unsigned long long) == 8 && sizeof(long long) == 8) {
     ccwriteline(file, "#define sright_int long long");
-    ccwriteline(file, "#define nauty_int long");
+    ccwriteline(file, "#define ccnauty_int long long");
+    ccwriteline(file, "#define ccnauty_uint unsigned long long");
     ccwriteline(file, "#define uright_int unsigned long long");
   } else {
     ccloge("no 64-bit integer type found");
@@ -176,18 +199,28 @@ int main(void) {
   ccwriteline(file, "%s/* signed_ptr unsign_ptr - pointer-size integer */", CCNEWLINE);
   ccwriteline(file, "#undef signed_ptr");
   ccwriteline(file, "#undef unsign_ptr");
+  ccwriteline(file, "#undef ccnauty_iptr");
+  ccwriteline(file, "#undef ccnauty_uptr");
   if (sizeof(short) == sizeof(void*)) {
     ccwriteline(file, "#define signed_ptr short");
     ccwriteline(file, "#define unsign_ptr unsigned short");
+    ccwriteline(file, "#define ccnauty_iptr");
+    ccwriteline(file, "#define ccnauty_uptr");
   } else if (sizeof(int) == sizeof(void*)) {
     ccwriteline(file, "#define signed_ptr int");
     ccwriteline(file, "#define unsign_ptr unsigned int");
+    ccwriteline(file, "#define ccnauty_iptr int");
+    ccwriteline(file, "#define ccnauty_uptr unsigned int");
   } else if (sizeof(long) == sizeof(void*)) {
     ccwriteline(file, "#define signed_ptr long");
     ccwriteline(file, "#define unsign_ptr unsigned long");
+    ccwriteline(file, "#define ccnauty_iptr long");
+    ccwriteline(file, "#define ccnauty_uptr unsigned long");
   } else if (sizeof(long long) == sizeof(void*)) {
     ccwriteline(file, "#define signed_ptr long long");
     ccwriteline(file, "#define unsign_ptr unsigned long long");
+    ccwriteline(file, "#define ccnauty_iptr long long");
+    ccwriteline(file, "#define ccnauty_uptr unsigned long long");
   } else {
     ccloge("no pointer-size integer type found");
     ccwriteline(file, "#error \"no pointer-size integer type found\"");
@@ -195,6 +228,8 @@ int main(void) {
 
   ccwriteline(file, "%s/* handle_int */", CCNEWLINE);
   ccwriteline(file, "#undef handle_int");
+  ccwriteline(file, "#undef cchandle_int");
+  ccwriteline(file, "#define cchandle_int handle_int");
   if (LLIONFHDL_TYPE_BYTES == sizeof(short)) {
     ccwriteline(file, "#define handle_int %s", LLIONFHDL_TYPE_IS_SIGNED ? "short" : "unsigned short");
   } else if (LLIONFHDL_TYPE_BYTES == sizeof(int)) {
@@ -209,6 +244,7 @@ int main(void) {
   }
 
   ccwriteline(file, "%s/* slarge_int ularge_int - 128-bit */", CCNEWLINE);
+  ccwriteline(file, "%s/* cclarge_int cclarge_uint - 128-bit */", CCNEWLINE);
 
   ccwriteline(file, "%s/* float point */", CCNEWLINE);
   ccwriteline(file, "#undef speed_real");

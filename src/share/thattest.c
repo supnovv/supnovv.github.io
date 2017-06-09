@@ -7,7 +7,7 @@
 
 #define MATCH_OPOR_MAX_CHARS (64)
 
-struct cccharset {
+struct ccchartable {
   umedit_int t[256];
   umedit_int e[256];
 };
@@ -17,7 +17,7 @@ umedit_int rightmostbitofone(umedit_int n) {
 }
 
 #define HTTP_METHOD_MAX_CHARS (8)
-static struct cccharset methodmapset[HTTP_METHOD_MAX_CHARS];
+static struct ccchartable methodmapset[HTTP_METHOD_MAX_CHARS];
 
 const char* ccspaces[] = {
   "\x09", /* \t */
@@ -94,20 +94,20 @@ const char* ccblanks[] = {
   0
 };
 
-struct stringormap {
-  struct cccharset* set;
+struct ccstringmap {
+  struct ccchartable* set;
   int size;
 };
 
-static struct cccharset ll_space_map[4];
-static struct stringormap ccspacemap = {ll_space_map, 4};
+static struct ccchartable ll_space_map[4];
+static struct ccstringmap ccspacemap = {ll_space_map, 4};
 
-void string_setormap(struct cccharset* set, int size, const char** orlist, int casesensitive) {
+void ccstring_setmap(struct ccchartable* set, int size, const char** orlist, int casesensitive) {
   int stridx = 0, charidx = 0;
   const char* s = 0;
   nauty_byte ch = 0;
 
-  cczeron(set, sizeof(struct cccharset)*size);
+  cczeron(set, sizeof(struct ccchartable)*size);
 
   for (; (s = orlist[stridx]); ++stridx) {
 
@@ -192,16 +192,16 @@ static int ccpowtoindex(umedit_int n) {
   return 0;
 }
 
-/* return 0 - doesn't match, -1 too short, >=s match success */
-const char* string_matchex(struct stringormap* ormap, const char* s, int len, int* strid, int* mlen) {
-  umedit_int prevmatch = 0xFFFFFFFF;
-  umedit_int curmatch = 0, matches = 0, headmatch = 0;
-  struct cccharset* set = 0;
+/* return 0 doesn't match, -1 too short, >s match success */
+const char* ccstring_matchex(struct ccstringmap* ormap, const char* s, int len, int* strid, int* mlen) {
+  umedit_int prevmatch = 0xFFFFFFFF, curmatch = 0;
+  umedit_int matches = 0, headmatch = 0;
+  struct ccchartable* set = 0;
   int i = 0, end = len;
   nauty_byte ch = 0;
   const char* p = 0;
 
-  /* (1) aabbcc (2) aabb (3) aa (4)zzbbcc
+  /* example - (1) aabbcc (2) aabb (3) aa (4)zzbbcc
   (a) curmatch = 0b0111;
   (a) curmatch = 0b0111; set->e['a'] = 0b0100; headmatch = 0b0001;
   (b) curmatch = 0b0011;
@@ -248,6 +248,7 @@ const char* string_matchex(struct stringormap* ormap, const char* s, int len, in
     headmatch = matches & (-matches);
     goto MatchSuccess;
   }
+
   return ccstringtooshort; /* too short to match */
 
 MatchSuccess:
@@ -256,17 +257,17 @@ MatchSuccess:
   return p;
 }
 
-const char* string_match(struct stringormap* ormap, const char* s, int len) {
-  return string_matchex(ormap, s, len, 0, 0);
+const char* ccstring_match(struct ccstringmap* ormap, const char* s, int len) {
+  return ccstring_matchex(ormap, s, len, 0, 0);
 }
 
 /* match exactly n times, return >=s or ccstringtooshort */
-const char* string_matchtimes(struct stringormap* ormap, int n, const char* s, int len) {
+const char* ccstring_matchtimes(struct ccstringmap* ormap, int n, const char* s, int len) {
   const char* e = s;
   int i = 0;
 
   while (i++ < n) {
-    e = string_match(ormap, s, len);
+    e = ccstring_match(ormap, s, len);
     if (e == 0) {
       return s;
     }
@@ -281,11 +282,11 @@ const char* string_matchtimes(struct stringormap* ormap, int n, const char* s, i
 }
 
 /* return >=s */
-const char* string_matchrepeat(struct stringormap* ormap, const char* s, int len, int* lasttimematchfailed) {
+const char* ccstring_matchrepeat(struct ccstringmap* ormap, const char* s, int len, int* lasttimematchfailed) {
   const char* e = 0;
   const char* prev = s;
 
-  while ((e = string_match(ormap, s, len)) != 0 && e != ccstringtooshort) {
+  while ((e = ccstring_match(ormap, s, len)) != 0 && e != ccstringtooshort) {
     prev = e;
     s = e;
     len -= e - s;
@@ -301,11 +302,11 @@ const char* string_matchrepeat(struct stringormap* ormap, const char* s, int len
 }
 
 /* return 0 - too short to match, >=s - match success, n is the length */
-const char* string_matchuntil(struct stringormap* ormap, const char* s, int len, int* n) {
+const char* ccstring_matchuntil(struct ccstringmap* ormap, const char* s, int len, int* n) {
   const char* e = 0;
   const char* cur = s;
 
-  while ((e = string_match(ormap, cur, len)) == 0) { /* continue only doesn't match */
+  while ((e = ccstring_match(ormap, cur, len)) == 0) { /* continue only doesn't match */
     ++cur;
     --len;
   }
@@ -319,19 +320,22 @@ const char* string_matchuntil(struct stringormap* ormap, const char* s, int len,
   return e;
 }
 
-const char* string_skipheadspacesmatch(struct stringormap* ormap, const char* s, int len, int* strid, int* mlen) {
+/* return 0 - match failed; otherwise success, strid and mlen are set */
+const char* ccstring_skipspaceandmatch(struct ccstringmap* ormap, const char* s, int len, int* strid, int* mlen) {
   const char* e = 0;
-  while ((e = string_match(&ccspacemap, s, len)) != 0 && e != ccstringtooshort) {
+
+  /* match space and skip */
+  while ((e = ccstring_match(&ccspacemap, s, len)) != 0 && e != ccstringtooshort) {
     ++s;
     --len;
   }
 
   if (e == ccstringtooshort) {
-    return 0;
+    return 0; /* all chars are spaces, or even last space is not complete */ 
   }
 
-  /* current char is not a space */
-  e = string_matchex(ormap, s, len, strid, mlen);
+  /* current char is not a space, try match the string */
+  e = ccstring_matchex(ormap, s, len, strid, mlen);
   if (e == 0 || e == ccstringtooshort) {
     return 0;
   }
@@ -349,40 +353,40 @@ static const char* orderedchice[] = {
 void matchtest() {
   const char subject[] = "gEtoHEAdopOStogeoend";
   const char* s = 0;
-  struct stringormap ormap;
+  struct ccstringmap ormap;
 
-  string_setormap(methodmapset, HTTP_METHOD_MAX_CHARS, cchttpmethods, false);
+  ccstring_setmap(methodmapset, HTTP_METHOD_MAX_CHARS, cchttpmethods, false);
   ormap.set = methodmapset;
   ormap.size = HTTP_METHOD_MAX_CHARS;
-  s = string_match(&ormap, subject, 3);
+  s = ccstring_match(&ormap, subject, 3);
   printf("get - %s\n", s);
-  s = string_match(&ormap, subject+1, 3);
+  s = ccstring_match(&ormap, subject+1, 3);
   ccassert(s == 0);
-  s = string_match(&ormap, subject+4, 3);
+  s = ccstring_match(&ormap, subject+4, 3);
   ccassert(s == ccstringtooshort);
-  s = string_match(&ormap, subject+4, 4);
+  s = ccstring_match(&ormap, subject+4, 4);
   printf("head - %s\n", s);
-  s = string_match(&ormap, subject+9, 3);
+  s = ccstring_match(&ormap, subject+9, 3);
   ccassert(s == ccstringtooshort);
-  s = string_match(&ormap, subject+9, 5);
+  s = ccstring_match(&ormap, subject+9, 5);
   printf("post - %s\n", s);
-  s = string_match(&ormap, subject+14, 3);
+  s = ccstring_match(&ormap, subject+14, 3);
   ccassert(s == 0);
 
-  string_setormap(methodmapset, HTTP_METHOD_MAX_CHARS, orderedchice, true);
-  s = string_match(&ormap, "mankind", 7);
+  ccstring_setmap(methodmapset, HTTP_METHOD_MAX_CHARS, orderedchice, true);
+  s = ccstring_match(&ormap, "mankind", 7);
   ccassert(*s == 0);
-  s = string_match(&ormap, "mankin", 6);
+  s = ccstring_match(&ormap, "mankin", 6);
   ccassert(*s == 'k');
-  s = string_match(&ormap, "gotten", 6);
+  s = ccstring_match(&ormap, "gotten", 6);
   ccassert(*s == 't');
-  s = string_match(&ormap, "pon", 3);
+  s = ccstring_match(&ormap, "pon", 3);
   ccassert(s == 0);
-  s = string_match(&ormap, "con", 3);
+  s = ccstring_match(&ormap, "con", 3);
   ccassert(s == 0);
-  s = string_match(&ormap, "tiok", 4);
+  s = ccstring_match(&ormap, "tiok", 4);
   ccassert(s == 0);
-  s = string_match(&ormap, "tick", 4);
+  s = ccstring_match(&ormap, "tick", 4);
   ccassert(*s == 0);
 }
 

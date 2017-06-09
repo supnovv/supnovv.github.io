@@ -58,8 +58,8 @@ struct ccbuffer {
   nauty_byte a[4];
 };
 
-CORE_API void ccbuffer_ensurecapacity(struct ccbuffer** self, nauty_int size);
-CORE_API void ccbuffer_ensuresizeremain(struct ccbuffer** self, nauty_int remainsize);
+CORE_API void ccbuffer_ensurecapacity(struct ccbuffer** self, ccnauty_int size);
+CORE_API void ccbuffer_ensuresizeremain(struct ccbuffer** self, ccnauty_int remainsize);
 CORE_API struct ccbuffer* ccnewbuffer(struct ccthread* thread, umedit_int maxlimit);
 CORE_API void ccfreebuffer(struct ccthread* thread, struct ccbuffer* p);
 

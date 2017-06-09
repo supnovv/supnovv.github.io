@@ -90,8 +90,8 @@ struct ccthread {
   struct ccstring defstr;
   /* buffer queue */
   struct ccsqueue freebufq;
-  nauty_int freememsize;
-  nauty_int maxfreemem;
+  ccnauty_int freememsize;
+  ccnauty_int maxfreemem;
 };
 
 #define LL_THREAD_MAX_MEMORY (1024 * 1024 * 2) /* 2MB */
@@ -119,8 +119,8 @@ static struct ccbuffer* ll_thread_getfreebuffer(struct ccthread* thread) {
   return p;
 }
 
-void ccbuffer_ensurecapacity(struct ccbuffer** self, nauty_int size) {
-  nauty_int newcap = (*self)->capacity;
+void ccbuffer_ensurecapacity(struct ccbuffer** self, ccnauty_int size) {
+  ccnauty_int newcap = (*self)->capacity;
   if (newcap >= size) return;
   while ((newcap *= 2) < size) {
     if (newcap > LL_THREAD_MAX_MEMORY) {
@@ -132,7 +132,7 @@ void ccbuffer_ensurecapacity(struct ccbuffer** self, nauty_int size) {
   (*self)->capacity = newcap;
 }
 
-void ccbuffer_ensuresizeremain(struct ccbuffer** self, nauty_int remainsize) {
+void ccbuffer_ensuresizeremain(struct ccbuffer** self, ccnauty_int remainsize) {
   ccbuffer_ensurecapacity(self, (*self)->size + remainsize);
 }
 
