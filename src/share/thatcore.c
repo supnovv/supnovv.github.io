@@ -32,7 +32,7 @@ sright_int cc_logger_func(const char* tag, const void* fmt, ...) {
       return 0;
     }
     p += 1;
-    if (*p == '%' || *p == 's') continue;
+    if (*p == '%' || *p == 's' || *p == 'p') continue;
     ccloge("cc_logger_func invalid (2) %s", fmt);
     return 0;
   }
@@ -143,7 +143,7 @@ static uright_int ccmultofpow2(uoctet_int bits, uright_int orig) {
 }
 
 static size_t llgetallocsize(sright_int bytes) {
-  if (bytes > CC_RDWR_MAX_BYTES) {
+  if (bytes > CCM_RWOP_MAX_SIZE) {
     return 0;
   }
   if (bytes <= 0) bytes = 1;
@@ -317,6 +317,15 @@ sright_int cczeron(void* start, sright_int bytes) {
   return 0;
 }
 
+ccnauty_int cczerol(void* start, ccnauty_int len) {
+  if (!start || len <= 0 || len > CCM_RWOP_MAX_SIZE) {
+    ccloge("invalid argument %s", ccitos(len));
+    return 0;
+  }
+  memset(start, 0, (size_t)len);
+  return len;
+}
+
 sright_int cczero(void* start, const void* beyond) {
   if (start < beyond) {
     size_t n = ((uoctet_int*)beyond) - ((uoctet_int*)start);
@@ -457,7 +466,7 @@ static sright_int llutos(uright_int n, sright_int minlen, void* to) {
       while (i < minlen) a[i++] = ' ';
     }
   }
-  CC_DEBUG_ZONE(
+  CCDZONE(
     ccassert(i <= CCSTRING_STATIC_CHARS);
   )
   while(i > 0) *dest++ = a[--i];
@@ -801,7 +810,7 @@ struct cclinknode* ccpriorq_pop(struct ccpriorq* self) {
 void ccmmheap_init(struct ccmmheap* self, nauty_bool (*less)(void*, void*), int initsize) {
   self->size = self->capacity = 0;
   self->less = less;
-  if (initsize > CC_RDWR_MAX_BYTES) {
+  if (initsize > CCM_RWOP_MAX_SIZE) {
     self->a = 0;
     ccloge("size too large");
     return;
@@ -1154,26 +1163,26 @@ void ccthattest() {
   ccassert(sizeof(struct ccthrkey) >= CC_THKEY_BYTES);
   ccassert(sizeof(struct ccthrid) >= CC_THRID_BYTES);
   /* value ranges */
-  ccassert(CC_UBYT_MAX == 255);
-  ccassert(CC_SBYT_MAX == 127);
-  ccassert(CC_SBYT_MIN == -127-1);
-  ccassert((uoctet_int)CC_SBYT_MIN == 0x80);
-  ccassert((uoctet_int)CC_SBYT_MIN == 128);
-  ccassert(CC_USHT_MAX == 65535);
-  ccassert(CC_SSHT_MAX == 32767);
-  ccassert(CC_SSHT_MIN == -32767-1);
-  ccassert((ushort_int)CC_SSHT_MIN == 32768);
-  ccassert((ushort_int)CC_SSHT_MIN == 0x8000);
-  ccassert(CC_UMED_MAX == 4294967295);
-  ccassert(CC_SMED_MAX == 2147483647);
-  ccassert(CC_SMED_MIN == -2147483647-1);
-  ccassert((umedit_int)CC_SMED_MIN == 2147483648);
-  ccassert((umedit_int)CC_SMED_MIN == 0x80000000);
-  ccassert(CC_UINT_MAX == 18446744073709551615ull);
-  ccassert(CC_SINT_MAX == 9223372036854775807ull);
-  ccassert(CC_SINT_MIN == -9223372036854775807-1);
-  ccassert((uright_int)CC_SINT_MIN == 9223372036854775808ull);
-  ccassert((uright_int)CC_SINT_MIN == 0x8000000000000000ull);
+  ccassert(CCM_UBYT_MAX == 255);
+  ccassert(CCM_SBYT_MAX == 127);
+  ccassert(CCM_SBYT_MIN == -127-1);
+  ccassert((uoctet_int)CCM_SBYT_MIN == 0x80);
+  ccassert((uoctet_int)CCM_SBYT_MIN == 128);
+  ccassert(CCM_USHT_MAX == 65535);
+  ccassert(CCM_SSHT_MAX == 32767);
+  ccassert(CCM_SSHT_MIN == -32767-1);
+  ccassert((ushort_int)CCM_SSHT_MIN == 32768);
+  ccassert((ushort_int)CCM_SSHT_MIN == 0x8000);
+  ccassert(CCM_UMED_MAX == 4294967295);
+  ccassert(CCM_SMED_MAX == 2147483647);
+  ccassert(CCM_SMED_MIN == -2147483647-1);
+  ccassert((umedit_int)CCM_SMED_MIN == 2147483648);
+  ccassert((umedit_int)CCM_SMED_MIN == 0x80000000);
+  ccassert(CCM_UINT_MAX == 18446744073709551615ull);
+  ccassert(CCM_SINT_MAX == 9223372036854775807ull);
+  ccassert(CCM_SINT_MIN == -9223372036854775807-1);
+  ccassert((uright_int)CCM_SINT_MIN == 9223372036854775808ull);
+  ccassert((uright_int)CCM_SINT_MIN == 0x8000000000000000ull);
   /* memory operation */
   ccassert(ccmultof(0, 0) == 0);
   ccassert(ccmultof(0, 4) == 4);
@@ -1207,5 +1216,5 @@ void ccthattest() {
   ccassert(ccisprime(3) == true);
   ccassert(ccisprime(4) == false);
   ccassert(ccisprime(5) == true);
-  ccassert(ccisprime(CC_UMED_MAX) == false);
+  ccassert(ccisprime(CCM_UMED_MAX) == false);
 }

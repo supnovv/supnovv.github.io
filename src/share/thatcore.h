@@ -22,23 +22,53 @@
   #define CLUA_API extern
 #endif
 
+/** Coding style
+
+ccorelib - c core library
+
+ ** types **
+int/double as usual
+ccoctet_int
+ccshort_int
+ccmedit_int
+ccnauty_int
+cclarge_int
+ccoctet_uint
+ccshort_uint
+ccmedit_uint
+ccnauty_uint
+cclarge_uint
+ccnauty_byte
+ccnauty_char
+ccnauty_iptr
+ccnauty_uptr
+ccspeed_real
+cchandle_int
+typedef struct {
+} ccstring;
+
+ ** globals **
+macro - CCM_STATUS_OK
+global - ccg_http_methods
+function - void ccstring_getcstr(ccstring* self);
+**/
+
 /** Limit numbers **/
 
-#define CC_UBYT_MAX ((uoctet_int)0xFF) /* 255 */
-#define CC_SBYT_MAX ((soctet_int)0x7F) /* 127 */
-#define CC_SBYT_MIN ((soctet_int)(-127-1)) /* 128 0x80 */
-#define CC_USHT_MAX ((ushort_int)0xFFFF) /* 65535 */
-#define CC_SSHT_MAX ((sshort_int)0x7FFF) /* 32767 */
-#define CC_SSHT_MIN ((sshort_int)-32767-1) /* 32768 0x8000 */
-#define CC_UMED_MAX ((umedit_int)0xFFFFFFFF) /* 4294967295 */
-#define CC_SMED_MAX ((smedit_int)0x7FFFFFFF) /* 2147483647 */
-#define CC_SMED_MIN ((smedit_int)-2147483647-1) /* 2147483648 0x80000000 */
-#define CC_UINT_MAX ((uright_int)0xFFFFFFFFFFFFFFFF) /* 18446744073709551615 */
-#define CC_SINT_MAX ((sright_int)0x7FFFFFFFFFFFFFFF) /* 9223372036854775807 */
-#define CC_SINT_MIN ((sright_int)-9223372036854775807-1) /* 9223372036854775808 0x8000000000000000 */
-#define CC_RDWR_MAX_BYTES 0x7fff0000 /* 2147418112 */
+#define CCM_UBYT_MAX ((uoctet_int)0xFF) /* 255 */
+#define CCM_SBYT_MAX ((soctet_int)0x7F) /* 127 */
+#define CCM_SBYT_MIN ((soctet_int)(-127-1)) /* 128 0x80 */
+#define CCM_USHT_MAX ((ushort_int)0xFFFF) /* 65535 */
+#define CCM_SSHT_MAX ((sshort_int)0x7FFF) /* 32767 */
+#define CCM_SSHT_MIN ((sshort_int)-32767-1) /* 32768 0x8000 */
+#define CCM_UMED_MAX ((umedit_int)0xFFFFFFFF) /* 4294967295 */
+#define CCM_SMED_MAX ((smedit_int)0x7FFFFFFF) /* 2147483647 */
+#define CCM_SMED_MIN ((smedit_int)-2147483647-1) /* 2147483648 0x80000000 */
+#define CCM_UINT_MAX ((uright_int)0xFFFFFFFFFFFFFFFF) /* 18446744073709551615 */
+#define CCM_SINT_MAX ((sright_int)0x7FFFFFFFFFFFFFFF) /* 9223372036854775807 */
+#define CCM_SINT_MIN ((sright_int)-9223372036854775807-1) /* 9223372036854775808 0x8000000000000000 */
 
-/** Error status **/
+/** Global defines **/
 
 #define CCSTATUS_OK       (0)
 #define CCSTATUS_YIELD    (1)
@@ -51,18 +81,32 @@
 #define CCSTATUS_EWRITE (-4)
 #define CCSTATUS_ELIMIT (-5)
 
+#define CCM_STATUS_CONTREAD (3)
+#define CCM_STATUS_WAITMORE (2)
+#define CCM_STATUS_YIELD (1)
+#define CCM_STATUS_OK (0)
+#define CCM_STATUS_LUAERR (-1)
+#define CCM_STATUS_ERROR (-2)
+#define CCM_STATUS_EREAD (-3)
+#define CCM_STATUS_EWRITE (-4)
+#define CCM_STATUS_ELIMIT (-5)
+
+#define CC_RDWR_MAX_BYTES 0x7fff0000 /* 2147418112 */
+#define CCM_RWOP_MAX_SIZE CC_RDWR_MAX_BYTES
+
 /** Debugger and logger **/
 
 #ifdef CCDEBUG
-#define CC_DEBUG_ZONE(...) { __VA_ARGS__ } 
+#define CCDZONE(...) { __VA_ARGS__ }
 #else
-#define CC_DEBUG_ZONE(...) { ((void)0); }
+#define CCDZONE(...) { ((void)0); }
 #endif
 
 #define CCXMKSTR(a) #a
 #define CCMKSTR(a) CCXMKSTR(a)
 #define CCFILELINESTR __FILE__ " (" CCMKSTR(__LINE__) ") "
 #define CCLOGTAGSTR __FILE__ " (" CCMKSTR(__LINE__) ") "
+#define CCSTR(s) ((ccnauty_char*)s)
 
 #define ccassert(e) cc_assert_func((e), (#e), CCFILELINESTR)                        /* 0:assert */
 #define ccloge(fmt, ...) cc_logger_func("1[E] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 1:error */
@@ -106,6 +150,7 @@ CORE_API void ccheap_free(struct ccheap* self);
 
 CORE_API sright_int cczero(void* start, const void* beyond);
 CORE_API sright_int cczeron(void* start, sright_int bytes);
+CORE_API ccnauty_int cczerol(void* start, ccnauty_int len);
 
 CORE_API sright_int cccopy(const nauty_byte* fromstart, const nauty_byte* frombeyond, nauty_byte* dest);
 CORE_API sright_int cccopyn(const nauty_byte* from, sright_int n, nauty_byte* dest);

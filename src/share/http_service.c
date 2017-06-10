@@ -6,15 +6,10 @@
 3. 接收消息，也监听事件，也可以与通线程robot协同工作
 */
 
-#define HTTP_LISTEN_BACKLOG (32)
-#define HTTP_RX_BUFSIZE (1024)
+#define CCM_HTTP_LISTEN_BACKLOG (32)
 
-#define HTTP_STAGE_READ_METHOD 1
-#define HTTP_STAGE_READ_URL    2
-#define HTTP_STAGE_READ_VERION 3
-#define HTTP_STAGE_READ_HEADER 4
-#define HTTP_STAGE_READ_BODY   5
-#define HTTP_STAGE_RESPONSE    6
+#define CCM_HTTP_READ_REQUEST (1)
+#define CCM_HTTP_WRITE_RESPONSE (2)
 
 struct httplisten {
   struct ccstring ip;
@@ -41,13 +36,22 @@ struct httpconnect {
   umedit_int ustart, uend; /* url */
 };
 
-#define HTTP_METHOD_GET  (1)
-#define HTTP_METHOD_HEAD (2)
-#define HTTP_METHOD_POST (3)
+#define CCM_HTTP_GET (0)
+#define CCM_HTTP_HEAD (1)
+#define CCM_HTTP_POST (2)
 
-#define HTTP_VER_0_9 (1)
-#define HTTP_VER_1_0 (2)
-#define HTTP_VER_1_1 (3)
+static const ccnauty_char* ccg_http_methods[] = {
+  CCSTR("GET"), CCSTR("HEAD"), CCSTR("POST"), 0
+};
+
+#define CCM_HTTP_VER_0NN (0)
+#define CCM_HTTP_VER_10N (1)
+#define CCM_HTTP_VER_11N (2)
+#define CCM_HTTP_VER_2NN (3)
+
+static const ccnauty_char* ccg_http_versions[] = {
+  CCSTR("HTTP/0"), CCSTR("HTTP/1.0"), CCSTR("HTTP/1.1"), CCSTR("HTTP/2"), 0
+};
 
 #define HTTP_SUCCESS (200)
 #define HTTP_CREATED (201)
@@ -109,6 +113,105 @@ struct httpconnect {
 #define HTTP_HEADER_KEEP_ALIVE (0x02000000)
 #define HTTP_HEADER_TRANSFER_ENCODING (0x04000000)
 #define HTTP_HEADER_TRAILER (0x08000000)
+
+static const ccnauty_char* ccg_http_headers[] = {
+  CCSTR("age"),
+  CCSTR("cache-control"),
+  CCSTR("connection"),
+  CCSTR("content-base"),
+  CCSTR("content-disposition"),
+  CCSTR("content-encoding"),
+  CCSTR("content-language"),
+  CCSTR("content-length"),
+  CCSTR("content-location"),
+  CCSTR("content-md5"),
+  CCSTR("content-range"),
+  CCSTR("content-type"),
+  CCSTR("date"),
+  CCSTR("etag"),
+  CCSTR("expires"),
+  CCSTR("keep-alive"),
+  CCSTR("last-modified"),
+  CCSTR("pragma"),
+  CCSTR("trailer"),
+  CCSTR("transfer-encoding"),
+  CCSTR("upgrade"),
+  CCSTR("via"),
+  CCSTR("warning"),
+  CCSTR("x-request-id"),
+  CCSTR("x-correlation-id"),
+  CCSTR("forwarded"),
+  CCSTR("max-forwards"),
+  CCSTR("x-forwarded-for"),
+  CCSTR("x-forwarded-host"),
+  CCSTR("x-forwarded-proto"),
+  0
+};
+
+static const ccnauty_char* ccg_http_request_headers[] = {
+  CCSTR("accept"),
+  CCSTR("accept-charset"),
+  CCSTR("accept-encoding"),
+  CCSTR("accept-language"),
+  CCSTR("accept-datetime"),
+  CCSTR("authorization"),
+  CCSTR("cookie"),
+  CCSTR("cookie2"),
+  CCSTR("dnt"),
+  CCSTR("expect"),
+  CCSTR("from"),
+  CCSTR("host"),
+  CCSTR("if-match"),
+  CCSTR("if-modified-since"),
+  CCSTR("if-none-match"),
+  CCSTR("if-range"),
+  CCSTR("if-unmodified-since"),
+  CCSTR("origin"),
+  CCSTR("proxy-authorization"),
+  CCSTR("proxy-connection"),
+  CCSTR("range"),
+  CCSTR("referer"),
+  CCSTR("te"),
+  CCSTR("ua-cpu"),
+  CCSTR("ua-disp"),
+  CCSTR("ua-os"),
+  CCSTR("user-agent"),
+  CCSTR("x-requested-with"),
+  CCSTR("x-http-method-override"),
+  CCSTR("x-uidh"),
+  CCSTR("x-csrf-token"),
+  0
+};
+
+static const ccnauty_char* ccg_http_response_headers[] = {
+  CCSTR("access-control-allow-origin"),
+  CCSTR("accept-patch"),
+  CCSTR("accept-ranges"),
+  CCSTR("allow"),
+  CCSTR("alt-svc"),
+  CCSTR("link"),
+  CCSTR("location"),
+  CCSTR("p3p"),
+  CCSTR("proxy-authenticate"),
+  CCSTR("public-key-pins"),
+  CCSTR("refresh"),
+  CCSTR("retry-after"),
+  CCSTR("server"),
+  CCSTR("set-cookie"),
+  CCSTR("set-cookie2"),
+  CCSTR("status"),
+  CCSTR("strict-transport-security"),
+  CCSTR("tk"),
+  CCSTR("vary"),
+  CCSTR("www-authenticate"),
+  CCSTR("x-frame-options"),
+  CCSTR("x-xss-protection"),
+  CCSTR("x-content-type-options"),
+  CCSTR("x-powered-by"),
+  CCSTR("x-ua-compatible"),
+  0
+};
+
 
 /** Method **
 HEAD请求必须确保返回的首部与对应的GET请求的首部完全相同
