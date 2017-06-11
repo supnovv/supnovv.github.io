@@ -90,6 +90,7 @@ function - void ccstring_getcstr(ccstring* self);
 #define CCM_STATUS_EREAD (-3)
 #define CCM_STATUS_EWRITE (-4)
 #define CCM_STATUS_ELIMIT (-5)
+#define CCM_STATUS_EMATCH (-6)
 
 #define CC_RDWR_MAX_BYTES 0x7fff0000 /* 2147418112 */
 #define CCM_RWOP_MAX_SIZE CC_RDWR_MAX_BYTES
@@ -122,10 +123,10 @@ CORE_API void ccexit();
 
 /** Memory operation **/
 
-struct ccfrom {
+typedef struct ccfrom {
   const nauty_byte* start;
   const nauty_byte* beyond;
-};
+} ccfrom;
 
 struct ccdest {
   nauty_byte* start;
@@ -166,7 +167,7 @@ CORE_API sright_int ccrcopyfromp(const struct ccfrom* from, void* dest);
 CORE_API sright_int ccrcopyfromtodest(struct ccfrom from, const struct ccdest* dest);
 CORE_API sright_int ccrcopyfromptodest(const struct ccfrom* from, const struct ccdest* dest);
 
-CORE_API struct ccfrom ccfrom(const void* start, const void* beyond);
+CORE_API struct ccfrom ccfromp(const void* start, const void* beyond);
 CORE_API struct ccfrom ccfromn(const void* start, sright_int bytes);
 CORE_API struct ccfrom ccfromcstr(const void* cstr);
 CORE_API struct ccdest ccdest(void* start, sright_int bytes);
@@ -234,30 +235,31 @@ CORE_API struct ccfileattr ccfileattr(struct ccfrom name);
 #define CCSTRING_SIZEOF 32
 #define CCSTRING_STATIC_CHARS 30
 
-struct ccstring {
+typedef struct ccstring {
   struct ccheap heap;
   sright_int len;
   uoctet_int a[CCSTRING_SIZEOF-sizeof(struct ccheap)-sizeof(sright_int)-1];
   uoctet_int flag; /* flag==0xFF ? heap-string : stack-string */
-}; /* a sequence of bytes with zero terminated */
+} ccstring; /* a sequence of bytes with zero terminated */
 
 CORE_API const char* ccutos(uright_int a);
 CORE_API const char* ccitos(sright_int a);
-CORE_API struct ccstring ccemptystr();
-CORE_API struct ccstring ccstrfromu(uright_int a);
-CORE_API struct ccstring ccstrfromuf(uright_int a, sright_int fmt);
-CORE_API struct ccstring ccstrfromi(sright_int a);
-CORE_API struct ccstring ccstrfromif(sright_int a, sright_int fmt);
+CORE_API ccstring ccemptystr();
+CORE_API ccstring ccstrfromu(uright_int a);
+CORE_API ccstring ccstrfromuf(uright_int a, sright_int fmt);
+CORE_API ccstring ccstrfromi(sright_int a);
+CORE_API ccstring ccstrfromif(sright_int a, sright_int fmt);
 
-CORE_API struct ccstring ccstring_emptystr();
-CORE_API sright_int ccstring_getlen(const struct ccstring* self);
-CORE_API const char* ccstring_getcstr(const struct ccstring* self);
-CORE_API nauty_bool ccstring_equalcstr(const struct ccstring* self, const void* cstr);
+CORE_API ccstring ccstring_emptystr();
+CORE_API sright_int ccstring_getlen(const ccstring* self);
+CORE_API const char* ccstring_getcstr(const ccstring* self);
+CORE_API nauty_bool ccstring_equalcstr(const ccstring* self, const void* cstr);
 
-CORE_API void ccstring_free(struct ccstring* self);
-CORE_API void ccstring_setempty(struct ccstring* self);
-CORE_API void ccstring_setcstr(struct ccstring* self, const void* cstr);
+CORE_API void ccstring_free(ccstring* self);
+CORE_API void ccstring_setempty(ccstring* self);
+CORE_API void ccstring_setcstr(ccstring* self, const void* cstr);
 
+CORE_API ccfrom ccstring_getfrom(const ccstring* s);
 CORE_API nauty_bool ccstring_contain(struct ccfrom s, nauty_char ch);
 CORE_API nauty_bool ccstring_containp(const struct ccfrom* s, nauty_char ch);
 
@@ -298,57 +300,57 @@ CCINLINE int ccisblank(int ch) {
 
 /** List and queue **/
 
-struct cclinknode {
+typedef struct cclinknode {
   struct cclinknode* next;
   struct cclinknode* prev;
-};
+} cclinknode;
 
-CORE_API void cclinknode_init(struct cclinknode* node);
-CORE_API nauty_bool cclinknode_isempty(struct cclinknode* node);
-CORE_API void cclinknode_insertafter(struct cclinknode* node, struct cclinknode* newnode);
-CORE_API struct cclinknode* cclinknode_remove(struct cclinknode* node);
+CORE_API void cclinknode_init(cclinknode* node);
+CORE_API nauty_bool cclinknode_isempty(cclinknode* node);
+CORE_API void cclinknode_insertafter(cclinknode* node, cclinknode* newnode);
+CORE_API cclinknode* cclinknode_remove(cclinknode* node);
 
-struct ccsmplnode {
+typedef struct ccsmplnode {
   struct ccsmplnode* next;
-};
+} ccsmplnode;
 
-CORE_API void ccsmplnode_init(struct ccsmplnode* node);
-CORE_API nauty_bool ccsmplnode_isempty(struct ccsmplnode* node);
-CORE_API void ccsmplnode_insertafter(struct ccsmplnode* node, struct ccsmplnode* newnode);
-CORE_API struct ccsmplnode* ccsmplnode_removenext(struct ccsmplnode* node);
+CORE_API void ccsmplnode_init(ccsmplnode* node);
+CORE_API nauty_bool ccsmplnode_isempty(ccsmplnode* node);
+CORE_API void ccsmplnode_insertafter(ccsmplnode* node, ccsmplnode* newnode);
+CORE_API ccsmplnode* ccsmplnode_removenext(ccsmplnode* node);
 
-struct ccsqueue {
+typedef struct ccsqueue {
   struct ccsmplnode head;
   struct ccsmplnode* tail;
-};
+} ccsqueue;
 
-CORE_API void ccsqueue_init(struct ccsqueue* self);
-CORE_API void ccsqueue_push(struct ccsqueue* self, struct ccsmplnode* newnode);
-CORE_API void ccsqueue_pushqueue(struct ccsqueue* self, struct ccsqueue* queue);
-CORE_API nauty_bool ccsqueue_isempty(struct ccsqueue* self);
-CORE_API struct ccsmplnode* ccsqueue_pop(struct ccsqueue* self);
+CORE_API void ccsqueue_init(ccsqueue* self);
+CORE_API void ccsqueue_push(ccsqueue* self, ccsmplnode* newnode);
+CORE_API void ccsqueue_pushqueue(ccsqueue* self, ccsqueue* queue);
+CORE_API nauty_bool ccsqueue_isempty(ccsqueue* self);
+CORE_API ccsmplnode* ccsqueue_pop(ccsqueue* self);
 
-struct ccdqueue {
+typedef struct ccdqueue {
   struct cclinknode head;
-};
+} ccdqueue;
 
-CORE_API void ccdqueue_init(struct ccdqueue* self);
-CORE_API void ccdqueue_push(struct ccdqueue* self, struct cclinknode* newnode);
-CORE_API void ccdqueue_pushqueue(struct ccdqueue* self, struct ccdqueue* queue);
-CORE_API nauty_bool ccdqueue_isempty(struct ccdqueue* self);
-CORE_API struct cclinknode* ccdqueue_pop(struct ccdqueue* self);
+CORE_API void ccdqueue_init(ccdqueue* self);
+CORE_API void ccdqueue_push(ccdqueue* self, cclinknode* newnode);
+CORE_API void ccdqueue_pushqueue(ccdqueue* self, ccdqueue* queue);
+CORE_API nauty_bool ccdqueue_isempty(ccdqueue* self);
+CORE_API cclinknode* ccdqueue_pop(ccdqueue* self);
 
-struct ccpriorq {
+typedef struct ccpriorq {
   struct cclinknode node;
   /* elem with less number has higher priority, i.e., 0 is the highest */
   nauty_bool (*less)(void* elem_is_less_than, void* this_one);
-};
+} ccpriorq;
 
-CORE_API void ccpriorq_init(struct ccpriorq* self, nauty_bool (*less)(void*, void*));
-CORE_API void ccpriorq_push(struct ccpriorq* self, struct cclinknode* elem);
-CORE_API void ccpriorq_remove(struct ccpriorq* self, struct cclinknode* elem);
-CORE_API nauty_bool ccpriorq_isempty(struct ccpriorq* self);
-CORE_API struct cclinknode* ccpriorq_pop(struct ccpriorq* self);
+CORE_API void ccpriorq_init(ccpriorq* self, nauty_bool (*less)(void*, void*));
+CORE_API void ccpriorq_push(ccpriorq* self, cclinknode* elem);
+CORE_API void ccpriorq_remove(ccpriorq* self, cclinknode* elem);
+CORE_API nauty_bool ccpriorq_isempty(ccpriorq* self);
+CORE_API cclinknode* ccpriorq_pop(ccpriorq* self);
 
 /** Userful structures **/
 

@@ -2,27 +2,27 @@
 #define CCLIB_LUACAPI_H_
 #include "thatcore.h"
 
-struct lua_State;
+typedef struct lua_State lua_State;
 CORE_API struct lua_State* cclua_newstate();
-CORE_API void cclua_close(struct lua_State* L);
+CORE_API void cclua_close(lua_State* L);
 
-struct ccrobot;
-struct ccmessage;
-struct ccstate {
+typedef struct ccservice ccservice;
+typedef struct ccmessage ccmessage;
+typedef struct ccstate {
   struct ccsmplnode node;
-  struct lua_State* L;
-  struct lua_State* co;
+  lua_State* L;
+  lua_State* co;
   int coref;
   int (*func)(struct ccstate*);
   int (*kfunc)(struct ccstate*);
-  struct ccrobot* bot;
-  struct ccmessage* msg;
-};
+  ccservice* srvc;
+  ccmessage* msg;
+} ccstate;
 
-CORE_API nauty_bool ccstate_init(struct ccstate* co, struct lua_State* L, int (*func)(struct ccstate*), struct ccrobot* bot);
-CORE_API void ccstate_free(struct ccstate* co);
-CORE_API int ccstate_resume(struct ccstate* co);
-CORE_API int ccstate_yield(struct ccstate* co, int (*kfunc)(struct ccstate*));
+CORE_API nauty_bool ccstate_init(ccstate* co, lua_State* L, int (*func)(ccstate*), ccservice* srvc);
+CORE_API void ccstate_free(ccstate* co);
+CORE_API int ccstate_resume(ccstate* co);
+CORE_API int ccstate_yield(ccstate* co, int (*kfunc)(ccstate*));
 CORE_API void ccluatest();
 
 #endif /* CCLIB_LUACAPI_H_ */

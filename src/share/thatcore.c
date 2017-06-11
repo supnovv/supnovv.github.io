@@ -498,6 +498,10 @@ struct ccfrom ccstrgetfrom(const struct ccstring* s) {
   return ccfromn(ccstrgetcstr(s), ccstrgetlen(s));
 }
 
+ccfrom ccstring_getfrom(const ccstring* s) {
+  return ccfromn(ccstrgetcstr(s), ccstrgetlen(s));
+}
+
 sright_int ccstrcapacity(const struct ccstring* self) {
   if (self->flag == 0xFF) {
     const struct ccheap* heap = &self->heap;

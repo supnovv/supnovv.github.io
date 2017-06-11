@@ -51,7 +51,8 @@ IONFOBJ = $(BUILD_DIR)linuxionf$(O)
 SOCKOBJ = $(BUILD_DIR)linuxsock$(O)
 SRVCOBJ = $(BUILD_DIR)service$(O)
 STRINGO = $(BUILD_DIR)string$(O)
-TESTOBJ = $(COREOBJ) $(LUACOBJ) $(IONFOBJ) $(SOCKOBJ) $(SRVCOBJ) $(STRINGO)
+HTTPOBJ = $(BUILD_DIR)http_service$(O)
+TESTOBJ = $(COREOBJ) $(LUACOBJ) $(IONFOBJ) $(SOCKOBJ) $(SRVCOBJ) $(STRINGO) $(HTTPOBJ)
 ALLOBJS = $(AUTOOBJ) $(TESTOBJ)
 
 AUTOCONF = $(BUILD_DIR)autoconf$(E)
@@ -103,4 +104,6 @@ $(COREOBJ): thatcore.c linuxcore.c thattest.c thatcore.h autoconf.h ccprefix.h
 $(IONFOBJ): linuxionf.c ionotify.h plationf.h
 $(SOCKOBJ): linuxsock.c socket.h platsock.h
 $(SRVCOBJ): service.c service.h
+$(STRINGO): string.c string.h
+$(HTTPOBJ): http_service.c http_service.h
 

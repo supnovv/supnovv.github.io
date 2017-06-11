@@ -1,53 +1,16 @@
-#include "socket.h"
+#include "http_service.h"
+#include "string.h"
+#include "ionotify.h"
 
-/* 三种robot类型
-1. 不接收消息，也不监听事件，只挂在当前线程下，与同线程下的多个robot协同工作（通过调用robot_resume和robot_yield）
-2. 接收消息，不监听事件，可以与同线程robot协同工作
-3. 接收消息，也监听事件，也可以与通线程robot协同工作
-*/
-
-#define CCM_HTTP_LISTEN_BACKLOG (32)
-
-#define CCM_HTTP_READ_REQUEST (1)
-#define CCM_HTTP_WRITE_RESPONSE (2)
-
-struct httplisten {
-  struct ccstring ip;
-  ushort_int port;
-  void (*connind)(struct ccstate*);
-  void* ud;
-  int backlog;
-  int initreqsize;
-  int maxreqsize;
-};
-
-struct httpconnect {
-  struct httplisten* listen;
-  handle_int sock;
-  struct ccstring localip;
-  struct ccstring remoteip;
-  ushort_int localport;
-  ushort_int remoteport;
-  nauty_byte method;
-  nauty_byte httpver;
-  struct ccbuffer* rxbuf;
-  umedit_int lstart, lnewline, lend; /* line */
-  umedit_int mstart; /* match start */
-  umedit_int ustart, uend; /* url */
-};
-
-#define CCM_HTTP_GET (0)
-#define CCM_HTTP_HEAD (1)
-#define CCM_HTTP_POST (2)
+#define CCM_HTTP_METHOD_MAX_LEN (4)
+#define CCM_NUM_OF_HTTP_METHODS (3)
 
 static const ccnauty_char* ccg_http_methods[] = {
   CCSTR("GET"), CCSTR("HEAD"), CCSTR("POST"), 0
 };
 
-#define CCM_HTTP_VER_0NN (0)
-#define CCM_HTTP_VER_10N (1)
-#define CCM_HTTP_VER_11N (2)
-#define CCM_HTTP_VER_2NN (3)
+#define CCM_HTTP_VER_MAX_LEN (8)
+#define CCM_NUM_OF_HTTP_VERS (4)
 
 static const ccnauty_char* ccg_http_versions[] = {
   CCSTR("HTTP/0"), CCSTR("HTTP/1.0"), CCSTR("HTTP/1.1"), CCSTR("HTTP/2"), 0
@@ -114,7 +77,13 @@ static const ccnauty_char* ccg_http_versions[] = {
 #define HTTP_HEADER_TRANSFER_ENCODING (0x04000000)
 #define HTTP_HEADER_TRAILER (0x08000000)
 
-static const ccnauty_char* ccg_http_headers[] = {
+
+#define CCM_HTTP_HEADER_MAX_LEN (27)
+#define CCM_NUM_OF_COMMON_HEADERS (30)
+#define CCM_NUM_OF_REQUEST_HEADERS (31)
+#define CCM_NUM_OF_RESPONSE_HEADERS (25)
+
+static const ccnauty_char* ccg_http_common_headers[] = {
   CCSTR("age"),
   CCSTR("cache-control"),
   CCSTR("connection"),
@@ -311,35 +280,65 @@ HTTP/1.1规定用户Agent代理应该在接收且检测到无效长度时通知�
 HTTP允许对实体内容进行编码，比如可以使之更安全或进行压缩以节省空间，如果主体进行了编码，Content-Length应该说明编码后的主体字节长度
 不幸的是，HTTP/1.1规范中没有首部可以用来说明原始未编码的主体长度，这就客户端难以验证解码过程的完整性　*/
 
-nauty_bool ll_http_filter_connection(struct ccstate* state, handle_int sock, struct httpconnect* conn) {
+#define CCM_HTTP_LISTEN_BACKLOG (32)
 
+#define CCM_HTTP_READ_REQUEST (1)
+#define CCM_HTTP_WRITE_RESPONSE (2)
+
+typedef struct {
+  ccstringmap methodmap;
+  ccstringmap httpvermap;
+  ccstringmap comheadermap;
+  ccstringmap reqheadermap;
+  ccstringmap resheadermap;
+  cchttplisten* listen;
+} cchttpservice;
+
+typedef struct {
+  cchttpservice* service;
+  cchandle_int sock;
+  ccbuffer* rxbuf;
+  int stage;
+  int lstart, lnewline, lend; /* current line */
+  int mstart; /* current match start */
+  int url, uend;
+  int body, bend;
+  ccnauty_byte method;
+  ccnauty_byte httpver;
+  ccmedit_uint comheaders;
+  ccmedit_uint reqheaders;
+  ccmedit_uint resheaders;
+} cchttpconn;
+
+static void ll_init_http_conn(cchttpconn* self, ccservice* sv, cchandle_int sock) {
+  cchttpservice* hs = (cchttpservice*)ccservice_getdata(sv);
+  cczerol(self, sizeof(cchttpconn));
+  self->service = hs;
+  self->sock = sock;
+  self->rxbuf = ccnewbuffer(ccservice_belong(sv), hs->listen->rxsizelimit);
+  self->lstart = -1;
 }
 
-int http_read_startline(struct ccstate* state, struct httprequest* r) {
-  state->msg = (struct ccmessage*)r;
-  return ll_http_read_startline(state);
-}
-
-static void ll_http_read_headers(struct ccstate* state) {
+static int ll_http_read_headers(ccstate* state) {
   /* <name>: <value><crlf>
      <name>: <value><crlf>
      ...
      <crlf>
      <entity-body>
   */
+  (void)state;
+  return 0;
 }
 
-static int ll_http_read_line(struct ccstate* s) {
-  struct httpconnect* conn = robot_get_specific(s);
-  handle_int sock = robot_get_eventfd(s);
-  struct ccbuffer* rxbuf = 0;
-  const char* end = 0;
-  nauty_int count = 0, n = 0;
-  int status = 0, len = 0;
-
-  if (!conn->rxbuf) {
-    conn->rxbuf = ccnewbuffer(ccgetthread(s), conn->maxlimit);
-  }
+static int ll_http_read_line(ccstate* s) {
+  cchttpconn* conn = (cchttpconn*)ccservice_getdata(s->srvc);
+  cchandle_int sock = ccservice_eventfd(s->srvc);
+  ccbuffer* rxbuf = 0;
+  const ccnauty_char* end = 0;
+  ccnauty_int count = 0;
+  ccnauty_int n = 0;
+  ccnauty_int status = 0;
+  int len = 0;
 
   if (conn->lstart == -1) {
     conn->lstart = conn->rxbuf->size;
@@ -347,7 +346,7 @@ static int ll_http_read_line(struct ccstate* s) {
   }
 
 ReadSocket:
-  ccbufer_ensureremainsize(&conn->rxbuf, 128);
+  ccbuffer_ensuresizeremain(&conn->rxbuf, 128);
   rxbuf = conn->rxbuf;
 
   count = rxbuf->capacity - rxbuf->size;
@@ -356,11 +355,11 @@ ReadSocket:
     return CCSTATUS_EREAD;
   }
 
-  end = ccstring_matchuntil(ccnewlines, rxbuf->a + conn->mstart, rxbuf->size + n - conn->mstart, &len);
+  end = ccstring_matchuntil(ccgetnewlinemap(), rxbuf->a + conn->mstart, rxbuf->size + n - conn->mstart, &len);
 
   if (end == 0) { /* cannot find newline */
     rxbuf->size += n;
-    if (rxbuf->size > conn->maxlimit) {
+    if (rxbuf->size > conn->service->listen->rxsizelimit) {
       return CCSTATUS_ELIMIT;
     }
 
@@ -385,132 +384,173 @@ ReadSocket:
   return CCSTATUS_CONTREAD;
 }
 
-int ll_http_read_startline(struct ccstate* s) {
+static int ll_http_read_startline(ccstate* s) {
   /* <method> <request-url> HTTP/<major>.<minor><crlf>
   Carriage Return (CR) 13 '\r', Line Feed (LF) 10 '\n' */
-  const char* e = 0;
-  struct httpconnect* conn = 0;
-  struct ccbuffer* rxbuf = 0;
+  const ccnauty_char* e = 0;
+  cchttpconn* conn = 0;
+  cchttpservice* hs = 0;
+  ccbuffer* rxbuf = 0;
   int n = 0, strid = 0, len = 0;
 
   if ((n = ll_http_read_line(s)) < 0) {
     return n;
   }
 
-  if (n == CCSTATUS_WAITMORE) {
-    return robot_yield(s, ll_http_read_startline);
+  if (n == CCM_STATUS_WAITMORE) {
+    return ccstate_yield(s, ll_http_read_startline);
   }
 
-  conn = robot_get_specific(s);
+  conn = (cchttpconn*)ccservice_getdata(s->srvc);
   rxbuf = conn->rxbuf;
+  hs = conn->service;
 
   /* the start line is read */
-  e = string_skipheadspacesmatch(ccmethods, rxbuf->a + conn->lstart, conn->lnewline - conn->lstart, &strid, 0);
+  e = ccstring_skipspaceandmatch(&hs->methodmap, rxbuf->a + conn->lstart, conn->lnewline - conn->lstart, &strid, 0);
   if (e == 0) {
-    return CCSTATUS_EMATCH;
+    return CCM_STATUS_EMATCH;
   }
   conn->method = strid;
 
   /* url */
-  e = string_skipheadspacesmatch(ccnonblanks, e, rxbuf->a + conn->lnewline - e, 0, &len);
+  e = ccstring_skipspaceandmatchuntil(ccgetblankmap(), e, rxbuf->a + conn->lnewline - e, &len);
   if (e == 0) {
-    return CCSTATUS_EMATCH;
+    return CCM_STATUS_EMATCH;
   }
-  conn->ustart = e - len - rxbuf->a;
+  conn->url = e - len - rxbuf->a;
   conn->uend = e - rxbuf->a;
 
   /* http version */
-  e = string_skipheadspacematch(cchttpver, e, rxbuf->a + conn->lnewline - e, &strid, 0);
+  e = ccstring_skipspaceandmatch(&hs->httpvermap, e, rxbuf->a + conn->lnewline - e, &strid, 0);
   if (e == 0) {
-    conn->httpver = HTTP_VER_0_9;
+    conn->httpver = CCM_HTTP_VER_0NN;
     return 0; /* head read finished for v0.9 */
   }
   conn->httpver = strid;
 
   /* read headers */
-  if (n == CCSTATUS_CONTREAD) {
+  if (n == CCM_STATUS_CONTREAD) {
     return ll_http_read_headers(s);
   }
-  return robot_yield(s, ll_http_read_headers);
+  return ccstate_yield(s, ll_http_read_headers);
 }
 
-static void ll_http_read_request(struct ccstate* state) {
-  ll_http_read_startline(state);
+static int ll_http_read_request(ccstate* state) {
+  return ll_http_read_startline(state);
 }
 
-void ll_http_connection_proc(struct ccrobot* robot, struct ccmessage* msg) {
-  int n = 0;
+static int ll_http_write_response(ccstate* state) {
+  (void)state;
+  return 0;
+}
+
+static int ll_http_incoming_connection_proc(ccservice* srvc, ccmessage* msg) {
   switch (msg->type) {
-  case MESSAGE_IOEVENT: {
-      ushort_int masks = msg->data->us;
-      if (masks & (CCIONFERR | CCIONFHUP | CCIONFRDH)) {
-        robot_run_complete(s);
-        return;
+  case CCM_MESSAGE_IOEVENT: {
+      int n = 0;
+      ccmedit_uint masks = msg->data.u32;
+      cchttpconn* conn = (cchttpconn*)ccservice_getdata(srvc);
+
+      if (masks & (CCM_EVENT_ERR | CCM_EVENT_HUP | CCM_EVENT_RDH)) {
+        ccservice_stop(srvc);
+        break;
       }
-      if (conn->stage < HTTP_STAGE_RESPONSE) {
-        if (!(masks & CCIONFREAD)) return;
-        n = robot_resume(robot, ll_http_read_request);
+
+      if (conn->stage < CCM_HTTP_WRITE_RESPONSE) {
+        if (!(masks & CCM_EVENT_READ)) break;
+        n = ccservice_resume(srvc, ll_http_read_request);
         if (n == 0) {
-          conn->stage = HTTP_STAGE_RESPONSE;
+          conn->stage = CCM_HTTP_WRITE_RESPONSE;
+          ccservice_resume(srvc, ll_http_write_response);
         } else if (n < 0) {
-          robot_run_complete(s);
+          ccservice_stop(srvc);
         }
-        return;
+      } else {
+        if (!(masks & CCM_EVENT_WRITE)) break;
+        ccservice_resume(srvc, ll_http_write_response);
       }
-      if (masks & CCIONFWRITE) {
-        robot_resume(robot, ll_http_write_response);
-      }
-      return;
     }
+    break;
+
   default:
     break;
   }
+
+  return 0;
 }
 
-void　ll_http_receive_connection(struct ccstate* s) {
-  struct httplisten* self = (struct httplisten*)robot_get_specific(s);
-  struct ccmessage* msg = robot_get_message(s);
-  struct httpconnect conn;
-  struct httpconnect* specific = 0;
-  struct ccrobot* robot = 0;
-  ccassert(msg->type == MESSAGE_ID_CONNIND);
-  if (!ll_http_filter_connection(s, msg->data->fd, &conn)) {
-    return;
-  }
-  robot = robot_create(ll_http_connection_proc, ROBOT_YIELDABLE);
-  specific = (struct httpconnect*)robot_set_allocated_specific(robot, sizeof(struct httpconnect));
-  *specific = conn;
-  robot_set_event(robot, conn.sock, IOEVENT_RDWR, 0);
-  robot_start_run(robot);
+int ll_http_receive_connection(ccservice* self, ccmessage* msg) {
+  ccservice* subsv = 0;
+  cchttpconn* conn = 0;
+
+  if (msg->type != CCM_MESSAGE_CONNIND) return 0;
+
+  subsv = ccservice_new(ll_http_incoming_connection_proc);
+
+  conn = (cchttpconn*)ccservice_allocdata(subsv, sizeof(cchttpconn));
+  ll_init_http_conn(conn, self, msg->data.fd);
+
+  ccservice_setevent(subsv, conn->sock, CCM_EVENT_RDWR, 0);
+  ccservice_start(subsv);
+  return 0;
 }
 
-struct ccrobot* http_listen(struct httplisten* self) {
-  struct ccsockaddr sa;
-  handle_int sock;
-  struct ccrobot* robot;
+int cchttp_listen(cchttplisten* self) {
+  ccsockaddr sa;
+  ccservice* sv = 0;
+  cchttpservice* hs = 0;
+
   if (!ccsockaddr_init(&sa, ccstring_getfrom(&self->ip), self->port)) {
     return 0;
   }
   if (self->backlog <= 0) {
-    self->backlog = HTTP_LISTEN_BACKLOG;
+    self->backlog = CCM_HTTP_LISTEN_BACKLOG;
   }
-  sock = ccsocket_listen(&sa, self->backlog);
-  if (!ccsocket_isopen(sock)) {
+  self->sock = ccsocket_listen(&sa, self->backlog);
+  if (!ccsocket_isopen(self->sock)) {
     return 0;
   }
-  robot = robot_create(ll_http_receive_connection, 0);
-  robot->udata = self;
-  robot_set_event(robot, sock, IOEVENT_READ, IOEVENT_FLAG_LISTEN);
-  robot_start_run(robot);
-  return robot;
+
+  sv = ccservice_new(ll_http_receive_connection);
+  hs = (cchttpservice*)ccservice_allocdata(sv, sizeof(cchttpservice));
+  hs->listen = self;
+
+  hs->methodmap = ccstring_newmap(
+      CCM_HTTP_METHOD_MAX_LEN,
+      ccg_http_methods,
+      CCM_NUM_OF_HTTP_METHODS,
+      false);
+
+  hs->httpvermap = ccstring_newmap(
+      CCM_HTTP_VER_MAX_LEN,
+      ccg_http_versions,
+      CCM_NUM_OF_HTTP_VERS,
+      false);
+
+  hs->comheadermap = ccstring_newmap(
+      CCM_HTTP_HEADER_MAX_LEN,
+      ccg_http_common_headers,
+      CCM_NUM_OF_COMMON_HEADERS,
+      false);
+
+  hs->reqheadermap = ccstring_newmap(
+      CCM_HTTP_HEADER_MAX_LEN,
+      ccg_http_request_headers,
+      CCM_NUM_OF_REQUEST_HEADERS,
+      false);
+
+  hs->resheadermap = ccstring_newmap(
+      CCM_HTTP_HEADER_MAX_LEN,
+      ccg_http_response_headers,
+      CCM_NUM_OF_RESPONSE_HEADERS,
+      false);
+
+  ccservice_setevent(sv, self->sock, CCM_EVENT_READ, CCM_EVENT_FLAG_LISTEN);
+  ccservice_start(sv);
+  return 1;
 }
 
-void user_read_request_header(struct ccstate* state) {
-  robot_yield(state, user_read_request_data);
-}
-
-
-#if 0
+/*
 "<scheme>://<user>:<password>@<host>:<port>/<path>;<params>?<query>#<frag>"
 /hammers;sale=0;color=red?item=1&size=m
 /hammers;sale=false/index.html;graphics=true
@@ -533,5 +573,5 @@ HTTP/<major>.<minor> <status-code> <status-text>
 <crlf>
 <entity-body>
 ---
-#endif
+*/
 

@@ -27,7 +27,7 @@ static void ll_init_state(struct ccstate* co) {
   co->coref = LUA_NOREF;
 }
 
-nauty_bool ccstate_init(struct ccstate* ccco, lua_State* L, int (*func)(struct ccstate*), struct ccrobot* bot) {
+nauty_bool ccstate_init(struct ccstate* ccco, lua_State* L, int (*func)(struct ccstate*), struct ccservice* srvc) {
   lua_State* co = 0;
   ll_init_state(ccco);
   if ((co = lua_newthread(L)) == 0) {
@@ -38,7 +38,7 @@ nauty_bool ccstate_init(struct ccstate* ccco, lua_State* L, int (*func)(struct c
   ccco->co = co;
   ccco->coref = luaL_ref(L, LUA_REGISTRYINDEX);
   ccco->func = func;
-  ccco->bot = bot;
+  ccco->srvc = srvc;
   return true;
 }
 

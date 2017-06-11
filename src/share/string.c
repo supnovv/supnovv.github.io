@@ -1,45 +1,9 @@
 #include "string.h"
 
-#define CCM_SPACE_MAX_LEN (3)
-
-static const ccnauty_char* ccg_all_spaces[] = {
-  CCSTR("\x09"), /* \t */
-  CCSTR("\x0B"), /* \v */
-  CCSTR("\x0C"), /* \f */
-  /* Zs 'Separator, Space' Category - www.fileformat.info/info/unicode/category/Zs/list.htm */
-  CCSTR("\x20"), /* 0x20 space */
-  CCSTR("\xC2\xA0"), /* 0xA0 no-break space */
-  CCSTR("\xE1\x9A\x80"), /* 0x1680 ogham space mark */
-  CCSTR("\xE2\x80\xAF"), /* 0x202F narrow no-break space */
-  CCSTR("\xE2\x81\x9F"), /* 0x205F medium mathematical space */
-  CCSTR("\xE3\x80\x80"), /* 0x3000 ideographic space (chinese blank character) */
-  CCSTR("\xE2\x80\x80"), /* 0x2000 en quad */
-  CCSTR("\xE2\x80\x81"), /* 0x2001 em quad */
-  CCSTR("\xE2\x80\x82"), /* 0x2002 en space */
-  CCSTR("\xE2\x80\x83"), /* 0x2003 em space */
-  CCSTR("\xE2\x80\x84"), /* 0x2004 three-per-em space */
-  CCSTR("\xE2\x80\x85"), /* 0x2005 four-per-em space */
-  CCSTR("\xE2\x80\x86"), /* 0x2006 six-per-em space */
-  CCSTR("\xE2\x80\x87"), /* 0x2007 figure space */
-  CCSTR("\xE2\x80\x88"), /* 0x2008 punctuation space */
-  CCSTR("\xE2\x80\x89"), /* 0x2009 thin space */
-  CCSTR("\xE2\x80\x8A"), /* 0x200A hair space */
-  /* byte order marks */
-  CCSTR("\xFE\xFF"),
-  CCSTR("\xFF\xFE"),
-  CCSTR("\xEF\xBB\xBF"),
-  0
-};
-
-static const ccnauty_char* ccg_all_newlines[] = {
-  CCSTR("\x0A\x0D"), /* \n\r */
-  CCSTR("\x0D\x0A"), /* \r\n */
-  CCSTR("\x0A"), /* \r */
-  CCSTR("\x0D"), /* \n */
-  CCSTR("\xE2\x80\xA8"), /* line separator 0x2028 00100000_00101000 -> 1110'0010_10'000000_10'101000 (0xE280A8) */
-  CCSTR("\xE2\x80\xA9"), /* paragraph separator 0x2029 00100000_00101001 */
-  0
-};
+#define CCM_BLANK_MAX_LEN (3)
+#define CCM_NUM_OF_SPACES (23)
+#define CCM_NUM_OF_NEWLINES (6)
+#define CCM_NUM_OF_BLANKS (29)
 
 static const ccnauty_char* ccg_all_blanks[] = {
   CCSTR("\x09"), /* \t */
@@ -84,21 +48,21 @@ static ccstringmap ccg_blank_map; /* used to match a blank, blank is a space or 
 const ccstringmap* ccgetspacemap() {
   ccstringmap* map = &ccg_space_map;
   if (map->t) return map;
-  *map = ccstring_newmap(CCM_SPACE_MAX_LEN, ccg_all_spaces, true);
+  *map = ccstring_newmap(CCM_BLANK_MAX_LEN, ccg_all_blanks, CCM_NUM_OF_SPACES, true);
   return map;
 }
 
 const ccstringmap* ccgetnewlinemap() {
   ccstringmap* map = &ccg_newline_map;
   if (map->t) return map;
-  *map = ccstring_newmap(CCM_SPACE_MAX_LEN, ccg_all_newlines, true);
+  *map = ccstring_newmap(CCM_BLANK_MAX_LEN, ccg_all_blanks + CCM_NUM_OF_SPACES, CCM_NUM_OF_NEWLINES, true);
   return map;
 }
 
 const ccstringmap* ccgetblankmap() {
   ccstringmap* map = &ccg_blank_map;
   if (map->t) return map;
-  *map = ccstring_newmap(CCM_SPACE_MAX_LEN, ccg_all_blanks, true);
+  *map = ccstring_newmap(CCM_BLANK_MAX_LEN, ccg_all_blanks, CCM_NUM_OF_BLANKS, true);
   return map;
 }
 
@@ -117,22 +81,23 @@ const ccstringmap* ccgetblankmap() {
 [^chars] - the complement of [chars]
 */
 
-void ccstring_setmap(ccstringmap* self, const ccnauty_char** str, int casesensitive) {
+void ccstring_setmap(ccstringmap* self, const ccnauty_char** str, int numofstr, int casesensitive) {
   int stridx = 0, charidx = 0;
   const ccnauty_char* s = 0;
   ccchartable* t = self->t;
   ccnauty_char ch = 0;
 
-  cczerol(t, sizeof(ccchartable) * self->size);
+  cczerol(self->t, sizeof(ccchartable) * self->size);
 
-  for (; (s = str[stridx]); ++stridx) {
+  for (; stridx < numofstr; ++stridx) {
 
     if (stridx + 1 > self->maxnumofstr) {
       ccloge("too many strings");
       break;
     }
 
-    if (s[0] == 0) continue;
+    s = str[stridx];
+    if (s == 0 || s[0] == 0) continue;
 
     charidx = 0;
     while ((ch = s[charidx])) {
@@ -143,11 +108,11 @@ void ccstring_setmap(ccstringmap* self, const ccnauty_char** str, int casesensit
         break;
       }
 
-      /* the string has this char */
-      t[charidx].a[ch] |= (1 << stridx);
+      /* the string match this char */
+      t[charidx].c[ch].m |= (1 << stridx);
       if (!casesensitive) {
-        if (ch >= 'a' && ch <= 'z') t[charidx].a[ch-32] |= (1 << stridx);
-        else if (ch >= 'A' && ch <= 'Z') t[charidx].a[ch+32] |= (1 << stridx);
+        if (ch >= 'a' && ch <= 'z') t[charidx].c[ch-32].m |= (1 << stridx);
+        else if (ch >= 'A' && ch <= 'Z') t[charidx].c[ch+32].m |= (1 << stridx);
       }
 
       ++charidx;
@@ -155,21 +120,21 @@ void ccstring_setmap(ccstringmap* self, const ccnauty_char** str, int casesensit
 
     /* the string ended with this char */
     ch = s[--charidx];
-    t[charidx].e[ch] |= (1 << stridx);
+    t[charidx].c[ch].e |= (1 << stridx);
     if (!casesensitive) {
-      if (ch >= 'a' && ch <= 'z') t[charidx].e[ch-32] |= (1 << stridx);
-      else if (ch >= 'A' && ch <= 'Z') t[charidx].e[ch+32] |= (1 << stridx);
+      if (ch >= 'a' && ch <= 'z') t[charidx].c[ch-32].e |= (1 << stridx);
+      else if (ch >= 'A' && ch <= 'Z') t[charidx].c[ch+32].e |= (1 << stridx);
     }
   }
 }
 
-ccstringmap ccstring_newmap(int maxstrlen, const ccnauty_char** str, int casesensitive) {
+ccstringmap ccstring_newmap(int maxstrlen, const ccnauty_char** str, int numofstr, int casesensitive) {
   ccstringmap map = {0};
   if (maxstrlen <= 0 || str == 0) return map;
   map.t = (ccchartable*)ccrawalloc(sizeof(ccchartable) * maxstrlen);
   map.size = maxstrlen;
   map.maxnumofstr = 32;
-  ccstring_setmap(&map, str, casesensitive);
+  ccstring_setmap(&map, str, numofstr, casesensitive);
   return map;
 }
 
@@ -256,7 +221,7 @@ const ccnauty_char* ccstring_matchex(const ccstringmap* map, const void* s, int 
     t = map->t + i;
     ch = CCSTR(s)[i];
 
-    curmatch = prevmatch & t->a[ch];
+    curmatch = prevmatch & t->c[ch].m;
     if (!curmatch) {
       if (p) {
         headmatch = ccrightmostbit(matches);
@@ -265,9 +230,9 @@ const ccnauty_char* ccstring_matchex(const ccstringmap* map, const void* s, int 
       return 0;
     }
 
-    if (t->e[ch] & curmatch) {
+    if (t->c[ch].e & curmatch) {
       p = CCSTR(s) + i + 1;
-      matches = t->e[ch] & curmatch;
+      matches = t->c[ch].e & curmatch;
       headmatch = ccrightmostbit(curmatch);
       if (matches & headmatch) {
         goto MatchSuccess;
@@ -354,6 +319,23 @@ const ccnauty_char* ccstring_matchuntil(const ccstringmap* map, const void* s, i
   return e;
 }
 
+const ccnauty_char* ccstring_skipspaceandmatchuntil(const ccstringmap* map, const void* s, int len, int* n) {
+  const ccnauty_char* e = 0;
+
+  /* match space and skip */
+  while ((e = ccstring_match(ccgetspacemap(), s, len)) != 0 && e != ccstringtooshort) {
+    s = CCSTR(s) + 1;
+    --len;
+  }
+
+  if (e == ccstringtooshort) {
+    return 0; /* all chars are spaces, or even last space is not complete */
+  }
+
+  /* current char is not a space, try match the string */
+  return ccstring_matchuntil(map, s, len, n);
+}
+
 /* return 0 - match failed; otherwise success, strid and mlen are set */
 const ccnauty_char* ccstring_skipspaceandmatch(const ccstringmap* map, const void* s, int len, int* strid, int* mlen) {
   const ccnauty_char* e = 0;
@@ -365,7 +347,7 @@ const ccnauty_char* ccstring_skipspaceandmatch(const ccstringmap* map, const voi
   }
 
   if (e == ccstringtooshort) {
-    return 0; /* all chars are spaces, or even last space is not complete */ 
+    return 0; /* all chars are spaces, or even last space is not complete */
   }
 
   /* current char is not a space, try match the string */
@@ -377,9 +359,9 @@ const ccnauty_char* ccstring_skipspaceandmatch(const ccstringmap* map, const voi
 }
 
 void ccstringtest() {
-  const ccnauty_char* methods[] = {CCSTR("GET"), CCSTR("HEAD"), CCSTR("POST"), 0};
+  const ccnauty_char* methods[] = {CCSTR("GET"), CCSTR("HEAD"), CCSTR("POST")};
   const ccnauty_char* orderedchice[] = {CCSTR("mankind"), CCSTR("man"), CCSTR("got"),
-      CCSTR("gotten"), CCSTR("pick"), CCSTR("tick"), CCSTR("cook"), 0};
+      CCSTR("gotten"), CCSTR("pick"), CCSTR("tick"), CCSTR("cook")};
   const nauty_char subject[] = "gEtoHEAdopOStogeoend";
   const nauty_char* s = 0;
   ccstringmap map;
@@ -401,7 +383,7 @@ void ccstringtest() {
   ccassert(ccrightmostbit(0x1110) == 0x0010);
   ccassert(ccrightmostbit(0x1111) == 0x0001);
 
-  map = ccstring_newmap(8, methods, false);
+  map = ccstring_newmap(8, methods, 3, false);
   s = ccstring_match(&map, subject, 3);
   cclogd("get - %s", s);
   s = ccstring_match(&map, subject+1, 3);
@@ -417,7 +399,7 @@ void ccstringtest() {
   s = ccstring_match(&map, subject+14, 3);
   ccassert(s == 0);
 
-  ccstring_setmap(&map, orderedchice, true);
+  ccstring_setmap(&map, orderedchice, 7, true);
   s = ccstring_match(&map, "mankind", 7);
   ccassert(*s == 0);
   s = ccstring_match(&map, "mankin", 6);

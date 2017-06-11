@@ -4,22 +4,22 @@
 #include "ionotify.h"
 #include "socket.h"
 
-#define LLSERVICE_START_SVID 0x2001
-#define LLSERVICE_INITSIZEBITS 8 /* 256 */
+#define LL_SERVICE_START_SVID 0x2001
+#define LL_SERVICE_INITSIZEBITS 8 /* 256 */
 
-#define MESSAGE_RUNROBOT 0x01
-#define MESSAGE_DELROBOT 0x02
-#define MESSAGE_ADDEVENT 0x03
-#define MESSAGE_DELEVENT 0x04
-#define MESSAGE_FLAG_FREEPTR 0x01
+#define LL_MESSAGE_RUNSERVICE 0x01
+#define LL_MESSAGE_DELSERVICE 0x02
+#define LL_MESSAGE_ADDEVENT 0x03
+#define LL_MESSAGE_DELEVENT 0x04
+#define LL_MESSAGE_FLAG_FREEPTR 0x01
 
-#define ROBOT_COMPLETED  0x01
-#define ROBOT_NOT_START  0x02
-#define ROBOT_SAMETHREAD 0x04
-#define ROBOT_YIELDABLE  0x08
-#define ROBOT_FREE_DATA  0x10
+#define LL_SERVICE_COMPLETED  0x01
+#define LL_SERVICE_NOT_START  0x02
+#define LL_SERVICE_SAMETHREAD 0x04
+#define LL_SERVICE_YIELDABLE  0x08
+#define LL_SERVICE_FREE_DATA  0x10
 
-struct ccrobot {
+struct ccservice {
   /* shared with master */
   struct cclinknode node;
   struct ccsmplnode tlink;
@@ -28,42 +28,42 @@ struct ccrobot {
   ushort_int outflag;
   /* thread own use */
   ushort_int flag;
-  umedit_int roid;
+  umedit_int svid;
   struct ccthread* belong; /* set once when init */
   struct ccstate* co;
-  int (*entry)(struct ccrobot*, struct ccmessage*);
+  int (*entry)(struct ccservice*, struct ccmessage*);
   void* udata;
 };
 
-static void ccrobot_init(struct ccrobot* self) {
-  cczeron(self, sizeof(struct ccrobot));
+static void ccservice_init(struct ccservice* self) {
+  cczeron(self, sizeof(struct ccservice));
   cclinknode_init(&self->node);
   ccsmplnode_init(&self->tlink);
   ccsqueue_init(&self->rxmq);
 }
 
-static int ll_robot_tlink_offset() {
-  return offsetof(struct ccrobot, tlink);
+static int ll_service_tlink_offset() {
+  return offsetof(struct ccservice, tlink);
 }
 
-struct ccstate* ccrobot_getstate(struct ccrobot* self) {
+struct ccstate* ccservice_getstate(struct ccservice* self) {
   return self->co;
 }
 
-umedit_int robot_get_id(struct ccrobot* robot) {
-  return robot->roid;
+umedit_int service_get_id(struct ccservice* service) {
+  return service->svid;
 }
 
-void* robot_get_specific(struct ccstate* state) {
-  return state->bot->udata;
+void* ccservice_getdata(ccservice* self) {
+  return self->udata;
 }
 
-struct ccmessage* robot_get_message(struct ccstate* state) {
+struct ccmessage* service_get_message(struct ccstate* state) {
   return state->msg;
 }
 
-handle_int robot_get_eventfd(struct ccstate* state) {
-  return state->bot->event->fd;
+cchandle_int ccservice_eventfd(ccservice* self) {
+  return self->event->fd;
 }
 
 struct ccthread {
@@ -210,7 +210,7 @@ void ccthread_free(struct ccthread* self) {
   /* free all un-handled msgs */
   ll_free_msgs(&self->msgq);
 
-  /* un-complete robots are all in the hash table,
+  /* un-complete services are all in the hash table,
   it is no need to free them here */
 
   /* free all coroutines */
@@ -254,7 +254,7 @@ static umedit_int ll_new_thread_index() {
 }
 
 /* no protacted, can only be called by master */
-static struct ccthread* ll_get_thread_for_new_robot() {
+static struct ccthread* ll_get_thread_for_new_service() {
   struct llthreads* self = ll_ccg_threads();
   struct ccthread* thread = (struct ccthread*)ccpriorq_pop(&self->priq);
   thread->weight += 1;
@@ -263,7 +263,7 @@ static struct ccthread* ll_get_thread_for_new_robot() {
 }
 
 /* no protacted, can only be called by master */
-static void ll_thread_finish_a_robot(struct ccthread* thread) {
+static void ll_thread_finish_a_service(struct ccthread* thread) {
   struct llthreads* self = ll_ccg_threads();
   if (thread->weight > 0) {
     thread->weight -= 1;
@@ -274,10 +274,10 @@ static void ll_thread_finish_a_robot(struct ccthread* thread) {
 
 
 /**
- * robots container
+ * services container
  */
 
-struct llrobots {
+struct llservices {
   struct ccbackhash table;
   struct ccdqueue freeq;
   umedit_int freesize;
@@ -286,74 +286,74 @@ struct llrobots {
   struct ccmutex mutex;
 };
 
-static struct llrobots* ll_ccg_robots();
+static struct llservices* ll_ccg_services();
 
-static void llrobots_init(struct llrobots* self, nauty_byte initsizebits) {
-  ccbackhash_init(&self->table, initsizebits, ll_robot_tlink_offset(), (umedit_int(*)(void*))robot_get_id);
+static void llservices_init(struct llservices* self, nauty_byte initsizebits) {
+  ccbackhash_init(&self->table, initsizebits, ll_service_tlink_offset(), (umedit_int(*)(void*))service_get_id);
   ccdqueue_init(&self->freeq);
   ccmutex_init(&self->mutex);
   self->freesize = 0;
-  self->seed = LLSERVICE_START_SVID;
+  self->seed = LL_SERVICE_START_SVID;
 }
 
-static void ll_robot_free_memory(void* ro) {
-  struct ccrobot* robot = (struct ccrobot*)ro;
-  if (robot->udata && (robot->flag & ROBOT_FREE_DATA)) {
-    ccrawfree(robot->udata);
-    robot->udata = 0;
+static void ll_service_free_memory(void* sv) {
+  struct ccservice* service = (struct ccservice*)sv;
+  if (service->udata && (service->flag & LL_SERVICE_FREE_DATA)) {
+    ccrawfree(service->udata);
+    service->udata = 0;
   }
-  ccrawfree(robot);
+  ccrawfree(service);
 }
 
-static void llrobots_free(struct llrobots* self) {
-  struct ccrobot* ro = 0;
-  cchashtable_foreach(&self->table.a, ll_robot_free_memory);
-  cchashtable_foreach(&self->table.b, ll_robot_free_memory);
+static void llservices_free(struct llservices* self) {
+  struct ccservice* sv = 0;
+  cchashtable_foreach(&self->table.a, ll_service_free_memory);
+  cchashtable_foreach(&self->table.b, ll_service_free_memory);
 
-  while ((ro = (struct ccrobot*)ccdqueue_pop(&self->freeq))) {
-    ll_robot_free_memory(ro);
+  while ((sv = (struct ccservice*)ccdqueue_pop(&self->freeq))) {
+    ll_service_free_memory(sv);
   }
 
   ccbackhash_free(&self->table);
   ccmutex_free(&self->mutex);
 }
 
-static umedit_int ll_new_robot_id() {
-  struct llrobots* self = ll_ccg_robots();
-  umedit_int roid = 0;
+static umedit_int ll_new_service_id() {
+  struct llservices* self = ll_ccg_services();
+  umedit_int svid = 0;
 
   ccmutex_lock(&self->mutex);
-  roid = self->seed++;
+  svid = self->seed++;
   ccmutex_unlock(&self->mutex);
 
-  return roid;
+  return svid;
 }
 
-static void ll_add_robot_to_table(struct ccrobot* robot) {
-  struct llrobots* self = ll_ccg_robots();
+static void ll_add_service_to_table(struct ccservice* service) {
+  struct llservices* self = ll_ccg_services();
   ccmutex_lock(&self->mutex);
-  ccbackhash_add(&self->table, robot);
+  ccbackhash_add(&self->table, service);
   ccmutex_unlock(&self->mutex);
 }
 
-static struct ccrobot* ll_find_robot(umedit_int roid) {
-  struct llrobots* self = ll_ccg_robots();
-  struct ccrobot* robot = 0;
+static struct ccservice* ll_find_service(umedit_int svid) {
+  struct llservices* self = ll_ccg_services();
+  struct ccservice* service = 0;
 
   ccmutex_lock(&self->mutex);
-  robot = (struct ccrobot*)ccbackhash_find(&self->table, roid);
+  service = (struct ccservice*)ccbackhash_find(&self->table, svid);
   ccmutex_unlock(&self->mutex);
 
-  return robot;
+  return service;
 }
 
-static void ll_robot_is_finished(struct ccrobot* robot) {
-  struct llrobots* self = ll_ccg_robots();
-  ll_thread_finish_a_robot(robot->belong);
+static void ll_service_is_finished(struct ccservice* service) {
+  struct llservices* self = ll_ccg_services();
+  ll_thread_finish_a_service(service->belong);
 
   ccmutex_lock(&self->mutex);
-  ccbackhash_del(&self->table, robot->roid);
-  ccdqueue_push(&self->freeq, &robot->node);
+  ccbackhash_del(&self->table, service->svid);
+  ccdqueue_push(&self->freeq, &service->node);
   self->freesize += 1;
   ccmutex_unlock(&self->mutex);
 }
@@ -392,12 +392,12 @@ static void llevents_free(struct llevents* self) {
   ccmutex_free(&self->mutex);
 }
 
-static void ll_lock_event(struct ccrobot* robot) {
-  ccmutex_lock(&robot->belong->elock);
+static void ll_lock_event(struct ccservice* service) {
+  ccmutex_lock(&service->belong->elock);
 }
 
-static void ll_unlock_event(struct ccrobot* robot) {
-  ccmutex_unlock(&robot->belong->elock);
+static void ll_unlock_event(struct ccservice* service) {
+  ccmutex_unlock(&service->belong->elock);
 }
 
 struct ccioevent* ll_new_event() {
@@ -436,25 +436,25 @@ void ll_free_event(struct ccioevent* event) {
   ccmutex_unlock(&self->mutex);
 }
 
-void ccrobot_detach_event(struct ccrobot* self) {
+void ccservice_detach_event(struct ccservice* self) {
   struct ccionfmgr* mgr = ll_get_ionfmgr();
-  if (self->event && ccsocket_isopen(self->event->fd) && (self->event->flags & CCIOFLAG_ADDED)) {
-    self->event->flags &= (~CCIOFLAG_ADDED);
+  if (self->event && ccsocket_isopen(self->event->fd) && (self->event->flags & CCM_EVENT_FLAG_ADDED)) {
+    self->event->flags &= (~CCM_EVENT_FLAG_ADDED);
     ccionfmgr_del(mgr, self->event);
   }
 }
 
-void ccrobot_attach_event(struct ccrobot* self, handle_int fd, ushort_int masks, ushort_int flags) {
-  ccrobot_detach_event(self);
+void ccservice_attach_event(struct ccservice* self, handle_int fd, ushort_int masks, ushort_int flags) {
+  ccservice_detach_event(self);
   if (!self->event) {
     self->event = ll_new_event();
   }
   self->event->fd = fd;
-  self->event->udata = self->roid;
-  self->event->masks = (masks | IOEVENT_ERR);
+  self->event->udata = self->svid;
+  self->event->masks = (masks | CCM_EVENT_ERR);
   self->event->flags = flags;
   ccionfmgr_add(ll_get_ionfmgr(), self->event);
-  self->event->flags |= IOEVENT_FLAG_ADDED;
+  self->event->flags |= CCM_EVENT_FLAG_ADDED;
 }
 
 /**
@@ -543,7 +543,7 @@ static struct ccmessage* ll_new_msg() {
 }
 
 static void ll_msg_free_data(struct ccmessage* self) {
-  if (self->data.ptr && (self->flag & MESSAGE_FLAG_FREEPTR)) {
+  if (self->data.ptr && (self->flag & LL_MESSAGE_FLAG_FREEPTR)) {
     ccrawfree(self->data.ptr);
   }
   self->extra = self->data.ptr = 0;
@@ -576,7 +576,7 @@ static void ll_free_msgs(struct ccsqueue* msgq) {
 
 struct ccglobal {
   struct llthreads threads;
-  struct llrobots robots;
+  struct llservices services;
   struct llevents events;
   struct llmessages messages;
   struct ccionfmgr ionf;
@@ -590,8 +590,8 @@ static struct llthreads* ll_ccg_threads() {
   return &ccG->threads;
 }
 
-static struct llrobots* ll_ccg_robots() {
-  return &ccG->robots;
+static struct llservices* ll_ccg_services() {
+  return &ccG->services;
 }
 
 static struct llevents* ll_ccg_events() {
@@ -609,7 +609,7 @@ static nauty_bool ll_set_thread_data(struct ccthread* thread) {
 static void ccglobal_init(struct ccglobal* self) {
   cczeron(self, sizeof(struct ccglobal));
   llthreads_init(&self->threads);
-  llrobots_init(&self->robots, LLSERVICE_INITSIZEBITS);
+  llservices_init(&self->services, LL_SERVICE_INITSIZEBITS);
   llevents_init(&self->events);
   llmessages_init(&self->messages);
 
@@ -626,7 +626,7 @@ static void ccglobal_setmaster(struct ccthread* master) {
 
 static void ccglobal_free(struct ccglobal* self) {
   llthreads_free(&self->threads);
-  llrobots_free(&self->robots);
+  llservices_free(&self->services);
   llevents_free(&self->events);
   llmessages_free(&self->messages);
 
@@ -643,16 +643,16 @@ static struct ccionfmgr* ll_get_ionfmgr() {
  * thread
  */
 
-static struct ccstate* ll_new_state(struct ccrobot* bot, int (*func)(struct ccstate*)) {
+static struct ccstate* ll_new_state(struct ccservice* srvc, int (*func)(struct ccstate*)) {
   struct ccstate* co;
-  struct ccthread* thr = bot->belong;
+  struct ccthread* thr = srvc->belong;
   if ((co = (struct ccstate*)ccsqueue_pop(&thr->freeco))) {
     thr->freecosz --;
   } else {
     co = (struct ccstate*)ccrawalloc(sizeof(struct ccstate));
     thr->totalco += 1;
   }
-  ccstate_init(co, thr->L, func, bot);
+  ccstate_init(co, thr->L, func, srvc);
   return co;
 }
 
@@ -702,33 +702,33 @@ nauty_bool ccthread_start(struct ccthread* self, int (*start)()) {
 
 
 /**
- * robot
+ * service
  */
 
-static struct ccrobot* ll_new_robot(umedit_int roid) {
-  struct llrobots* self = ll_ccg_robots();
-  struct ccrobot* robot = 0;
+static struct ccservice* ll_new_service(umedit_int svid) {
+  struct llservices* self = ll_ccg_services();
+  struct ccservice* service = 0;
 
   ccmutex_lock(&self->mutex);
-  robot = (struct ccrobot*)ccdqueue_pop(&self->freeq);
+  service = (struct ccservice*)ccdqueue_pop(&self->freeq);
   if (self->freesize > 0) {
     self->freesize -= 1;
   }
   ccmutex_unlock(&self->mutex);
 
-  if (robot == 0) {
-    robot = (struct ccrobot*)ccrawalloc(sizeof(struct ccrobot));
+  if (service == 0) {
+    service = (struct ccservice*)ccrawalloc(sizeof(struct ccservice));
     self->total += 1;
   }
 
-  ccrobot_init(robot);
-  if (roid == 0) {
-    robot->roid = ll_new_robot_id();
+  ccservice_init(service);
+  if (svid == 0) {
+    service->svid = ll_new_service_id();
   } else {
-    robot->roid = roid;
+    service->svid = svid;
   }
 
-  return robot;
+  return service;
 }
 
 struct ccmessage* message_create(umedit_int type, umedit_int flag) {
@@ -744,222 +744,231 @@ void* message_set_specific(struct ccmessage* self, void* data) {
 }
 
 void* message_set_allocated_specific(struct ccmessage* self, int bytes) {
-  self->flag |= MESSAGE_FLAG_FREEPTR;
+  self->flag |= LL_MESSAGE_FLAG_FREEPTR;
   self->data.ptr = ccrawalloc(bytes);
   return self->data.ptr;
 }
 
-static void ll_robot_send_message(struct ccrobot* robot, umedit_int destid, struct ccmessage* msg) {
-  msg->srcid = robot->roid;
+static void ll_service_send_message(struct ccservice* service, umedit_int destid, struct ccmessage* msg) {
+  msg->srcid = service->svid;
   msg->dstid = destid;
   ll_send_message(msg);
 }
 
-static void ll_robot_send_message_sp(struct ccrobot* robot, umedit_int destid, umedit_int type, void* static_ptr) {
+static void ll_service_send_message_sp(struct ccservice* service, umedit_int destid, umedit_int type, void* static_ptr) {
   struct ccmessage* msg = message_create(type, 0);
   message_set_specific(msg, static_ptr);
-  ll_robot_send_message(robot, destid, msg);
+  ll_service_send_message(service, destid, msg);
 }
 
-static void ll_robot_send_message_um(struct ccrobot* robot, umedit_int destid, umedit_int type, umedit_int data) {
+static void ll_service_send_message_um(struct ccservice* service, umedit_int destid, umedit_int type, umedit_int data) {
   struct ccmessage* msg = message_create(type, 0);
-  msg->data.um = data;
-  ll_robot_send_message(robot, destid, msg);
+  msg->data.u32 = data;
+  ll_service_send_message(service, destid, msg);
 }
 
-static void ll_robot_send_message_fd(struct ccrobot* robot, umedit_int destid, umedit_int type, handle_int fd) {
+static void ll_service_send_message_fd(struct ccservice* service, umedit_int destid, umedit_int type, handle_int fd) {
   struct ccmessage* msg = message_create(type, 0);
   msg->data.fd = fd;
-  ll_robot_send_message(robot, destid, msg);
+  ll_service_send_message(service, destid, msg);
 }
 
-void robot_send_message(struct ccstate* state, umedit_int destid, struct ccmessage* msg) {
-  ll_robot_send_message(state->bot, destid, msg);
+void service_send_message(struct ccstate* state, umedit_int destid, struct ccmessage* msg) {
+  ll_service_send_message(state->srvc, destid, msg);
 }
 
-void robot_send_message_sp(struct ccstate* state, umedit_int destid, umedit_int type, void* static_ptr) {
-  ll_robot_send_message_sp(state->bot, destid, type, static_ptr);
+void service_send_message_sp(struct ccstate* state, umedit_int destid, umedit_int type, void* static_ptr) {
+  ll_service_send_message_sp(state->srvc, destid, type, static_ptr);
 }
 
-void robot_send_message_um(struct ccstate* state, umedit_int destid, umedit_int type, umedit_int data) {
-  ll_robot_send_message_um(state->bot, destid, type, data);
+void service_send_message_um(struct ccstate* state, umedit_int destid, umedit_int type, umedit_int data) {
+  ll_service_send_message_um(state->srvc, destid, type, data);
 }
 
-void robot_send_message_fd(struct ccstate* state, umedit_int destid, umedit_int type, handle_int fd) {
-  ll_robot_send_message_fd(state->bot, destid, type, fd);
+void service_send_message_fd(struct ccstate* state, umedit_int destid, umedit_int type, handle_int fd) {
+  ll_service_send_message_fd(state->srvc, destid, type, fd);
 }
 
-#if 0
-struct ccrobot* robot_newfromlua(const void* chunk, int len) {
-
-}
-#endif
-
-struct ccrobot* robot_new(int (*entry)(struct ccrobot*, struct ccmessage*)) {
-  struct ccrobot* robot = ll_new_robot(0);
-  robot->entry = entry;
-  robot->flag = ROBOT_NOT_START;
-  return robot;
+ccservice* ccservice_new(int (*entry)(ccservice*, ccmessage*)) {
+  ccservice* service = ll_new_service(0);
+  service->entry = entry;
+  service->flag = LL_SERVICE_NOT_START;
+  return service;
 }
 
-#if 0
-struct ccrobot* robot_create(int (*entry)(struct ccstate*), int yieldable) {
-  struct ccrobot* robot = ll_new_robot(0);
-  robot->entry = entry;
-  robot->flag = (yieldable == ROBOT_YIELDABLE ? ROBOT_YIELDABLE : 0);
-  robot->flag |= ROBOT_NOT_START;
-  return robot;
+ccservice* ccservice_newfrom(const void* chunk, int len) {
+  (void)chunk;
+  (void)len;
+  return 0;
 }
 
-struct ccrobot* robot_create_from(struct ccstate* state, void (*func)(struct ccstate*), int yieldable) {
-  struct ccrobot* robot = robot_create(func, yieldable);
-  robot->belong = state->bot->belong;
-  robot->flag |= ROBOT_SAMETHREAD;
-  return robot;
+void ccservice_setsamethread(ccservice* self, ccstate* state) {
+  if (!(self->flag & LL_SERVICE_NOT_START)) {
+    ccloge("already started");
+    return;
+  }
+  self->belong = state->srvc->belong;
+  self->flag |= LL_SERVICE_SAMETHREAD;
 }
-#endif
 
-void* robot_set_specific(struct ccrobot* robot, void* udata) {
-  robot->udata = udata;
+void* ccservice_setdata(ccservice* self, void* udata) {
+  self->udata = udata;
   return udata;
 }
 
-void* robot_set_allocated_specific(struct ccrobot* robot, int bytes) {
-  robot->udata = ccrawalloc(bytes);
-  robot->flag |= ROBOT_FREE_DATA;
-  return robot->udata;
+void* ccservice_allocdata(ccservice* self, int bytes) {
+  self->udata = ccrawalloc(bytes);
+  self->flag |= LL_SERVICE_FREE_DATA;
+  return self->udata;
 }
 
 void ll_set_event(struct ccioevent* event, handle_int fd, umedit_int udata, ushort_int masks, ushort_int flags) {
   event-> fd = fd;
   event->udata = udata;
-  event->masks = (masks | IOEVENT_ERR);
+  event->masks = (masks | CCM_EVENT_ERR);
   event->flags = flags;
 }
 
-void robot_set_listen(struct ccrobot* robot, handle_int fd, ushort_int masks, ushort_int flags) {
-  if (robot->flag & ROBOT_NOT_START) {
-    ll_free_event(robot->event);
-    robot->event = ll_new_event();
-    ll_set_event(robot->event, fd, robot->roid, masks, flags);
+void ccservice_setevent(struct ccservice* self, cchandle_int fd, ushort_int masks, ushort_int flags) {
+  if (!(self->flag & LL_SERVICE_NOT_START)) return;
+  ll_free_event(self->event);
+  self->event = ll_new_event();
+  ll_set_event(self->event, fd, self->svid, masks, flags);
+}
+
+void service_set_listen(struct ccservice* service, handle_int fd, ushort_int masks, ushort_int flags) {
+  if (service->flag & LL_SERVICE_NOT_START) {
+    ll_free_event(service->event);
+    service->event = ll_new_event();
+    ll_set_event(service->event, fd, service->svid, masks, flags);
   }
 }
 
-void robot_listen_event(struct ccstate* state, handle_int fd, ushort_int masks, ushort_int flags) {
-  struct ccrobot* robot = state->bot;
+void service_listen_event(struct ccstate* state, handle_int fd, ushort_int masks, ushort_int flags) {
+  struct ccservice* service = state->srvc;
   struct ccioevent* old = 0;
 
-  ll_lock_event(robot);
-  old = robot->event;
-  robot->event = ll_new_event();
-  ll_set_event(robot->event, fd, robot->roid, masks, flags);  
-  ll_unlock_event(robot);
+  ll_lock_event(service);
+  old = service->event;
+  service->event = ll_new_event();
+  ll_set_event(service->event, fd, service->svid, masks, flags);
+  ll_unlock_event(service);
 
   if (old) {
     /* need free this old event after delete operation */
-    ll_robot_send_message_sp(robot, ROBOT_ID_MASTER, MESSAGE_DELEVENT, old);
+    ll_service_send_message_sp(service, CCM_SERVICE_MASTERID, LL_MESSAGE_DELEVENT, old);
   }
-  ll_robot_send_message_sp(robot, ROBOT_ID_MASTER, MESSAGE_ADDEVENT, robot->event);
+  ll_service_send_message_sp(service, CCM_SERVICE_MASTERID, LL_MESSAGE_ADDEVENT, service->event);
 }
 
-void robot_remove_listen(struct ccstate* state) {
-  struct ccrobot* robot = state->bot;
+void service_remove_listen(struct ccstate* state) {
+  struct ccservice* service = state->srvc;
   struct ccioevent* old = 0;
 
-  ll_lock_event(robot);
-  old = robot->event;
-  robot->event = 0;
-  ll_unlock_event(robot);
+  ll_lock_event(service);
+  old = service->event;
+  service->event = 0;
+  ll_unlock_event(service);
 
   if (old) {
     /* need free this old event after delete operation */
-    ll_robot_send_message_sp(robot, ROBOT_ID_MASTER, MESSAGE_DELEVENT, old);
+    ll_service_send_message_sp(service, CCM_SERVICE_MASTERID, LL_MESSAGE_DELEVENT, old);
   }
 }
 
-void robot_start_run(struct ccrobot* robot) {
-  if (robot->flag & ROBOT_NOT_START) {
-    ll_robot_send_message_sp(robot, ROBOT_ID_MASTER, MESSAGE_RUNROBOT, robot);
-    robot->flag &= (~ROBOT_NOT_START);
+void ccservice_start(struct ccservice* self) {
+  if (!(self->flag & LL_SERVICE_NOT_START)) return;
+  ll_service_send_message_sp(self, CCM_SERVICE_MASTERID, LL_MESSAGE_RUNSERVICE, self);
+  self->flag &= (~LL_SERVICE_NOT_START);
+}
+
+void service_start_run(struct ccservice* service) {
+  if (service->flag & LL_SERVICE_NOT_START) {
+    ll_service_send_message_sp(service, CCM_SERVICE_MASTERID, LL_MESSAGE_RUNSERVICE, service);
+    service->flag &= (~LL_SERVICE_NOT_START);
   }
 }
 
-void robot_run_completed(struct ccstate* state) {
-  /* robot->flag is accessed by thread itself */
-  state->bot->flag |= ROBOT_COMPLETED;
+void ccservice_stop(ccservice* self) {
+  /* service->flag is accessed by thread itself */
+  self->flag |= LL_SERVICE_COMPLETED;
 }
 
-void robot_yield(struct ccstate* state, int (*kfunc)(struct ccstate*)) {
-  ccstate_yield(state, kfunc);
-}
-
-void robot_resume(struct ccrobot* robot, int (*func)(struct ccstate*)) {
-  if (robot->co == 0) {
-    robot->co = ll_new_state(robot, func);
+int ccservice_resume(ccservice* self, int (*func)(struct ccstate*)) {
+  if (self->co == 0) {
+    self->co = ll_new_state(self, func);
   }
-  robot->co->bot = robot;
-  robot->co->func = func;
-  ccstate_resume(robot->co);
+  self->co->srvc = self;
+  self->co->func = func;
+  return ccstate_resume(self->co);
+}
+
+int ccservice_yield(ccservice* self, int (*kfunc)(struct ccstate*)) {
+  return ccstate_yield(self->co, kfunc);
+}
+
+ccthread* ccservice_belong(ccservice* self) {
+  return self->belong;
 }
 
 static void ll_accept_connection(void* ud, struct ccsockconn* conn) {
-  struct ccrobot* ro = (struct ccrobot*)ud;
-  ll_robot_send_message_fd(ro, ro->roid, MESSAGE_CONNIND, conn->sock);
+  struct ccservice* sv = (struct ccservice*)ud;
+  ll_service_send_message_fd(sv, sv->svid, CCM_MESSAGE_CONNIND, conn->sock);
 }
 
 static void ccmaster_dispatch_event(struct ccioevent* event) {
-  umedit_int roid = event->udata;
-  struct ccrobot* ro = 0;
+  umedit_int svid = event->udata;
+  struct ccservice* sv = 0;
   umedit_int type = 0;
 
-  ro = ll_find_robot(roid);
-  if (ro == 0) {
-    ccloge("robot not found");
+  sv = ll_find_service(svid);
+  if (sv == 0) {
+    ccloge("service not found");
     return;
   }
 
-  if (event->fd != ro->event->fd) {
+  if (event->fd != sv->event->fd) {
     ccloge("fd mismatch");
     return;
   }
 
-  ll_lock_event(ro);
-  if (ro->event->flags & IOEVENT_FLAG_LISTEN) {
-    if (event->masks & CCIONFRD) {
-      type = MESSAGE_CONNIND;
+  ll_lock_event(sv);
+  if (sv->event->flags & CCM_EVENT_FLAG_LISTEN) {
+    if (event->masks & CCM_EVENT_READ) {
+      type = CCM_MESSAGE_CONNIND;
     }
-  } else if (ro->event->flags & IOEVENT_FLAG_CONNECT) {
-    if (event->masks & CCIONFWR) {
-      ro->event->flags &= (~((ushort_int)IOEVENT_FLAG_CONNECT));
-      type = MESSAGE_CONNRSP;
+  } else if (sv->event->flags & CCM_EVENT_FLAG_CONNECT) {
+    if (event->masks & CCM_EVENT_WRITE) {
+      sv->event->flags &= (~((ushort_int)CCM_EVENT_FLAG_CONNECT));
+      type = CCM_MESSAGE_CONNRSP;
     }
   } else {
-    if (ro->event->masks == 0) {
-      type = MESSAGE_IOEVENT;
+    if (sv->event->masks == 0) {
+      type = CCM_MESSAGE_IOEVENT;
     }
-    ro->event->masks |= event->masks;
+    sv->event->masks |= event->masks;
   }
-  ll_unlock_event(ro);
+  ll_unlock_event(sv);
 
   switch (type) {
-  case MESSAGE_CONNIND:
-    ccsocket_accept(ro->event->fd, ll_accept_connection, ro);
+  case CCM_MESSAGE_CONNIND:
+    ccsocket_accept(sv->event->fd, ll_accept_connection, sv);
     break;
-  case MESSAGE_CONNRSP:
-    ll_robot_send_message_um(ro, ro->roid, MESSAGE_CONNRSP, 0);
+  case CCM_MESSAGE_CONNRSP:
+    ll_service_send_message_um(sv, sv->svid, CCM_MESSAGE_CONNRSP, 0);
     break;
-  case MESSAGE_IOEVENT:
-    ll_robot_send_message_um(ro, ro->roid, MESSAGE_IOEVENT, 0);
+  case CCM_MESSAGE_IOEVENT:
+    ll_service_send_message_um(sv, sv->svid, CCM_MESSAGE_IOEVENT, 0);
     break;
   }
 }
 
 void ccmaster_start() {
   struct ccsqueue queue;
-  struct ccsqueue romsgs;
+  struct ccsqueue svmsgs;
   struct ccsqueue freeq;
   struct ccmessage* msg = 0;
-  struct ccrobot* ro = 0;
+  struct ccservice* sv = 0;
   struct ccthread* master = ccthread_getmaster();
 
   /* read parameters from config file and start worker threads */
@@ -971,12 +980,12 @@ void ccmaster_start() {
     queue = ll_get_current_msgs();
 
     /* prepare master's messages */
-    ccsqueue_init(&romsgs);
+    ccsqueue_init(&svmsgs);
     while ((msg = (struct ccmessage*)ccsqueue_pop(&queue))) {
-      if (msg->dstid == ROBOT_ID_MASTER) {
+      if (msg->dstid == CCM_SERVICE_MASTERID) {
         ccsqueue_push(&master->msgq, &msg->node);
       } else {
-        ccsqueue_push(&romsgs, &msg->node);
+        ccsqueue_push(&svmsgs, &msg->node);
       }
     }
 
@@ -984,20 +993,20 @@ void ccmaster_start() {
     ccsqueue_init(&freeq);
     while ((msg = (struct ccmessage*)ccsqueue_pop(&master->msgq))) {
       switch (msg->type) {
-      case MESSAGE_RUNROBOT:
-        ro = (struct ccrobot*)msg->data.ptr;
-        if (ro->event) {
-          ccionfmgr_add(ll_get_ionfmgr(), ro->event);
+      case LL_MESSAGE_RUNSERVICE:
+        sv = (struct ccservice*)msg->data.ptr;
+        if (sv->event) {
+          ccionfmgr_add(ll_get_ionfmgr(), sv->event);
         }
-        ll_add_robot_to_table(ro);
+        ll_add_service_to_table(sv);
         break;
-      case MESSAGE_ADDEVENT:
+      case LL_MESSAGE_ADDEVENT:
         if (msg->data.ptr) {
           struct ccioevent* event = (struct ccioevent*)msg->data.ptr;
           ccionfmgr_add(ll_get_ionfmgr(), event);
         }
         break;
-      case MESSAGE_DELEVENT:
+      case LL_MESSAGE_DELEVENT:
         if (msg->data.ptr) {
           struct ccioevent* event = (struct ccioevent*)msg->data.ptr;
           ccionfmgr_del(ll_get_ionfmgr(), event);
@@ -1005,20 +1014,20 @@ void ccmaster_start() {
           ll_free_event(event);
         }
         break;
-      case MESSAGE_DELROBOT:
-        ro = (struct ccrobot*)msg->data.ptr;
-        /* robot's received msgs (if any) */
-        ccsqueue_pushqueue(&freeq, &ro->rxmq);
+      case LL_MESSAGE_DELSERVICE:
+        sv = (struct ccservice*)msg->data.ptr;
+        /* service's received msgs (if any) */
+        ccsqueue_pushqueue(&freeq, &sv->rxmq);
         /* detach and free event if any */
-        if (ro->event) {
-          ccionfmgr_del(ll_get_ionfmgr(), ro->event);
-          ll_free_event(ro->event);
-          ro->event = 0;
+        if (sv->event) {
+          ccionfmgr_del(ll_get_ionfmgr(), sv->event);
+          ll_free_event(sv->event);
+          sv->event = 0;
         }
-        /* remove robot out from hash table and insert to free queue */
-        ll_robot_is_finished(ro);
-        /* reset the robot */
-        ro->belong = 0;
+        /* remove service out from hash table and insert to free queue */
+        ll_service_is_finished(sv);
+        /* reset the service */
+        sv->belong = 0;
         break;
       default:
         ccloge("unknow message id");
@@ -1027,56 +1036,56 @@ void ccmaster_start() {
       ccsqueue_push(&freeq, &msg->node);
     }
 
-    /* dispatch robot's messages */
-    while ((msg = (struct ccmessage*)ccsqueue_pop(&romsgs))) {
+    /* dispatch service's messages */
+    while ((msg = (struct ccmessage*)ccsqueue_pop(&svmsgs))) {
       nauty_bool newattach = false;
 
-      /* get message's dest robot */
-      ro = ll_find_robot(msg->dstid);
-      if (ro == 0) {
-        cclogw("robot not found");
+      /* get message's dest service */
+      sv = ll_find_service(msg->dstid);
+      if (sv == 0) {
+        cclogw("service not found");
         ccsqueue_push(&freeq, &msg->node);
         continue;
       }
 
-      if (ro->belong) {
+      if (sv->belong) {
         nauty_bool done = false;
 
-        ll_lock_thread(ro->belong);
-        done = (ro->outflag & ROBOT_COMPLETED) != 0;
-        ll_unlock_thread(ro->belong);
+        ll_lock_thread(sv->belong);
+        done = (sv->outflag & LL_SERVICE_COMPLETED) != 0;
+        ll_unlock_thread(sv->belong);
 
         if (done) {
-          /* free current msg and robot's received msgs (if any) */
+          /* free current msg and service's received msgs (if any) */
           ccsqueue_push(&freeq, &msg->node);
-          ccsqueue_pushqueue(&freeq, &ro->rxmq);
+          ccsqueue_pushqueue(&freeq, &sv->rxmq);
 
-          /* when robot is done, the robot is already removed out from thread's robot queue.
-          here delete robot from the hash table and insert into robot's free queue */
-          ll_robot_is_finished(ro);
+          /* when service is done, the service is already removed out from thread's service queue.
+          here delete service from the hash table and insert into service's free queue */
+          ll_service_is_finished(sv);
 
-          /* reset the robot */
-          ro->belong = 0;
+          /* reset the service */
+          sv->belong = 0;
           continue;
         }
       } else {
-        /* attach a thread to handle the robot */
-        ro->belong = ll_get_thread_for_new_robot();
+        /* attach a thread to handle the service */
+        sv->belong = ll_get_thread_for_new_service();
         newattach = true;
       }
 
-      /* queue the robot to its belong thread */
-      ll_lock_thread(ro->belong);
+      /* queue the service to its belong thread */
+      ll_lock_thread(sv->belong);
       if (newattach) {
-        ro->outflag = ro->flag = 0;
-        ccdqueue_push(&ro->belong->workrxq, &ro->node);
+        sv->outflag = sv->flag = 0;
+        ccdqueue_push(&sv->belong->workrxq, &sv->node);
       }
-      msg->extra = ro;
-      ccsqueue_push(&ro->rxmq, &msg->node);
-      ro->belong->missionassigned = true;
-      ll_unlock_thread(ro->belong);
+      msg->extra = sv;
+      ccsqueue_push(&sv->rxmq, &msg->node);
+      sv->belong->missionassigned = true;
+      ll_unlock_thread(sv->belong);
       /* signal the thread to handle */
-      cccondv_signal(&ro->belong->condv);
+      cccondv_signal(&sv->belong->condv);
     }
 
     ll_free_msgs(&freeq);
@@ -1086,7 +1095,7 @@ void ccmaster_start() {
 void ccworker_start() {
   struct ccdqueue doneq;
   struct ccsqueue freemq;
-  struct ccrobot* robot = 0;
+  struct ccservice* service = 0;
   struct cclinknode* head = 0;
   struct cclinknode* elem = 0;
   struct ccmessage* msg = 0;
@@ -1104,10 +1113,10 @@ void ccworker_start() {
 
     head = &(thread->workq.head);
     for (elem = head->next; elem != head; elem = elem->next) {
-      robot = (struct ccrobot*)elem;
-      if (!ccsqueue_isempty(&robot->rxmq)) {
+      service = (struct ccservice*)elem;
+      if (!ccsqueue_isempty(&service->rxmq)) {
         ll_lock_thread(thread);
-        ccsqueue_pushqueue(&thread->msgq, &robot->rxmq);
+        ccsqueue_pushqueue(&thread->msgq, &service->rxmq);
         ll_unlock_thread(thread);
       }
     }
@@ -1120,49 +1129,49 @@ void ccworker_start() {
     ccdqueue_init(&doneq);
     ccsqueue_init(&freemq);
     while ((msg = (struct ccmessage*)ccsqueue_pop(&thread->msgq))) {
-      robot = (struct ccrobot*)msg->extra;
-      if (robot->flag & ROBOT_COMPLETED) {
+      service = (struct ccservice*)msg->extra;
+      if (service->flag & LL_SERVICE_COMPLETED) {
         ccsqueue_push(&freemq, &msg->node);
         continue;
       }
 
-      if (msg->type == MESSAGE_IOEVENT) {
+      if (msg->type == CCM_MESSAGE_IOEVENT) {
         ll_lock_thread(thread);
-        msg->data.us = robot->event->masks;
-        robot->event->masks = 0;
+        msg->data.u32 = service->event->masks;
+        service->event->masks = 0;
         ll_unlock_thread(thread);
-        if (msg->data.us == 0) {
+        if (msg->data.u32 == 0) {
           ccsqueue_push(&freemq, &msg->node);
           continue;
         }
       }
 
 #if 0
-      if (robot->flag & ROBOT_YIELDABLE) {
-        if (robot->co == 0) {
-          robot->co = ll_new_coroutine(thread, robot);
+      if (service->flag & LL_SERVICE_YIELDABLE) {
+        if (service->co == 0) {
+          service->co = ll_new_coroutine(thread, service);
         }
-        if (robot->co->L != thread->L) {
+        if (service->co->L != thread->L) {
           ccloge("wrong lua state");
           ccsqueue_push(&freemq, &msg->node);
           continue;
         }
-        robot->co->bot = robot;
-        robot->co->msg = msg;
-        ccstate_resume(robot->co);
+        service->co->srvc = service;
+        service->co->msg = msg;
+        ccstate_resume(service->co);
       } else {
 
       }
 #endif
 
-      robot->entry(robot, msg);
+      service->entry(service, msg);
 
-      /* robot run completed */
-      if (robot->flag & ROBOT_COMPLETED) {
-        ccdqueue_push(&doneq, cclinknode_remove(&robot->node));
-        if (robot->co) {
-          ll_free_coroutine(thread, robot->co);
-          robot->co = 0;
+      /* service run completed */
+      if (service->flag & LL_SERVICE_COMPLETED) {
+        ccdqueue_push(&doneq, cclinknode_remove(&service->node));
+        if (service->co) {
+          ll_free_coroutine(thread, service->co);
+          service->co = 0;
         }
       }
 
@@ -1170,15 +1179,15 @@ void ccworker_start() {
       ccsqueue_push(&freemq, &msg->node);
     }
 
-    while ((robot = (struct ccrobot*)ccdqueue_pop(&doneq))) {
+    while ((service = (struct ccservice*)ccdqueue_pop(&doneq))) {
       ll_lock_thread(thread);
-      robot->outflag |= ROBOT_COMPLETED;
+      service->outflag |= LL_SERVICE_COMPLETED;
       ll_unlock_thread(thread);
 
-      /* currently the finished robot is removed out from thread's
-      robot queue, but the robot still pointer to this thread.
-      send SVDONE message to master to reset and free this robot. */
-      ll_robot_send_message_sp(robot, ROBOT_ID_MASTER, MESSAGE_DELROBOT, robot);
+      /* currently the finished service is removed out from thread's
+      service queue, but the service still pointer to this thread.
+      send SVDONE message to master to reset and free this service. */
+      ll_service_send_message_sp(service, CCM_SERVICE_MASTERID, LL_MESSAGE_DELSERVICE, service);
     }
 
     ll_free_msgs(&freemq);

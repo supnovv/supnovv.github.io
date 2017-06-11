@@ -455,22 +455,22 @@ static uint32_t llepollmasks[] = {
   /* 0x11 */ 0
 };
 
-static ushort_int llionfrd[] = {0, CCIONFRD};
-static ushort_int llionfwr[] = {0, CCIONFWR};
-static ushort_int llionfpri[] = {0, CCIONFPRI};
-static ushort_int llionfrdh[] = {0, CCIONFRDH};
-static ushort_int llionfhup[] = {0, CCIONFHUP};
-static ushort_int llionferr[] = {0, CCIONFERR};
+static ushort_int llionfrd[] = {0, CCM_EVENT_READ};
+static ushort_int llionfwr[] = {0, CCM_EVENT_WRITE};
+static ushort_int llionfpri[] = {0, CCM_EVENT_PRI};
+static ushort_int llionfrdh[] = {0, CCM_EVENT_RDH};
+static ushort_int llionfhup[] = {0, CCM_EVENT_HUP};
+static ushort_int llionferr[] = {0, CCM_EVENT_ERR};
 
 static uint32_t llgetepollmasks(struct ccioevent* event) {
-  return (llepollmasks[event->masks & CCIONFRD] | llepollmasks[event->masks & CCIONFWR] |
-    llepollmasks[event->masks & CCIONFPRI] | llepollmasks[event->masks & CCIONFRDH]);
+  return (llepollmasks[event->masks & CCM_EVENT_READ] | llepollmasks[event->masks & CCM_EVENT_WRITE] |
+    llepollmasks[event->masks & CCM_EVENT_PRI] | llepollmasks[event->masks & CCM_EVENT_RDH]);
 }
 
 static ushort_int llgetionfmasks(struct epoll_event* event) {
   uint32_t masks = event->events;
   return (llionfrd[(masks&EPOLLIN)!=0] | llionfwr[(masks&EPOLLOUT)!=0] | llionfpri[(masks&EPOLLPRI)!=0] |
-    llionfrdh[(masks&EPOLLRDHUP)!=0] | llionfhup[(masks&EPOLLHUP)!=0] | llionferr[(masks&CCIONFERR)!=0]);
+    llionfrdh[(masks&EPOLLRDHUP)!=0] | llionfhup[(masks&EPOLLHUP)!=0] | llionferr[(masks&CCM_EVENT_ERR)!=0]);
 }
 
 static uint64_t llgetepolludata(struct ccioevent* event) {

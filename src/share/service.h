@@ -3,96 +3,97 @@
 #include "thatcore.h"
 #include "luacapi.h"
 
-#define MESSAGE_CONNIND 0x10
-#define MESSAGE_CONNRSP 0x11
-#define MESSAGE_IOEVENT 0x12
-#define ROBOT_ID_MASTER (0)
+#define CCM_MESSAGE_CONNIND 0x10
+#define CCM_MESSAGE_CONNRSP 0x11
+#define CCM_MESSAGE_IOEVENT 0x12
+#define CCM_SERVICE_MASTERID (0)
 
-union ccmsgdata {
-  handle_int fd;
-  uoctet_int ub;
-  soctet_int sb;
-  ushort_int us;
-  sshort_int ss;
-  umedit_int um;
-  smedit_int sm;
-  uright_int ui;
-  sright_int si;
-  uoctet_int a_ub[8];
-  soctet_int a_sb[8];
-  ushort_int a_us[4];
-  sshort_int a_ss[4];
-  umedit_int a_um[2];
-  smedit_int a_sm[2];
+typedef union {
+  ccmedit_int s32;
+  ccnauty_int s64;
+  ccmedit_uint u32;
+  ccnauty_uint u64;
+  cchandle_int fd;
   void* ptr;
-};
+} ccmsgdata;
 
-struct ccmessage {
+typedef struct ccmessage {
   struct ccsmplnode node;
   void* extra; /* dont move this field */
   umedit_int srcid;
   umedit_int dstid;
   umedit_int type;
   umedit_int flag;
-  union ccmsgdata data;
-};
+  ccmsgdata data;
+} ccmessage;
 
-struct ccthread;
-CORE_API void ccthread_init(struct ccthread* self);
-CORE_API void ccthread_free(struct ccthread* self);
-CORE_API int ccthread_join(struct ccthread* self);
+typedef struct ccthread ccthread;
+CORE_API void ccthread_init(ccthread* self);
+CORE_API void ccthread_free(ccthread* self);
+CORE_API int ccthread_join(ccthread* self);
 CORE_API void ccthread_sleep(uright_int us);
 CORE_API void ccthread_exit();
 CORE_API int startmainthread(int (*start)());
 CORE_API int startmainthreadcv(int (*start)(), int argc, char** argv);
-CORE_API nauty_bool ccthread_start(struct ccthread* self, int (*start)());
-CORE_API struct ccthread* ccthread_getself();
-CORE_API struct ccthread* ccthread_getmaster();
-CORE_API struct ccstring* ccthread_getdefstr();
+CORE_API nauty_bool ccthread_start(ccthread* self, int (*start)());
+CORE_API ccthread* ccthread_getself();
+CORE_API ccthread* ccthread_getmaster();
+CORE_API ccstring* ccthread_getdefstr();
 
-struct ccbuffer {
+typedef struct ccbuffer {
   struct ccsmplnode node;
   umedit_int maxlimit;
   umedit_int capacity;
   umedit_int size;
   nauty_byte a[4];
-};
+} ccbuffer;
 
-CORE_API void ccbuffer_ensurecapacity(struct ccbuffer** self, ccnauty_int size);
-CORE_API void ccbuffer_ensuresizeremain(struct ccbuffer** self, ccnauty_int remainsize);
-CORE_API struct ccbuffer* ccnewbuffer(struct ccthread* thread, umedit_int maxlimit);
-CORE_API void ccfreebuffer(struct ccthread* thread, struct ccbuffer* p);
+CORE_API void ccbuffer_ensurecapacity(ccbuffer** self, ccnauty_int size);
+CORE_API void ccbuffer_ensuresizeremain(ccbuffer** self, ccnauty_int remainsize);
+CORE_API ccbuffer* ccnewbuffer(ccthread* thread, umedit_int maxlimit);
+CORE_API void ccfreebuffer(ccthread* thread, ccbuffer* p);
 
 
-struct ccrobot;
+typedef struct ccservice ccservice;
+CORE_API ccservice* ccservice_new(int (*entry)(ccservice*, ccmessage*));
+CORE_API void* ccservice_setdata(ccservice* self, void* udata);
+CORE_API void* ccservice_allocdata(ccservice* self, int bytes);
+CORE_API void* ccservice_getdata(ccservice* self);
+CORE_API void ccservice_setevent(ccservice* self, cchandle_int fd, ccshort_uint masks, ccshort_uint flags);
+CORE_API void ccservice_start(ccservice* self);
+CORE_API void ccservice_stop(ccservice* self);
+CORE_API int ccservice_resume(ccservice* self, int (*func)(struct ccstate*));
+CORE_API int ccservice_yield(ccservice* self, int (*kfunc)(struct ccstate*));
+
+CORE_API ccthread* ccservice_belong(ccservice* self);
+CORE_API cchandle_int ccservice_eventfd(ccservice* self);
+
 CORE_API void ccmaster_dispatch_msg();
 CORE_API void ccworker_handle_msg();
 
 
-CORE_API struct ccmessage* message_create(umedit_int type, umedit_int flag);
-CORE_API void* message_set_specific(struct ccmessage* self, void* data);
-CORE_API void* message_set_allocated_specific(struct ccmessage* self, int bytes);
-CORE_API void robot_send_message(struct ccstate* state, umedit_int destid, struct ccmessage* msg);
-CORE_API void robot_send_message_sp(struct ccstate* state, umedit_int destid, umedit_int type, void* static_ptr);
-CORE_API void robot_send_message_um(struct ccstate* state, umedit_int destid, umedit_int type, umedit_int data);
-CORE_API void robot_send_message_fd(struct ccstate* state, umedit_int destid, umedit_int type, handle_int fd);
+CORE_API ccmessage* message_create(umedit_int type, umedit_int flag);
+CORE_API void* message_set_specific(ccmessage* self, void* data);
+CORE_API void* message_set_allocated_specific(ccmessage* self, int bytes);
+CORE_API void service_send_message(ccstate* state, umedit_int destid, ccmessage* msg);
+CORE_API void service_send_message_sp(ccstate* state, umedit_int destid, umedit_int type, void* static_ptr);
+CORE_API void service_send_message_um(ccstate* state, umedit_int destid, umedit_int type, umedit_int data);
+CORE_API void service_send_message_fd(ccstate* state, umedit_int destid, umedit_int type, handle_int fd);
 
-CORE_API struct ccrobot* robot_new(int (*entry)(struct ccrobot*, struct ccmessage*));
-CORE_API void* robot_set_specific(struct ccrobot* robot, void* udata);
-CORE_API void* robot_set_allocated_specific(struct ccrobot* robot, int bytes);
-CORE_API void robot_set_listen(struct ccrobot* robot, handle_int fd, ushort_int masks, ushort_int flags);
-CORE_API void robot_start_run(struct ccrobot* robot);
-
-
-CORE_API void* robot_get_specific(struct ccstate* state);
-CORE_API struct ccmessage* robot_get_message(struct ccstate* state);
-CORE_API handle_int robot_get_eventfd(struct ccstate* state);
-CORE_API void robot_listen_event(struct ccstate* state, handle_int fd, ushort_int masks, ushort_int flags);
-CORE_API void robot_remove_listen(struct ccstate* state);
-CORE_API void robot_yield(struct ccstate* state, int (*kfunc)(struct ccstate*));
-CORE_API void robot_run_completed(struct ccstate* state);
+CORE_API ccservice* service_new(int (*entry)(ccservice*, ccmessage*));
+CORE_API void* service_set_specific(ccservice* service, void* udata);
+CORE_API void* service_set_allocated_specific(ccservice* service, int bytes);
+CORE_API void service_set_listen(ccservice* service, handle_int fd, ushort_int masks, ushort_int flags);
+CORE_API void service_start_run(ccservice* service);
 
 
+CORE_API void* service_get_specific(ccstate* state);
+CORE_API ccmessage* service_get_message(ccstate* state);
+CORE_API handle_int service_get_eventfd(ccstate* state);
+CORE_API void service_listen_event(ccstate* state, handle_int fd, ushort_int masks, ushort_int flags);
+CORE_API void service_remove_listen(ccstate* state);
+CORE_API void service_yield(ccstate* state, int (*kfunc)(ccstate*));
+CORE_API void service_run_completed(ccstate* state);
 
 
 #endif /* CCLIB_SERVICE_H_ */
