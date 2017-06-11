@@ -1,87 +1,87 @@
-#include "string.h"
+#include "l_string.h"
 
-#define CCM_BLANK_MAX_LEN (3)
-#define CCM_NUM_OF_SPACES (23)
-#define CCM_NUM_OF_NEWLINES (6)
-#define CCM_NUM_OF_BLANKS (29)
+#define L_BLANK_MAX_LEN (3)
+#define L_NUM_OF_SPACES (23)
+#define L_NUM_OF_NEWLINES (6)
+#define L_NUM_OF_BLANKS (29)
 
-static const ccnauty_char* ccg_all_blanks[] = {
-  CCSTR("\x09"), /* \t */
-  CCSTR("\x0B"), /* \v */
-  CCSTR("\x0C"), /* \f */
+static const l_rune* l_blanks[] = {
+  L_STR("\x09"), /* \t */
+  L_STR("\x0B"), /* \v */
+  L_STR("\x0C"), /* \f */
   /* Zs 'Separator, Space' Category - www.fileformat.info/info/unicode/category/Zs/list.htm */
-  CCSTR("\x20"), /* 0x20 space */
-  CCSTR("\xC2\xA0"), /* 0xA0 no-break space */
-  CCSTR("\xE1\x9A\x80"), /* 0x1680 ogham space mark */
-  CCSTR("\xE2\x80\xAF"), /* 0x202F narrow no-break space */
-  CCSTR("\xE2\x81\x9F"), /* 0x205F medium mathematical space */
-  CCSTR("\xE3\x80\x80"), /* 0x3000 ideographic space (chinese blank character) */
-  CCSTR("\xE2\x80\x80"), /* 0x2000 en quad */
-  CCSTR("\xE2\x80\x81"), /* 0x2001 em quad */
-  CCSTR("\xE2\x80\x82"), /* 0x2002 en space */
-  CCSTR("\xE2\x80\x83"), /* 0x2003 em space */
-  CCSTR("\xE2\x80\x84"), /* 0x2004 three-per-em space */
-  CCSTR("\xE2\x80\x85"), /* 0x2005 four-per-em space */
-  CCSTR("\xE2\x80\x86"), /* 0x2006 six-per-em space */
-  CCSTR("\xE2\x80\x87"), /* 0x2007 figure space */
-  CCSTR("\xE2\x80\x88"), /* 0x2008 punctuation space */
-  CCSTR("\xE2\x80\x89"), /* 0x2009 thin space */
-  CCSTR("\xE2\x80\x8A"), /* 0x200A hair space */
+  L_STR("\x20"), /* 0x20 space */
+  L_STR("\xC2\xA0"), /* 0xA0 no-break space */
+  L_STR("\xE1\x9A\x80"), /* 0x1680 ogham space mark */
+  L_STR("\xE2\x80\xAF"), /* 0x202F narrow no-break space */
+  L_STR("\xE2\x81\x9F"), /* 0x205F medium mathematical space */
+  L_STR("\xE3\x80\x80"), /* 0x3000 ideographic space (chinese blank character) */
+  L_STR("\xE2\x80\x80"), /* 0x2000 en quad */
+  L_STR("\xE2\x80\x81"), /* 0x2001 em quad */
+  L_STR("\xE2\x80\x82"), /* 0x2002 en space */
+  L_STR("\xE2\x80\x83"), /* 0x2003 em space */
+  L_STR("\xE2\x80\x84"), /* 0x2004 three-per-em space */
+  L_STR("\xE2\x80\x85"), /* 0x2005 four-per-em space */
+  L_STR("\xE2\x80\x86"), /* 0x2006 six-per-em space */
+  L_STR("\xE2\x80\x87"), /* 0x2007 figure space */
+  L_STR("\xE2\x80\x88"), /* 0x2008 punctuation space */
+  L_STR("\xE2\x80\x89"), /* 0x2009 thin space */
+  L_STR("\xE2\x80\x8A"), /* 0x200A hair space */
   /* byte order marks */
-  CCSTR("\xFE\xFF"),
-  CCSTR("\xFF\xFE"),
-  CCSTR("\xEF\xBB\xBF"),
+  L_STR("\xFE\xFF"),
+  L_STR("\xFF\xFE"),
+  L_STR("\xEF\xBB\xBF"),
   /* new lines */
-  CCSTR("\x0A\x0D"), /* \n\r */
-  CCSTR("\x0D\x0A"), /* \r\n */
-  CCSTR("\x0A"), /* \r */
-  CCSTR("\x0D"), /* \n */
-  CCSTR("\xE2\x80\xA8"), /* line separator 0x2028 00100000_00101000 -> 1110'0010_10'000000_10'101000 (0xE280A8) */
-  CCSTR("\xE2\x80\xA9"), /* paragraph separator 0x2029 00100000_00101001 */
+  L_STR("\x0A\x0D"), /* \n\r */
+  L_STR("\x0D\x0A"), /* \r\n */
+  L_STR("\x0A"), /* \r */
+  L_STR("\x0D"), /* \n */
+  L_STR("\xE2\x80\xA8"), /* line separator 0x2028 00100000_00101000 -> 1110'0010_10'000000_10'101000 (0xE280A8) */
+  L_STR("\xE2\x80\xA9"), /* paragraph separator 0x2029 00100000_00101001 */
   0
 };
 
-static ccstringmap ccg_space_map; /* used to match a space */
-static ccstringmap ccg_newline_map; /* used to match a newline */
-static ccstringmap ccg_blank_map; /* used to match a blank, blank is a space or a newline */
+static l_stringmap l_space_map; /* used to match a space */
+static l_stringmap l_newline_map; /* used to match a newline */
+static l_stringmap l_blank_map; /* used to match a blank, blank is a space or a newline */
 
-const ccstringmap* ccgetspacemap() {
-  ccstringmap* map = &ccg_space_map;
+const l_stringmap* l_string_space_map() {
+  l_stringmap* map = &l_space_map;
   if (map->t) return map;
-  *map = ccstring_newmap(CCM_BLANK_MAX_LEN, ccg_all_blanks, CCM_NUM_OF_SPACES, true);
+  *map = l_string_new_map(L_BLANK_MAX_LEN, l_blanks, L_NUM_OF_SPACES, true);
   return map;
 }
 
-const ccstringmap* ccgetnewlinemap() {
+const ccstringmap* l_string_newline_map() {
   ccstringmap* map = &ccg_newline_map;
   if (map->t) return map;
-  *map = ccstring_newmap(CCM_BLANK_MAX_LEN, ccg_all_blanks + CCM_NUM_OF_SPACES, CCM_NUM_OF_NEWLINES, true);
+  *map = l_string_new_map(L_BLANK_MAX_LEN, l_blanks + L_NUM_OF_SPACES, L_NUM_OF_NEWLINES, true);
   return map;
 }
 
-const ccstringmap* ccgetblankmap() {
-  ccstringmap* map = &ccg_blank_map;
+const l_stringmap* l_string_blank_map() {
+  l_stringmap* map = &l_blank_map;
   if (map->t) return map;
-  *map = ccstring_newmap(CCM_BLANK_MAX_LEN, ccg_all_blanks, CCM_NUM_OF_BLANKS, true);
+  *map = l_string_new_map(L_BLANK_MAX_LEN, l__blanks, L_NUM_OF_BLANKS, true);
   return map;
 }
 
-/* char classes
+/* rune classes
 %a - all letters              %A - the complement of %a
 %d - all digits               %D
 %x - all hexadecimal digits   %X
 %l - all lowercase letters    %L
 %u - all uppercase letters    %U
-%. - all chars
+%. - all runes
 %% - '%'
 %[ - '['
 %] - ']'
 %^ - '^'
-[chars] - character set
+[chars] - rune set
 [^chars] - the complement of [chars]
 */
 
-void ccstring_setmap(ccstringmap* self, const ccnauty_char** str, int numofstr, int casesensitive) {
+void l_string_set_map(ccstringmap* self, const ccnauty_char** str, int numofstr, int casesensitive) {
   int stridx = 0, charidx = 0;
   const ccnauty_char* s = 0;
   ccchartable* t = self->t;
@@ -92,7 +92,7 @@ void ccstring_setmap(ccstringmap* self, const ccnauty_char** str, int numofstr, 
   for (; stridx < numofstr; ++stridx) {
 
     if (stridx + 1 > self->maxnumofstr) {
-      ccloge("too many strings");
+      l_log_error("too many strings");
       break;
     }
 
@@ -103,7 +103,7 @@ void ccstring_setmap(ccstringmap* self, const ccnauty_char** str, int numofstr, 
     while ((ch = s[charidx])) {
 
       if (charidx + 1 > self->size) {
-        ccloge("string too long");
+        l_log_error("string too long");
         ++charidx;
         break;
       }
