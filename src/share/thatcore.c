@@ -1116,6 +1116,29 @@ void* ccbackhash_del(struct ccbackhash* self, umedit_int key) {
   return elem;
 }
 
+
+
+l_from l_from_cstring(const void* s) {
+  l_from a = {0};
+  if (s) {
+    a.start = l_str(s);
+    a.end = l_str(s) + strlen(l_cast(char*, s));
+  }
+  return a;
+}
+
+l_from l_from_lstring(const void* s, int len) {
+  l_from a = {0};
+  if (s && len > 0) {
+    a.start = l_str(s);
+    a.end = l_str(s) + len;
+  }
+  return a;
+}
+
+
+
+
 /** Core test **/
 
 void ccthattest() {
@@ -1153,6 +1176,7 @@ void ccthattest() {
   ccassert(sizeof(uright_int) >= sizeof(size_t));
   ccassert(sizeof(unsign_ptr) == sizeof(void*));
   ccassert(sizeof(signed_ptr) == sizeof(void*));
+  ccassert(sizeof(int) >= 4);
   ccassert(sizeof(char) == 1);
   ccassert(sizeof(float) == 4);
   ccassert(sizeof(double) == 8);

@@ -1,7 +1,12 @@
-#define CCLIB_AUTOCONF_TOOL
-#include "ccprefix.h"
-#include "plationf.h"
-#include "platsock.h"
+#define l_auto_lib_h
+#include "l_prefix.h"
+
+/** basic types **
+int/double use as usual
+l_byte　l_sbyte l_rune true false
+l_short l_medit l_integer l_large
+l_ushort l_umedit l_uinteger l_ularge
+l_float // speed float type */
 
 #if defined(CC_OS_WINDOWS)
 #define UNICODE

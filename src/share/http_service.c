@@ -2,18 +2,18 @@
 #include "string.h"
 #include "ionotify.h"
 
-#define CCM_HTTP_METHOD_MAX_LEN (4)
-#define CCM_NUM_OF_HTTP_METHODS (3)
+#define L_HTTP_METHOD_MAX_LEN (4)
+#define L_NUM_OF_HTTP_METHODS (3)
 
-static const ccnauty_char* ccg_http_methods[] = {
-  CCSTR("GET"), CCSTR("HEAD"), CCSTR("POST"), 0
+static const l_rune* l_http_methods[] = {
+  l_str("GET"), l_str("HEAD"), l_str("POST")
 };
 
-#define CCM_HTTP_VER_MAX_LEN (8)
-#define CCM_NUM_OF_HTTP_VERS (4)
+#define L_HTTP_VER_MAX_LEN (8)
+#define L_NUM_OF_HTTP_VERS (4)
 
-static const ccnauty_char* ccg_http_versions[] = {
-  CCSTR("HTTP/0"), CCSTR("HTTP/1.0"), CCSTR("HTTP/1.1"), CCSTR("HTTP/2"), 0
+static const l_rune* l_http_versions[] = {
+  l_str("HTTP/0"), l_str("HTTP/1.0"), l_str("HTTP/1.1"), l_str("HTTP/2")
 };
 
 #define HTTP_SUCCESS (200)
@@ -78,109 +78,166 @@ static const ccnauty_char* ccg_http_versions[] = {
 #define HTTP_HEADER_TRAILER (0x08000000)
 
 
-#define CCM_HTTP_HEADER_MAX_LEN (27)
-#define CCM_NUM_OF_COMMON_HEADERS (30)
-#define CCM_NUM_OF_REQUEST_HEADERS (31)
-#define CCM_NUM_OF_RESPONSE_HEADERS (25)
+#define L_HTTP_HEADER_MAX_LEN (27)
+#define L_NUM_OF_COMMON_HEADERS (30)
+#define L_NUM_OF_REQUEST_HEADERS (31)
+#define L_NUM_OF_RESPONSE_HEADERS (25)
 
-static const ccnauty_char* ccg_http_common_headers[] = {
-  CCSTR("age"),
-  CCSTR("cache-control"),
-  CCSTR("connection"),
-  CCSTR("content-base"),
-  CCSTR("content-disposition"),
-  CCSTR("content-encoding"),
-  CCSTR("content-language"),
-  CCSTR("content-length"),
-  CCSTR("content-location"),
-  CCSTR("content-md5"),
-  CCSTR("content-range"),
-  CCSTR("content-type"),
-  CCSTR("date"),
-  CCSTR("etag"),
-  CCSTR("expires"),
-  CCSTR("keep-alive"),
-  CCSTR("last-modified"),
-  CCSTR("pragma"),
-  CCSTR("trailer"),
-  CCSTR("transfer-encoding"),
-  CCSTR("upgrade"),
-  CCSTR("via"),
-  CCSTR("warning"),
-  CCSTR("x-request-id"),
-  CCSTR("x-correlation-id"),
-  CCSTR("forwarded"),
-  CCSTR("max-forwards"),
-  CCSTR("x-forwarded-for"),
-  CCSTR("x-forwarded-host"),
-  CCSTR("x-forwarded-proto"),
-  0
+static const l_rune* l_http_common_headers[] = {
+  l_str("age"),
+  l_str("cache-control"),
+  l_str("connection"),
+  l_str("content-base"),
+  l_str("content-disposition"),
+  l_str("content-encoding"),
+  l_str("content-language"),
+  l_str("content-length"),
+  l_str("content-location"),
+  l_str("content-md5"),
+  l_str("content-range"),
+  l_str("content-type"),
+  l_str("date"),
+  l_str("etag"),
+  l_str("expires"),
+  l_str("keep-alive"),
+  l_str("last-modified"),
+  l_str("pragma"),
+  l_str("trailer"),
+  l_str("transfer-encoding"),
+  l_str("upgrade"),
+  l_str("via"),
+  l_str("warning"),
+  l_str("x-request-id"),
+  l_str("x-correlation-id"),
+  l_str("forwarded"),
+  l_str("max-forwards"),
+  l_str("x-forwarded-for"),
+  l_str("x-forwarded-host"),
+  l_str("x-forwarded-proto")
 };
 
-static const ccnauty_char* ccg_http_request_headers[] = {
-  CCSTR("accept"),
-  CCSTR("accept-charset"),
-  CCSTR("accept-encoding"),
-  CCSTR("accept-language"),
-  CCSTR("accept-datetime"),
-  CCSTR("authorization"),
-  CCSTR("cookie"),
-  CCSTR("cookie2"),
-  CCSTR("dnt"),
-  CCSTR("expect"),
-  CCSTR("from"),
-  CCSTR("host"),
-  CCSTR("if-match"),
-  CCSTR("if-modified-since"),
-  CCSTR("if-none-match"),
-  CCSTR("if-range"),
-  CCSTR("if-unmodified-since"),
-  CCSTR("origin"),
-  CCSTR("proxy-authorization"),
-  CCSTR("proxy-connection"),
-  CCSTR("range"),
-  CCSTR("referer"),
-  CCSTR("te"),
-  CCSTR("ua-cpu"),
-  CCSTR("ua-disp"),
-  CCSTR("ua-os"),
-  CCSTR("user-agent"),
-  CCSTR("x-requested-with"),
-  CCSTR("x-http-method-override"),
-  CCSTR("x-uidh"),
-  CCSTR("x-csrf-token"),
-  0
+static const ccnauty_char* l_http_request_headers[] = {
+  l_str("accept"),
+  l_str("accept-charset"),
+  l_str("accept-encoding"),
+  l_str("accept-language"),
+  l_str("accept-datetime"),
+  l_str("authorization"),
+  l_str("cookie"),
+  l_str("cookie2"),
+  l_str("dnt"),
+  l_str("expect"),
+  l_str("from"),
+  l_str("host"),
+  l_str("if-match"),
+  l_str("if-modified-since"),
+  l_str("if-none-match"),
+  l_str("if-range"),
+  l_str("if-unmodified-since"),
+  l_str("origin"),
+  l_str("proxy-authorization"),
+  l_str("proxy-connection"),
+  l_str("range"),
+  l_str("referer"),
+  l_str("te"),
+  l_str("ua-cpu"),
+  l_str("ua-disp"),
+  l_str("ua-os"),
+  l_str("user-agent"),
+  l_str("x-requested-with"),
+  l_str("x-http-method-override"),
+  l_str("x-uidh"),
+  l_str("x-csrf-token")
 };
 
-static const ccnauty_char* ccg_http_response_headers[] = {
-  CCSTR("access-control-allow-origin"),
-  CCSTR("accept-patch"),
-  CCSTR("accept-ranges"),
-  CCSTR("allow"),
-  CCSTR("alt-svc"),
-  CCSTR("link"),
-  CCSTR("location"),
-  CCSTR("p3p"),
-  CCSTR("proxy-authenticate"),
-  CCSTR("public-key-pins"),
-  CCSTR("refresh"),
-  CCSTR("retry-after"),
-  CCSTR("server"),
-  CCSTR("set-cookie"),
-  CCSTR("set-cookie2"),
-  CCSTR("status"),
-  CCSTR("strict-transport-security"),
-  CCSTR("tk"),
-  CCSTR("vary"),
-  CCSTR("www-authenticate"),
-  CCSTR("x-frame-options"),
-  CCSTR("x-xss-protection"),
-  CCSTR("x-content-type-options"),
-  CCSTR("x-powered-by"),
-  CCSTR("x-ua-compatible"),
-  0
+static const ccnauty_char* l_http_response_headers[] = {
+  l_str("access-control-allow-origin"),
+  l_str("accept-patch"),
+  l_str("accept-ranges"),
+  l_str("allow"),
+  l_str("alt-svc"),
+  l_str("link"),
+  l_str("location"),
+  l_str("p3p"),
+  l_str("proxy-authenticate"),
+  l_str("public-key-pins"),
+  l_str("refresh"),
+  l_str("retry-after"),
+  l_str("server"),
+  l_str("set-cookie"),
+  l_str("set-cookie2"),
+  l_str("status"),
+  l_str("strict-transport-security"),
+  l_str("tk"),
+  l_str("vary"),
+  l_str("www-authenticate"),
+  l_str("x-frame-options"),
+  l_str("x-xss-protection"),
+  l_str("x-content-type-options"),
+  l_str("x-powered-by"),
+  l_str("x-ua-compatible")
 };
 
+static l_stringmap l_method_map;
+static l_stringmap l_httpver_map;
+static l_stringmap l_common_map;
+static l_stringmap l_request_map;
+static l_stringmap l_response_map;
+
+l_stringmap* l_http_method_map() {
+  l_stringmap* map = &l_method_map;
+  if (map->t) return map;
+  *map = ccstring_newmap(
+      L_HTTP_METHOD_MAX_LEN,
+      l_http_methods,
+      L_NUM_OF_HTTP_METHODS,
+      false);
+  return map;
+}
+
+l_stringmap* l_http_version_map() {
+  l_stringmap* map = &l_httpver_map();
+  if (map->t) return map;
+  *map = ccstring_newmap(
+      L_HTTP_VER_MAX_LEN,
+      l_http_versions,
+      L_NUM_OF_HTTP_VERS,
+      false);
+  return map;
+}
+
+l_stringmap* l_http_common_map() {
+  l_stringmap* map = &l_common_map;
+  if (map->t) return map;
+  *map = ccstring_newmap(
+      L_HTTP_HEADER_MAX_LEN,
+      l_http_common_headers,
+      L_NUM_OF_COMMON_HEADERS,
+      false);
+  return map;
+}
+
+l_stringmap* l_http_request_map() {
+  l_stringmap* map = &l_request_map;
+  if (map->t) return map;
+  *map = ccstring_newmap(
+      L_HTTP_HEADER_MAX_LEN,
+      l_http_request_headers,
+      L_NUM_OF_REQUEST_HEADERS,
+      false);
+  return map;
+}
+
+l_stringmap* l_http_response_map() {
+  l_stringmap* map = &l_response_map;
+  if (map->t) return map;
+  *map = ccstring_newmap(
+      L_HTTP_HEADER_MAX_LEN,
+      l_http_response_headers,
+      L_NUM_OF_RESPONSE_HEADERS,
+      false);
+  return map;
+}
 
 /** Method **
 HEAD请求必须确保返回的首部与对应的GET请求的首部完全相同
@@ -280,46 +337,50 @@ HTTP/1.1规定用户Agent代理应该在接收且检测到无效长度时通知�
 HTTP允许对实体内容进行编码，比如可以使之更安全或进行压缩以节省空间，如果主体进行了编码，Content-Length应该说明编码后的主体字节长度
 不幸的是，HTTP/1.1规范中没有首部可以用来说明原始未编码的主体长度，这就客户端难以验证解码过程的完整性　*/
 
-#define CCM_HTTP_LISTEN_BACKLOG (32)
+#define L_HTTP_BACKLOG (32)
 
-#define CCM_HTTP_READ_REQUEST (1)
-#define CCM_HTTP_WRITE_RESPONSE (2)
-
-typedef struct {
-  ccstringmap methodmap;
-  ccstringmap httpvermap;
-  ccstringmap comheadermap;
-  ccstringmap reqheadermap;
-  ccstringmap resheadermap;
-  cchttplisten* listen;
-} cchttpservice;
+#define L_HTTP_RDREQ_STAGE (1)
+#define L_HTTP_WRRES_STAGE (2)
 
 typedef struct {
-  cchttpservice* service;
-  cchandle_int sock;
-  ccbuffer* rxbuf;
+  int backlog;
+  int rxlimit;
+  l_handle sock;
+  l_service* srvc;
+} l_httpdaemon;
+
+#define L_HTTP_COMMON_FIELDS \
+  l_smplnode node; \
+  l_handle sock; \
+  int lstart, lnewline, lend;
+
+typedef struct {
+  L_HTTP_COMMON_FIELDS
+  l_httpdaemon* d;
+  l_buffer* rxbuf;
+  l_buffer* txbuf;
   int stage;
-  int lstart, lnewline, lend; /* current line */
   int mstart; /* current match start */
   int url, uend;
   int body, bend;
-  ccnauty_byte method;
-  ccnauty_byte httpver;
-  ccmedit_uint comheaders;
-  ccmedit_uint reqheaders;
-  ccmedit_uint resheaders;
-} cchttpconn;
+  l_byte method;
+  l_byte httpver;
+  l_umedit cmasks;
+  l_umedit rmasks;
+} l_httpinconn;
 
-static void ll_init_http_conn(cchttpconn* self, ccservice* sv, cchandle_int sock) {
-  cchttpservice* hs = (cchttpservice*)ccservice_getdata(sv);
-  cczerol(self, sizeof(cchttpconn));
-  self->service = hs;
+typedef struct {
+  L_HTTP_COMMON_FIELDS
+} l_httpoutconn;
+
+static void l_http_in_conn_init(l_httpinconn* self, l_httpdaemon* d, l_handle sock) {
+  l_zerol(self, sizeof(l_httpinconn));
+  self->d = d;
   self->sock = sock;
-  self->rxbuf = ccnewbuffer(ccservice_belong(sv), hs->listen->rxsizelimit);
   self->lstart = -1;
 }
 
-static int ll_http_read_headers(ccstate* state) {
+static int l_http_in_read_headers(l_state* state) {
   /* <name>: <value><crlf>
      <name>: <value><crlf>
      ...
@@ -330,43 +391,46 @@ static int ll_http_read_headers(ccstate* state) {
   return 0;
 }
 
-static int ll_http_read_line(ccstate* s) {
-  cchttpconn* conn = (cchttpconn*)ccservice_getdata(s->srvc);
-  cchandle_int sock = ccservice_eventfd(s->srvc);
-  ccbuffer* rxbuf = 0;
-  const ccnauty_char* end = 0;
-  ccnauty_int count = 0;
-  ccnauty_int n = 0;
-  ccnauty_int status = 0;
+static int l_http_read_line(l_service* srvc, l_buffer** buffer, int maxlimit) {
+  l_httpinconn* conn = (l_httpinconn*)l_service_data(srvc);
+  l_integer count = 0;
+  l_integer n = 0;
+  l_integer status = 0;
+  l_buffer* rxbuf = 0;
+  const l_rune* end = 0;
   int len = 0;
 
+  if (*buffer == 0) {
+    *buffer = l_buffer_new(l_service_belong(srvc), maxlimit);
+  }
+
   if (conn->lstart == -1) {
-    conn->lstart = conn->rxbuf->size;
+    conn->lstart = (*buffer)->size;
     conn->mstart = conn->lstart;
   }
 
 ReadSocket:
-  ccbuffer_ensuresizeremain(&conn->rxbuf, 128);
-  rxbuf = conn->rxbuf;
+  l_buffer_ensure_size_remain(buffer, 128);
+  rxbuf = *buffer;
 
   count = rxbuf->capacity - rxbuf->size;
-  n = ccsocket_read(sock, rxbuf->a + rxbuf->size, count, &status);
+  n = l_socket_read(conn->sock, rxbuf->a + rxbuf->size, count, &status);
   if (status < 0) {
-    return CCSTATUS_EREAD;
+    return L_STATUS_EREAD;
   }
 
-  end = ccstring_matchuntil(ccgetnewlinemap(), rxbuf->a + conn->mstart, rxbuf->size + n - conn->mstart, &len);
+  end = l_string_match_until(l_string_newline_map(), rxbuf->a + conn->mstart, rxbuf->size + n - conn->mstart, &len);
 
   if (end == 0) { /* cannot find newline */
     rxbuf->size += n;
-    if (rxbuf->size > conn->service->listen->rxsizelimit) {
-      return CCSTATUS_ELIMIT;
+    if (rxbuf->size > maxlimit) {
+      return L_STATUS_ELIMIT;
     }
 
     conn->mstart = len; /* prev non-newline char pos */
 
     if (n < count) { /* no more data can be read from socket */
-      return CCSTATUS_WAITMORE;
+      return L_STATUS_WAITMORE;
     }
 
     goto ReadSocket;
@@ -381,47 +445,47 @@ ReadSocket:
   }
 
   /* read line success and has more data */
-  return CCSTATUS_CONTREAD;
+  return L_STATUS_CONTREAD;
 }
 
-static int ll_http_read_startline(ccstate* s) {
+static int l_http_in_read_start_line(l_state* s) {
   /* <method> <request-url> HTTP/<major>.<minor><crlf>
   Carriage Return (CR) 13 '\r', Line Feed (LF) 10 '\n' */
-  const ccnauty_char* e = 0;
-  cchttpconn* conn = 0;
-  cchttpservice* hs = 0;
-  ccbuffer* rxbuf = 0;
-  int n = 0, strid = 0, len = 0;
 
-  if ((n = ll_http_read_line(s)) < 0) {
+  const l_rune* e = 0;
+  int n = 0, strid = 0, len = 0;
+  l_httpinconn* conn = 0;
+  l_buffer* rxbuf = 0;
+
+  conn = (l_httpinconn*)l_service_data(s->srvc);
+  if ((n = l_http_read_line(s->srvc, &conn->rxbuf, conn->d->rxlimit) < 0) {
     return n;
   }
 
-  if (n == CCM_STATUS_WAITMORE) {
-    return ccstate_yield(s, ll_http_read_startline);
+  if (n == L_STATUS_WAITMORE) {
+    return l_state_yield(s, l_http_in_read_start_line);
   }
-
-  conn = (cchttpconn*)ccservice_getdata(s->srvc);
-  rxbuf = conn->rxbuf;
-  hs = conn->service;
-
+  
   /* the start line is read */
-  e = ccstring_skipspaceandmatch(&hs->methodmap, rxbuf->a + conn->lstart, conn->lnewline - conn->lstart, &strid, 0);
+  rxbuf = conn->rxbuf;
+
+  /* method */
+  e = l_string_skip_space_and_match(l_http_method_map(), rxbuf->a + conn->lstart, conn->lnewline - conn->lstart, &strid, 0);
   if (e == 0) {
-    return CCM_STATUS_EMATCH;
+    return L_STATUS_EMATCH;
   }
   conn->method = strid;
 
   /* url */
-  e = ccstring_skipspaceandmatchuntil(ccgetblankmap(), e, rxbuf->a + conn->lnewline - e, &len);
+  e = l_string_skip_space_and_match_until(l_string_blank_map(), e, rxbuf->a + conn->lnewline - e, &len);
   if (e == 0) {
-    return CCM_STATUS_EMATCH;
+    return L_STATUS_EMATCH;
   }
   conn->url = e - len - rxbuf->a;
   conn->uend = e - rxbuf->a;
 
   /* http version */
-  e = ccstring_skipspaceandmatch(&hs->httpvermap, e, rxbuf->a + conn->lnewline - e, &strid, 0);
+  e = l_string_skip_space_and_match(l_http_version_map(), e, rxbuf->a + conn->lnewline - e, &strid, 0);
   if (e == 0) {
     conn->httpver = CCM_HTTP_VER_0NN;
     return 0; /* head read finished for v0.9 */
@@ -429,45 +493,45 @@ static int ll_http_read_startline(ccstate* s) {
   conn->httpver = strid;
 
   /* read headers */
-  if (n == CCM_STATUS_CONTREAD) {
-    return ll_http_read_headers(s);
+  if (n == L_STATUS_CONTREAD) {
+    return l_http_in_read_headers(s);
   }
-  return ccstate_yield(s, ll_http_read_headers);
+  return l_state_yield(s, l_http_in_read_headers);
 }
 
-static int ll_http_read_request(ccstate* state) {
-  return ll_http_read_startline(state);
+static int l_http_read_request(l_state* state) {
+  return l_http_in_read_start_line(state);
 }
 
-static int ll_http_write_response(ccstate* state) {
+static int l_http_write_response(l_state* state) {
   (void)state;
   return 0;
 }
 
-static int ll_http_incoming_connection_proc(ccservice* srvc, ccmessage* msg) {
+static int l_http_incoming_connection(l_service* srvc, l_message* msg) {
   switch (msg->type) {
-  case CCM_MESSAGE_IOEVENT: {
+  case L_MESSAGE_IOEVENT: {
       int n = 0;
-      ccmedit_uint masks = msg->data.u32;
-      cchttpconn* conn = (cchttpconn*)ccservice_getdata(srvc);
+      l_umedit masks = msg->data.u32;
+      l_httpinconn* conn = (l_httpinconn*)l_service_data(srvc);
 
-      if (masks & (CCM_EVENT_ERR | CCM_EVENT_HUP | CCM_EVENT_RDH)) {
-        ccservice_stop(srvc);
+      if (masks & (L_EVENT_ERR | L_EVENT_HUP | L_EVENT_RDH)) {
+        l_service_stop(srvc);
         break;
       }
 
-      if (conn->stage < CCM_HTTP_WRITE_RESPONSE) {
-        if (!(masks & CCM_EVENT_READ)) break;
-        n = ccservice_resume(srvc, ll_http_read_request);
+      if (conn->stage < L_HTTP_WRRES_STAGE) {
+        if (!(masks & L_EVENT_READ)) break;
+        n = l_service_resume(srvc, l_http_read_request);
         if (n == 0) {
-          conn->stage = CCM_HTTP_WRITE_RESPONSE;
-          ccservice_resume(srvc, ll_http_write_response);
+          conn->stage = L_HTTP_WRRES_STAGE;
+          l_service_resume(srvc, l_http_write_response);
         } else if (n < 0) {
-          ccservice_stop(srvc);
+          l_service_stop(srvc);
         }
       } else {
-        if (!(masks & CCM_EVENT_WRITE)) break;
-        ccservice_resume(srvc, ll_http_write_response);
+        if (!(masks & L_EVENT_WRITE)) break;
+        l_service_resume(srvc, l_http_write_response);
       }
     }
     break;
@@ -479,74 +543,46 @@ static int ll_http_incoming_connection_proc(ccservice* srvc, ccmessage* msg) {
   return 0;
 }
 
-int ll_http_receive_connection(ccservice* self, ccmessage* msg) {
-  ccservice* subsv = 0;
-  cchttpconn* conn = 0;
+int l_http_receive_connection(l_service* self, l_message* msg) {
+  l_service* subsv = 0;
+  l_httpinconn* conn = 0;
+  l_httpdaemon* d = (l_httpdaemon*)l_service_data(self);
+  if (msg->type != L_MESSAGE_CONNIND) return 0;
 
-  if (msg->type != CCM_MESSAGE_CONNIND) return 0;
+  subsv = l_service_new(l_http_incoming_connection);
+  conn = (l_httpinconn*)l_service_alloc_data(subsv, sizeof(l_httpinconn));
+  l_http_in_conn_init(conn, d, msg->data.fd);
 
-  subsv = ccservice_new(ll_http_incoming_connection_proc);
-
-  conn = (cchttpconn*)ccservice_allocdata(subsv, sizeof(cchttpconn));
-  ll_init_http_conn(conn, self, msg->data.fd);
-
-  ccservice_setevent(subsv, conn->sock, CCM_EVENT_RDWR, 0);
-  ccservice_start(subsv);
+  l_service_set_event(subsv, conn->sock, L_EVENT_RDWR, 0);
+  l_service_start(subsv);
   return 0;
 }
 
-int cchttp_listen(cchttplisten* self) {
-  ccsockaddr sa;
-  ccservice* sv = 0;
-  cchttpservice* hs = 0;
+int l_http_listen(l_from ip, int port, int (*receive)(l_state*)) {
+  l_sockaddr sa;
+  l_service* sv = 0;
+  l_httpdaemon* d = 0;
 
-  if (!ccsockaddr_init(&sa, ccstring_getfrom(&self->ip), self->port)) {
-    return 0;
-  }
-  if (self->backlog <= 0) {
-    self->backlog = CCM_HTTP_LISTEN_BACKLOG;
-  }
-  self->sock = ccsocket_listen(&sa, self->backlog);
-  if (!ccsocket_isopen(self->sock)) {
+  if (!l_sockaddr_init(&sa, ip, port)) {
     return 0;
   }
 
-  sv = ccservice_new(ll_http_receive_connection);
-  hs = (cchttpservice*)ccservice_allocdata(sv, sizeof(cchttpservice));
-  hs->listen = self;
+  sv = l_service_new(l_http_receive_connection);
+  d = (l_httpdaemon*)l_service_alloc_data(sv, sizeof(l_httpdaemon));
 
-  hs->methodmap = ccstring_newmap(
-      CCM_HTTP_METHOD_MAX_LEN,
-      ccg_http_methods,
-      CCM_NUM_OF_HTTP_METHODS,
-      false);
+  /* todo - read config */
 
-  hs->httpvermap = ccstring_newmap(
-      CCM_HTTP_VER_MAX_LEN,
-      ccg_http_versions,
-      CCM_NUM_OF_HTTP_VERS,
-      false);
+  if (d->backlog <= 0) {
+    d->backlog = L_HTTP_BACKLOG;
+  }
 
-  hs->comheadermap = ccstring_newmap(
-      CCM_HTTP_HEADER_MAX_LEN,
-      ccg_http_common_headers,
-      CCM_NUM_OF_COMMON_HEADERS,
-      false);
+  d->sock = l_socket_listen(&sa, d->backlog);
+  if (l_socket_nt_open(d->sock)) {
+    return 0;
+  }
 
-  hs->reqheadermap = ccstring_newmap(
-      CCM_HTTP_HEADER_MAX_LEN,
-      ccg_http_request_headers,
-      CCM_NUM_OF_REQUEST_HEADERS,
-      false);
-
-  hs->resheadermap = ccstring_newmap(
-      CCM_HTTP_HEADER_MAX_LEN,
-      ccg_http_response_headers,
-      CCM_NUM_OF_RESPONSE_HEADERS,
-      false);
-
-  ccservice_setevent(sv, self->sock, CCM_EVENT_READ, CCM_EVENT_FLAG_LISTEN);
-  ccservice_start(sv);
+  l_service_set_event(sv, d->sock, L_EVENT_READ, L_EVENT_FLAG_LISTEN);
+  l_service_start(sv);
   return 1;
 }
 

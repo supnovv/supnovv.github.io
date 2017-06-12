@@ -1,125 +1,81 @@
-#ifndef CCLIB_THATCORE_H_
-#define CCLIB_THATCORE_H_
+#ifndef l_core_lib_h
+#define l_core_lib_h
 #include "ccprefix.h"
 #include "autoconf.h"
 
-#undef CORE_API
-#define CORE_API extern
-#define CCINLINE static
-
-#undef CLUA_API
-#if defined(CCLUASHARED)
+#undef l_extern
+#if defined(L_BUILD_SHARED)
   #if defined(__GNUC__)
-    #define CLUA_API extern
+  #define l_extern extern
   #else
-  #if defined(CCLIB_CORE_WINOS) || defined(CCLIB_THATCORE)
-    #define CLUA_API __declspec(dllexport)
+  #if defined(L_CORELIB_IMPL) || defined(L_WINDOWS_IMPL)
+  #define l_extern __declspec(dllexport)
   #else
-    #define CLUA_API __declspec(dllimport)
+  #define l_extern __declspec(dllimport)
   #endif
   #endif
 #else
-  #define CLUA_API extern
+  #define l_extern extern
 #endif
 
-/** Coding style
+#define l_cast(type, a) ((type)(a))
+#define l_str(s) l_cast(l_rune*, (s))
 
-ccorelib - c core library
+#define l_max_rwop_size (0x7fff0000) /* 2147418112 */
+#define l_max_ubyte     l_cast(l_byte, 0xff) /* 255 */
+#define l_max_ushort    l_cast(l_ushort, 0xffff) /* 65535 */
+#define l_max_umedit    l_cast(l_umedit, 0xffffffff) /* 4294967295 */
+#define l_max_uinteger  l_cast(l_uinteger, 0xffffffffffffffff) /* 18446744073709551615 */
+#define l_max_sbyte     l_cast(l_sbyte, 0x7f) /* 127 */
+#define l_max_short     l_cast(l_short, 0x7fff) /* 32767 */
+#define l_max_medit     l_cast(l_medit, 0x7fffffff) /* 2147483647 */
+#define l_max_integer   l_cast(l_integer, 0x7fffffffffffffff) /* 9223372036854775807 */
+#define l_min_sbyte     l_cast(l_sbyte, -127-1) /* 128 0x80 */
+#define l_min_short     l_cast(l_short, -32767-1) /* 32768 0x8000 */
+#define l_min_medit     l_cast(l_medit, -2147483647-1) /* 2147483648 0x80000000 */
+#define l_min_integer   l_cast(l_integer, -9223372036854775807-1) /* 9223372036854775808 0x8000000000000000 */
 
- ** types **
-int/double as usual
-ccoctet_int
-ccshort_int
-ccmedit_int
-ccnauty_int
-cclarge_int
-ccoctet_uint
-ccshort_uint
-ccmedit_uint
-ccnauty_uint
-cclarge_uint
-ccnauty_byte
-ccnauty_char
-ccnauty_iptr
-ccnauty_uptr
-ccspeed_real
-cchandle_int
-typedef struct {
-} ccstring;
+#define L_STATUS_CONTREAD (3)
+#define L_STATUS_WAITMORE (2)
+#define L_STATUS_YIELD (1)
+#define L_STATUS_OK (0)
+#define L_STATUS_LUAERR (-1)
+#define L_STATUS_ERROR (-2)
+#define L_STATUS_EREAD (-3)
+#define L_STATUS_EWRITE (-4)
+#define L_STATUS_ELIMIT (-5)
+#define L_STATUS_EMATCH (-6)
 
- ** globals **
-macro - CCM_STATUS_OK
-global - ccg_http_methods
-function - void ccstring_getcstr(ccstring* self);
-**/
-
-/** Limit numbers **/
-
-#define CCM_UBYT_MAX ((uoctet_int)0xFF) /* 255 */
-#define CCM_SBYT_MAX ((soctet_int)0x7F) /* 127 */
-#define CCM_SBYT_MIN ((soctet_int)(-127-1)) /* 128 0x80 */
-#define CCM_USHT_MAX ((ushort_int)0xFFFF) /* 65535 */
-#define CCM_SSHT_MAX ((sshort_int)0x7FFF) /* 32767 */
-#define CCM_SSHT_MIN ((sshort_int)-32767-1) /* 32768 0x8000 */
-#define CCM_UMED_MAX ((umedit_int)0xFFFFFFFF) /* 4294967295 */
-#define CCM_SMED_MAX ((smedit_int)0x7FFFFFFF) /* 2147483647 */
-#define CCM_SMED_MIN ((smedit_int)-2147483647-1) /* 2147483648 0x80000000 */
-#define CCM_UINT_MAX ((uright_int)0xFFFFFFFFFFFFFFFF) /* 18446744073709551615 */
-#define CCM_SINT_MAX ((sright_int)0x7FFFFFFFFFFFFFFF) /* 9223372036854775807 */
-#define CCM_SINT_MIN ((sright_int)-9223372036854775807-1) /* 9223372036854775808 0x8000000000000000 */
-
-/** Global defines **/
-
-#define CCSTATUS_OK       (0)
-#define CCSTATUS_YIELD    (1)
-#define CCSTATUS_WAITMORE (2)
-#define CCSTATUS_CONTREAD (3)
-
-#define CCSTATUS_LUAERR (-1)
-#define CCSTATUS_ERROR  (-2)
-#define CCSTATUS_EREAD  (-3)
-#define CCSTATUS_EWRITE (-4)
-#define CCSTATUS_ELIMIT (-5)
-
-#define CCM_STATUS_CONTREAD (3)
-#define CCM_STATUS_WAITMORE (2)
-#define CCM_STATUS_YIELD (1)
-#define CCM_STATUS_OK (0)
-#define CCM_STATUS_LUAERR (-1)
-#define CCM_STATUS_ERROR (-2)
-#define CCM_STATUS_EREAD (-3)
-#define CCM_STATUS_EWRITE (-4)
-#define CCM_STATUS_ELIMIT (-5)
-#define CCM_STATUS_EMATCH (-6)
-
-#define CC_RDWR_MAX_BYTES 0x7fff0000 /* 2147418112 */
-#define CCM_RWOP_MAX_SIZE CC_RDWR_MAX_BYTES
-
-/** Debugger and logger **/
-
-#ifdef CCDEBUG
-#define CCDZONE(...) { __VA_ARGS__ }
+#ifdef L_BUILD_DEBUG
+#define L_DEBUG_HERE(...) { __VA_ARGS__ }
 #else
-#define CCDZONE(...) { ((void)0); }
+#define L_DEBUG_HERE(...) { ((void)0); }
 #endif
 
-#define CCXMKSTR(a) #a
-#define CCMKSTR(a) CCXMKSTR(a)
-#define CCFILELINESTR __FILE__ " (" CCMKSTR(__LINE__) ") "
-#define CCLOGTAGSTR __FILE__ " (" CCMKSTR(__LINE__) ") "
-#define CCSTR(s) ((ccnauty_char*)s)
+#define L_MKSTR(a) #a
+#define L_X_MKSTR(a) L_MKSTR(a)
+#define L_MKFLSTR __FILE__ " (" L_X_MKSTR(__LINE__) ") "
+#define L_STR(s) l_cast(l_rune*, s)
 
-#define ccassert(e) cc_assert_func((e), (#e), CCFILELINESTR)                        /* 0:assert */
-#define ccloge(fmt, ...) cc_logger_func("1[E] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 1:error */
-#define cclogw(fmt, ...) cc_logger_func("2[W] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 2:warning */
-#define cclogi(fmt, ...) cc_logger_func("3[I] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 3:important */
-#define cclogd(fmt, ...) cc_logger_func("4[D] " CCLOGTAGSTR, (fmt), ## __VA_ARGS__) /* 4:debug */
+#define l_assert(e) l_assert_func((e), (#e), L_MKFLSTR)                           /* 0:assert */
+#define l_log_e(fmt, ...) l_logger_func("1[E] " L_MKFLSTR, (fmt), ## __VA_ARGS__) /* 1:error */
+#define l_log_w(fmt, ...) l_logger_func("2[W] " L_MKFLSTR, (fmt), ## __VA_ARGS__) /* 2:warning */
+#define l_log_i(fmt, ...) l_logger_func("3[I] " L_MKFLSTR, (fmt), ## __VA_ARGS__) /* 3:important */
+#define l_log_d(fmt, ...) l_logger_func("4[D] " L_MKFLSTR, (fmt), ## __VA_ARGS__) /* 4:debug */
 
-CORE_API void cc_assert_func(nauty_bool pass, const char* expr, const char* fileline);
-CORE_API sright_int cc_logger_func(const char* tag, const void* fmt, ...);
-CORE_API void ccsetloglevel(sright_int loglevel);
-CORE_API sright_int ccgetloglevel();
-CORE_API void ccexit();
+l_extern void l_assert_func(int pass, const char* expr, const char* fileline);
+l_extern int l_logger_func(const char* tag, const void* fmt, ...);
+l_extern void l_set_log_level(int level);
+l_extern int l_get_log_level();
+l_extern void l_exit();
+
+l_extern void* l_rawalloc(l_integer size);
+l_extern void* l_rawalloc_init(l_integer size);
+l_extern void* l_rawrelloc(void* buffer, l_integer oldsize, l_integer newsize);
+l_extern void l_rawfree(void* buffer);
+
+l_extern l_integer l_zerop(void* start, const void* beyond);
+l_extern l_integer l_zerol(void* start, l_integer len);
 
 /** Memory operation **/
 
@@ -138,20 +94,11 @@ struct ccheap {
   nauty_byte* beyond;
 };
 
-CORE_API void* ccrawalloc(sright_int size);
-CORE_API void* ccrawalloc_init(sright_int size);
-CORE_API void* ccrawrelloc(void* buffer, sright_int oldsize, sright_int newsize);
-CORE_API void ccrawfree(void* buffer);
-
 CORE_API struct ccheap ccheap_alloc(sright_int size);
 CORE_API struct ccheap ccheap_allocrawbuffer(sright_int size);
 CORE_API struct ccheap ccheap_allocfrom(sright_int size, struct ccfrom from);
 CORE_API void ccheap_relloc(struct ccheap* self, sright_int newsize);
 CORE_API void ccheap_free(struct ccheap* self);
-
-CORE_API sright_int cczero(void* start, const void* beyond);
-CORE_API sright_int cczeron(void* start, sright_int bytes);
-CORE_API ccnauty_int cczerol(void* start, ccnauty_int len);
 
 CORE_API sright_int cccopy(const nauty_byte* fromstart, const nauty_byte* frombeyond, nauty_byte* dest);
 CORE_API sright_int cccopyn(const nauty_byte* from, sright_int n, nauty_byte* dest);
@@ -180,55 +127,57 @@ CORE_API struct ccdest* ccsetdest(struct ccdest* self, void* start, sright_int b
 CORE_API struct ccdest* ccsetdestrange(struct ccdest* self, void* start, void* beyond);
 CORE_API const struct ccdest* ccdestheap(const struct ccheap* heap);
 
-/** Time and date **
-The 64-bit signed integer's biggest value is 9223372036854775807.
-For seconds/milliseconds/microseconds/nanoseconds, it can
-represent more than 291672107014/291672107/291672/291 years.
-The 32-bit signed integer's biggest value is 2147483647.
-For seconds/milliseconds/microseconds/nanoseconds, it can
-represent more than 67-year/24-day/35-min/2-sec. */
+/**
+ * The 64-bit signed integer's biggest value is 9223372036854775807.
+ * For seconds/milliseconds/microseconds/nanoseconds, it can
+ * represent more than 291672107014/291672107/291672/291 years.
+ * The 32-bit signed integer's biggest value is 2147483647.
+ * For seconds/milliseconds/microseconds/nanoseconds, it can
+ * represent more than 67-year/24-day/35-min/2-sec.
+ */
 
-#define CCNSECS_OF_SECOND (1000000000L)
-struct cctime {
-  sright_int sec;
-  umedit_int nsec;
-};
+#define l_nsecs_per_second (1000000000L)
 
-struct ccdate {
-  umedit_int yearlow; /* 38-bit, can represent 274877906943 years */
-  uoctet_int high;      /* high 6-bit are extra bits for year */
-  uoctet_int ydaylow;   /* 1~366 */
-  uoctet_int month;     /* 1~12 */
-  uoctet_int day;       /* 1~31 */
-  uoctet_int wday;      /* 0~6, 0 is sunday */
-  uoctet_int hour;      /* 0~23 */
-  uoctet_int min;       /* 0~59 */
-  uoctet_int sec;       /* 0~61, 60 and 61 are the leap seconds */
-  umedit_int nsec;    /* nanoseconds that less than 1 sec */
-};
+typedef struct {
+  l_integer sec;
+  l_umedit nsec;
+} l_time;
 
-struct ccfileattr {
-  sright_int fsize;
-  sright_int ctime;
-  sright_int atime;
-  sright_int mtime;
-  sright_int gid;
-  sright_int uid;
-  sright_int mode;
-  nauty_bool isfile;
-  nauty_bool isdir;
-  nauty_bool islink;
-}; /* creation, last access, last modify (UTC) */
+typedef struct {
+  l_umedit_int yearlow; /* 38-bit, can represent 274877906943 years */
+  l_umedit nsec;    /* nanoseconds that less than 1 sec */
+  l_byte high;      /* high 6-bit are extra bits for year */
+  l_byte ydaylow;   /* 1~366 */
+  l_byte month;     /* 1~12 */
+  l_byte day;       /* 1~31 */
+  l_byte wday;      /* 0~6, 0 is sunday */
+  l_byte hour;      /* 0~23 */
+  l_byte min;       /* 0~59 */
+  l_byte sec;       /* 0~61, 60 and 61 are the leap seconds */
+} l_date;
 
-struct ccdirstream {
+typedef struct {
+  l_integer fsize;
+  l_integer ctime;
+  l_integer atime;
+  l_integer mtime;
+  l_integer gid;
+  l_integer uid;
+  l_integer mode;
+  l_byte isfile;
+  l_byte isdir;
+  l_byte islink;
+} l_fileattr; /* creation, last access, last modify (UTC) */
+
+typedef struct {
   void* stream;
-};
+} l_dir_stream;
 
-CORE_API struct cctime ccsystime();
-CORE_API struct cctime ccinctime();
-CORE_API struct ccdate ccgetdate();
-CORE_API sright_int ccfilesize(struct ccfrom name);
-CORE_API struct ccfileattr ccfileattr(struct ccfrom name);
+l_extern l_time l_system_time();
+l_extern l_time l_monotonic_time();
+l_extern l_date l_system_date();
+l_extern l_integer l_file_size(const void* name, int namelen);
+l_extern l_fileattr l_file_attr(const void* name, int namelen);
 
 /** String **/
 
@@ -487,9 +436,31 @@ CORE_API void ccplat_threadsleep(uright_int us);
 CORE_API void ccplat_threadexit();
 CORE_API int ccplat_threadjoin(struct ccthrid* thrid);
 
-/** Core test **/
+typedef struct {
+  const l_byte* start;
+  const l_byte* end;
+} l_from;
 
-CORE_API void ccthattest();
-CORE_API void ccplattest();
+#define l_from_literal(s) l_from_lstring("" s, (sizeof(s)/sizeof(char))-1)
+#define l_from_empty() l_cast(l_from, {0})
 
-#endif /* CCLIB_THATCORE_H_ */
+l_extern l_from l_from_cstring(const void* s)
+l_extern l_from l_from_lstring(const void* s, int len);
+
+#define l_byte ccnauty_byte
+#define l_rune ccnauty_byte
+#define l_sbyte ccoctet_int
+#define l_short ccshort_int
+#define l_medit ccmedit_int
+#define l_integer ccnauty_int
+#define l_ushort ccshort_uint
+#define l_umedit ccmedit_uint
+#define l_uinteger ccnauty_int
+#define l_intptr ccnauty_iptr
+#define l_uintptr ccnauty_uptr
+#define l_handle cchandle_int
+
+l_extern void l_core_test();
+l_extern void l_plat_test();
+
+#endif /* l_core_lib_h */

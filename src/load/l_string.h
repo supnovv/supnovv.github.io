@@ -2,6 +2,68 @@
 #define l_string_lib_h
 #include "l_core.h"
 
+#define CCSTRING_SIZEOF 32
+#define CCSTRING_STATIC_CHARS 30
+
+typedef struct ccstring {
+  struct ccheap heap;
+  sright_int len;
+  uoctet_int a[CCSTRING_SIZEOF-sizeof(struct ccheap)-sizeof(sright_int)-1];
+  uoctet_int flag; /* flag==0xFF ? heap-string : stack-string */
+} ccstring; /* a sequence of bytes with zero terminated */
+
+CORE_API const char* ccutos(uright_int a);
+CORE_API const char* ccitos(sright_int a);
+CORE_API ccstring ccemptystr();
+CORE_API ccstring ccstrfromu(uright_int a);
+CORE_API ccstring ccstrfromuf(uright_int a, sright_int fmt);
+CORE_API ccstring ccstrfromi(sright_int a);
+CORE_API ccstring ccstrfromif(sright_int a, sright_int fmt);
+
+CORE_API ccstring ccstring_emptystr();
+CORE_API sright_int ccstring_getlen(const ccstring* self);
+CORE_API const char* ccstring_getcstr(const ccstring* self);
+CORE_API nauty_bool ccstring_equalcstr(const ccstring* self, const void* cstr);
+
+CORE_API void ccstring_free(ccstring* self);
+CORE_API void ccstring_setempty(ccstring* self);
+CORE_API void ccstring_setcstr(ccstring* self, const void* cstr);
+
+CORE_API ccfrom ccstring_getfrom(const ccstring* s);
+CORE_API nauty_bool ccstring_contain(struct ccfrom s, nauty_char ch);
+CORE_API nauty_bool ccstring_containp(const struct ccfrom* s, nauty_char ch);
+
+#if 0
+CCINLINE nauty_char cclower(nauty_char ch) {
+  return (ch >= 'A' && ch <= 'Z') ? (ch + 32) : ch;
+}
+
+CCINLINE void cclowerp(nauty_char* ch) {
+  *ch = cclower(*ch);
+}
+
+CCINLINE nauty_char ccupper(nauty_char ch) {
+  return (ch >= 'a' && ch <= 'z') ? (ch - 32) : ch;
+}
+
+CCINLINE void ccupperp(nauty_char* ch) {
+  *ch = ccupper(*ch);
+}
+
+CCINLINE void ccstring_lower(nauty_char* s, int len) {
+  while (len > 0) {
+    cclowerp(s + (--len));
+  }
+}
+
+CCINLINE void ccstring_upper(nauty_char* s, int len) {
+  while (len > 0) {
+    ccupperp(s + (--len));
+  }
+}
+
+#endif
+
 typedef struct {
   l_umedit m; /* string match this rune */
   l_umedit e; /* string ended at this rune */

@@ -1,100 +1,100 @@
-#ifndef CCLIB_SERVICE_H_
-#define CCLIB_SERVICE_H_
+#ifndef l_service_lib_h
+#define l_service_lib_h
 #include "thatcore.h"
 #include "luacapi.h"
 
-#define CCM_MESSAGE_CONNIND 0x10
-#define CCM_MESSAGE_CONNRSP 0x11
-#define CCM_MESSAGE_IOEVENT 0x12
-#define CCM_SERVICE_MASTERID (0)
+#define L_MESSAGE_CONNIND 0x10
+#define L_MESSAGE_CONNRSP 0x11
+#define L_MESSAGE_IOEVENT 0x12
+#define L_SERVICE_MASTERID (0)
 
 typedef union {
-  ccmedit_int s32;
-  ccnauty_int s64;
-  ccmedit_uint u32;
-  ccnauty_uint u64;
-  cchandle_int fd;
+  l_medit s32;
+  l_integer s64;
+  l_umedit u32;
+  l_uinteger u64;
+  l_handle fd;
   void* ptr;
-} ccmsgdata;
+} l_msgdata;
 
 typedef struct ccmessage {
-  struct ccsmplnode node;
+  l_smplnode node;
   void* extra; /* dont move this field */
-  umedit_int srcid;
-  umedit_int dstid;
-  umedit_int type;
-  umedit_int flag;
-  ccmsgdata data;
-} ccmessage;
+  l_umedit srcid;
+  l_umedit dstid;
+  l_umedit type;
+  l_umedit flag;
+  l_msgdata data;
+} l_message;
 
-typedef struct ccthread ccthread;
-CORE_API void ccthread_init(ccthread* self);
-CORE_API void ccthread_free(ccthread* self);
-CORE_API int ccthread_join(ccthread* self);
-CORE_API void ccthread_sleep(uright_int us);
-CORE_API void ccthread_exit();
-CORE_API int startmainthread(int (*start)());
-CORE_API int startmainthreadcv(int (*start)(), int argc, char** argv);
-CORE_API nauty_bool ccthread_start(ccthread* self, int (*start)());
-CORE_API ccthread* ccthread_getself();
-CORE_API ccthread* ccthread_getmaster();
-CORE_API ccstring* ccthread_getdefstr();
+typedef struct ccthread l_thread;
+l_extern void l_thread_init(l_thread* self);
+l_extern void l_thread_free(l_thread* self);
+l_extern int l_thread_join(l_thread* self);
+l_extern void l_thread_sleep(l_integer us);
+l_extern void l_thread_exit();
+l_extern int startmainthread(int (*start)());
+l_extern int startmainthreadcv(int (*start)(), int argc, char** argv);
+l_extern int l_thread_start(l_thread* self, int (*start)());
+l_extern l_thread* l_thread_self();
+l_extern l_thread* l_thread_master();
+l_extern l_string* l_thread_defstr();
 
 typedef struct ccbuffer {
-  struct ccsmplnode node;
-  umedit_int maxlimit;
-  umedit_int capacity;
-  umedit_int size;
-  nauty_byte a[4];
-} ccbuffer;
+  l_smplnode node;
+  l_umedit maxlimit;
+  l_umedit capacity;
+  l_umedit size;
+  l_byte a[4];
+} l_buffer;
 
-CORE_API void ccbuffer_ensurecapacity(ccbuffer** self, ccnauty_int size);
-CORE_API void ccbuffer_ensuresizeremain(ccbuffer** self, ccnauty_int remainsize);
-CORE_API ccbuffer* ccnewbuffer(ccthread* thread, umedit_int maxlimit);
-CORE_API void ccfreebuffer(ccthread* thread, ccbuffer* p);
-
-
-typedef struct ccservice ccservice;
-CORE_API ccservice* ccservice_new(int (*entry)(ccservice*, ccmessage*));
-CORE_API void* ccservice_setdata(ccservice* self, void* udata);
-CORE_API void* ccservice_allocdata(ccservice* self, int bytes);
-CORE_API void* ccservice_getdata(ccservice* self);
-CORE_API void ccservice_setevent(ccservice* self, cchandle_int fd, ccshort_uint masks, ccshort_uint flags);
-CORE_API void ccservice_start(ccservice* self);
-CORE_API void ccservice_stop(ccservice* self);
-CORE_API int ccservice_resume(ccservice* self, int (*func)(struct ccstate*));
-CORE_API int ccservice_yield(ccservice* self, int (*kfunc)(struct ccstate*));
-
-CORE_API ccthread* ccservice_belong(ccservice* self);
-CORE_API cchandle_int ccservice_eventfd(ccservice* self);
-
-CORE_API void ccmaster_dispatch_msg();
-CORE_API void ccworker_handle_msg();
+l_extern void l_buffer_ensure_capacity(l_buffer** self, l_integer size);
+l_extern void l_buffer_ensure_size_remain(l_buffer** self, l_integer remainsize);
+l_extern l_buffer* l_buffer_new(l_thread* thread, l_umedit maxlimit);
+l_extern void l_buffer_free(l_thread* thread, l_buffer* p);
 
 
-CORE_API ccmessage* message_create(umedit_int type, umedit_int flag);
-CORE_API void* message_set_specific(ccmessage* self, void* data);
-CORE_API void* message_set_allocated_specific(ccmessage* self, int bytes);
-CORE_API void service_send_message(ccstate* state, umedit_int destid, ccmessage* msg);
-CORE_API void service_send_message_sp(ccstate* state, umedit_int destid, umedit_int type, void* static_ptr);
-CORE_API void service_send_message_um(ccstate* state, umedit_int destid, umedit_int type, umedit_int data);
-CORE_API void service_send_message_fd(ccstate* state, umedit_int destid, umedit_int type, handle_int fd);
+typedef struct ccservice l_service;
+l_extern l_service* l_service_new(int (*entry)(l_service*, l_message*));
+l_extern void* l_service_set_data(l_service* self, void* udata);
+l_extern void* l_service_alloc_data(l_service* self, int bytes);
+l_extern void* l_service_data(l_service* self);
+l_extern void l_service_set_event(l_service* self, l_handle fd, l_ushort masks, l_ushort flags);
+l_extern void l_service_start(l_service* self);
+l_extern void l_service_stop(l_service* self);
+l_extern int l_service_resume(l_service* self, int (*func)(l_state*));
+l_extern int l_service_yield(l_service* self, int (*kfunc)(l_state*));
 
-CORE_API ccservice* service_new(int (*entry)(ccservice*, ccmessage*));
-CORE_API void* service_set_specific(ccservice* service, void* udata);
-CORE_API void* service_set_allocated_specific(ccservice* service, int bytes);
-CORE_API void service_set_listen(ccservice* service, handle_int fd, ushort_int masks, ushort_int flags);
-CORE_API void service_start_run(ccservice* service);
+l_extern l_thread* l_service_belong(l_service* self);
+l_extern l_handle l_service_eventfd(l_service* self);
 
-
-CORE_API void* service_get_specific(ccstate* state);
-CORE_API ccmessage* service_get_message(ccstate* state);
-CORE_API handle_int service_get_eventfd(ccstate* state);
-CORE_API void service_listen_event(ccstate* state, handle_int fd, ushort_int masks, ushort_int flags);
-CORE_API void service_remove_listen(ccstate* state);
-CORE_API void service_yield(ccstate* state, int (*kfunc)(ccstate*));
-CORE_API void service_run_completed(ccstate* state);
+l_extern void l_master_dispatch_msg();
+l_extern void l_worker_handle_msg();
 
 
-#endif /* CCLIB_SERVICE_H_ */
+l_extern l_message* message_create(l_umedit type, l_umedit flag);
+l_extern void* message_set_specific(l_message* self, void* data);
+l_extern void* message_set_allocated_specific(l_message* self, int bytes);
+l_extern void service_send_message(l_state* state, l_umedit destid, l_message* msg);
+l_extern void service_send_message_sp(l_state* state, l_umedit destid, l_umedit type, void* static_ptr);
+l_extern void service_send_message_um(l_state* state, l_umedit destid, l_umedit type, l_umedit data);
+l_extern void service_send_message_fd(l_state* state, l_umedit destid, l_umedit type, l_handle fd);
+
+l_extern l_service* service_new(int (*entry)(l_service*, l_message*));
+l_extern void* service_set_specific(l_service* service, void* udata);
+l_extern void* service_set_allocated_specific(l_service* service, int bytes);
+l_extern void service_set_listen(l_service* service, l_handle fd, l_ushort masks, l_ushort flags);
+l_extern void service_start_run(l_service* service);
+
+
+l_extern void* service_get_specific(l_state* state);
+l_extern l_message* service_get_message(l_state* state);
+l_extern l_handle service_get_eventfd(l_state* state);
+l_extern void service_listen_event(l_state* state, l_handle fd, l_ushort masks, l_ushort flags);
+l_extern void service_remove_listen(l_state* state);
+l_extern void service_yield(l_state* state, int (*kfunc)(l_state*));
+l_extern void service_run_completed(l_state* state);
+
+
+#endif /* l_service_lib_h */
 
