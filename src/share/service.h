@@ -36,9 +36,18 @@ l_extern void l_thread_exit();
 l_extern int startmainthread(int (*start)());
 l_extern int startmainthreadcv(int (*start)(), int argc, char** argv);
 l_extern int l_thread_start(l_thread* self, int (*start)());
+l_extern l_servicelog* l_thread_service_log(l_thread* self);
 l_extern l_thread* l_thread_self();
 l_extern l_thread* l_thread_master();
 l_extern l_string* l_thread_defstr();
+
+l_thread_local(l_servicelog* l_hide_service_log)
+
+#if defined(l_thread_local_supported)
+#define l_service_log() l_hide_service_log
+#else
+#define l_service_log() l_thread_service_log(l_thread_self())
+#endif
 
 typedef struct ccbuffer {
   l_smplnode node;

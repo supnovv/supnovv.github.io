@@ -20,8 +20,8 @@ void cc_assert_func(nauty_bool pass, const char* expr, const char* fileline) {
 
 static sright_int ccloglevel = 2;
 
-sright_int cc_logger_func(const char* tag, const void* fmt, ...) {
-  sright_int n = 0, level = tag[0] - '0';
+int cc_logger_func(const char* tag, const void* fmt, ...) {
+  int n = 0, level = tag[0] - '0';
   const uoctet_int* p = (const uoctet_int*)fmt;
   int printed = 0;
   if (level > ccloglevel) return 0;
@@ -36,28 +36,28 @@ sright_int cc_logger_func(const char* tag, const void* fmt, ...) {
     ccloge("cc_logger_func invalid (2) %s", fmt);
     return 0;
   }
-  if ((n = (sright_int)fprintf(stdout, "%s", tag + 1)) < 0) {
+  if ((n = (int)fprintf(stdout, "%s", tag + 1)) < 0) {
     n = 0;
   }
   if (fmt) {
     va_list args;
     va_start(args, fmt);
     if ((printed = vfprintf(stdout, (const char*)fmt, args)) > 0) {
-      n += (sright_int)printed;
+      n += (int)printed;
     }
     va_end(args);
   }
   if ((printed = fprintf(stdout, CCNEWLINE)) > 0) {
-    n += (sright_int)printed;
+    n += (int)printed;
   }
   return n;
 }
 
-void ccsetloglevel(sright_int level) {
+void ccsetloglevel(int level) {
   ccloglevel = level;
 }
 
-sright_int ccgetloglevel() {
+int ccgetloglevel() {
   return ccloglevel;
 }
 
@@ -271,12 +271,7 @@ void ccheap_relloc(struct ccheap* self, sright_int newsize) {
   size_t n;
   void* buffer;
 
-  if (self->start == 0) {
-    *self = ccheap_alloc(newsize);
-    return;
-  }
-
-  if ((n = llgetallocsize(newsize)) == 0) {
+  if (self->start == 0 || (n = llgetallocsize(newsize)) == 0) {
     ccloge("ccheap_relloc too large %s", ccitos(newsize));
     ccheap_free(self);
     return;

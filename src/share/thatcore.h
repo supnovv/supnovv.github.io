@@ -18,6 +18,18 @@
   #define l_extern extern
 #endif
 
+#undef l_thread_local
+#undef l_thread_local_supported
+#if defined(L_CLER_GCC)
+#define l_thread_local(a) __thread a
+#define l_thread_local_supported
+#elif defined(L_CLER_MSC)
+#define l_thread_local(a) __declspec(thread) a
+#define l_thread_local_supported
+#else
+#define l_thread_local(a)
+#endif
+
 #define l_cast(type, a) ((type)(a))
 #define l_str(s) l_cast(l_rune*, (s))
 
@@ -55,7 +67,6 @@
 #define L_MKSTR(a) #a
 #define L_X_MKSTR(a) L_MKSTR(a)
 #define L_MKFLSTR __FILE__ " (" L_X_MKSTR(__LINE__) ") "
-#define L_STR(s) l_cast(l_rune*, s)
 
 #define l_assert(e) l_assert_func((e), (#e), L_MKFLSTR)                           /* 0:assert */
 #define l_log_e(fmt, ...) l_logger_func("1[E] " L_MKFLSTR, (fmt), ## __VA_ARGS__) /* 1:error */
@@ -69,63 +80,65 @@ l_extern void l_set_log_level(int level);
 l_extern int l_get_log_level();
 l_extern void l_exit();
 
-l_extern void* l_rawalloc(l_integer size);
-l_extern void* l_rawalloc_init(l_integer size);
-l_extern void* l_rawrelloc(void* buffer, l_integer oldsize, l_integer newsize);
-l_extern void l_rawfree(void* buffer);
+l_extern void* l_raw_alloc(l_integer size);
+l_extern void* l_raw_alloc_and_zero(l_integer size);
+l_extern void* l_raw_realloc(void* buffer, l_integer oldsize, l_integer newsize);
+l_extern void l_raw_free(void* buffer);
 
-l_extern l_integer l_zerop(void* start, const void* beyond);
+l_extern l_integer l_zeroe(void* start, const void* end);
 l_extern l_integer l_zerol(void* start, l_integer len);
 
-/** Memory operation **/
+typedef struct {
+  const l_byte* start;
+  const l_byte* end;
+} l_from;
 
-typedef struct ccfrom {
-  const nauty_byte* start;
-  const nauty_byte* beyond;
-} ccfrom;
+#define l_from_empty() l_cast(l_from, {0,0})
+#define l_from_literal(s) l_froml("" s, (sizeof(s)/sizeof(char))-1)
+l_extern l_from l_fromc(const void* s)
+l_extern l_from l_froml(const void* s, int len);
+l_extern l_from l_frome(const void* s, const void* e);
 
-struct ccdest {
-  nauty_byte* start;
-  nauty_byte* beyond;
-};
+#if 0
+typedef struct {
+  l_byte* start;
+  l_byte* end;
+} l_dest;
 
-struct ccheap {
-  nauty_byte* start;
-  nauty_byte* beyond;
-};
+l_extern l_dest l_heap_alloc(sright_int size);
+l_extern l_dest l_heap_allocrawbuffer(sright_int size);
+l_extern l_dest l_heap_allocfrom(sright_int size, l_from from);
+l_extern void l_heap_relloc(l_heap* self, sright_int newsize);
+l_extern void l_heap_free(l_heap* self);
 
-CORE_API struct ccheap ccheap_alloc(sright_int size);
-CORE_API struct ccheap ccheap_allocrawbuffer(sright_int size);
-CORE_API struct ccheap ccheap_allocfrom(sright_int size, struct ccfrom from);
-CORE_API void ccheap_relloc(struct ccheap* self, sright_int newsize);
-CORE_API void ccheap_free(struct ccheap* self);
+l_extern l_integer l_copy(const l_byte* fromstart, const l_byte* frombeyond, l_byte* dest);
+l_extern l_integer l_copyn(const l_byte* from, sright_int n, l_byte* dest);
+l_extern l_integer l_copyfrom(l_from from, void* dest);
+l_extern l_integer l_copyfromp(const l_from* from, void* dest);
+l_extern l_integer l_copyfromtodest(l_from from, const l_dest* dest);
+l_extern l_integer l_copyfromptodest(const l_from* from, const l_dest* dest);
 
-CORE_API sright_int cccopy(const nauty_byte* fromstart, const nauty_byte* frombeyond, nauty_byte* dest);
-CORE_API sright_int cccopyn(const nauty_byte* from, sright_int n, nauty_byte* dest);
-CORE_API sright_int cccopyfrom(struct ccfrom from, void* dest);
-CORE_API sright_int cccopyfromp(const struct ccfrom* from, void* dest);
-CORE_API sright_int cccopyfromtodest(struct ccfrom from, const struct ccdest* dest);
-CORE_API sright_int cccopyfromptodest(const struct ccfrom* from, const struct ccdest* dest);
+l_extern l_integer l_rcopy(const l_byte* fromstart, const l_byte* frombeyond, l_byte* dest);
+l_extern l_integer l_rcopyn(const l_byte* from, l_int n, l_byte* dest);
+l_extern l_integer l_rcopyfrom(l_from from, void* dest);
+l_extern l_integer l_rcopyfromp(const l_from* from, void* dest);
+l_extern l_integer l_rcopyfromtodest(l_from from, const l_dest* dest);
+l_extern l_integer l_rcopyfromptodest(const l_from* from, const l_dest* dest);
 
-CORE_API sright_int ccrcopy(const nauty_byte* fromstart, const nauty_byte* frombeyond, nauty_byte* dest);
-CORE_API sright_int ccrcopyn(const nauty_byte* from, sright_int n, nauty_byte* dest);
-CORE_API sright_int ccrcopyfrom(struct ccfrom from, void* dest);
-CORE_API sright_int ccrcopyfromp(const struct ccfrom* from, void* dest);
-CORE_API sright_int ccrcopyfromtodest(struct ccfrom from, const struct ccdest* dest);
-CORE_API sright_int ccrcopyfromptodest(const struct ccfrom* from, const struct ccdest* dest);
+l_extern l_from l_fromp(const void* start, const void* beyond);
+l_extern l_from l_fromn(const void* start, l_integer bytes);
+l_extern l_from l_fromcstr(const void* cstr);
+l_extern l_dest l_dest(void* start, l_integer bytes);
+l_extern l_dest l_destrange(void* start, void* beyond);
 
-CORE_API struct ccfrom ccfromp(const void* start, const void* beyond);
-CORE_API struct ccfrom ccfromn(const void* start, sright_int bytes);
-CORE_API struct ccfrom ccfromcstr(const void* cstr);
-CORE_API struct ccdest ccdest(void* start, sright_int bytes);
-CORE_API struct ccdest ccdestrange(void* start, void* beyond);
+l_extern l_from* l_setfrom(l_from* self, const void* start, l_integer bytes);
+l_extern l_from* l_setfromcstr(l_from* self, const void* cstr);
+l_extern l_from* l_setfromrange(l_from* self, const void* start, const void* beyond);
+l_extern l_dest* l_setdest(l_dest* self, void* start, l_integer bytes);
+l_extern l_dest* l_setdestrange(l_dest* self, void* start, void* beyond);
+l_extern const l_dest* l_destheap(const l_heap* heap);
 
-CORE_API struct ccfrom* ccsetfrom(struct ccfrom* self, const void* start, sright_int bytes);
-CORE_API struct ccfrom* ccsetfromcstr(struct ccfrom* self, const void* cstr);
-CORE_API struct ccfrom* ccsetfromrange(struct ccfrom* self, const void* start, const void* beyond);
-CORE_API struct ccdest* ccsetdest(struct ccdest* self, void* start, sright_int bytes);
-CORE_API struct ccdest* ccsetdestrange(struct ccdest* self, void* start, void* beyond);
-CORE_API const struct ccdest* ccdestheap(const struct ccheap* heap);
+#endif
 
 /**
  * The 64-bit signed integer's biggest value is 9223372036854775807.
@@ -184,64 +197,64 @@ l_extern l_fileattr l_file_attr(const void* name, int namelen);
 #define CCSTRING_SIZEOF 32
 #define CCSTRING_STATIC_CHARS 30
 
-typedef struct ccstring {
-  struct ccheap heap;
+typedef struct l_string {
+  l_heap heap;
   sright_int len;
-  uoctet_int a[CCSTRING_SIZEOF-sizeof(struct ccheap)-sizeof(sright_int)-1];
+  uoctet_int a[CCSTRING_SIZEOF-sizeof(l_heap)-sizeof(sright_int)-1];
   uoctet_int flag; /* flag==0xFF ? heap-string : stack-string */
-} ccstring; /* a sequence of bytes with zero terminated */
+} l_string; /* a sequence of bytes with zero terminated */
 
-CORE_API const char* ccutos(uright_int a);
-CORE_API const char* ccitos(sright_int a);
-CORE_API ccstring ccemptystr();
-CORE_API ccstring ccstrfromu(uright_int a);
-CORE_API ccstring ccstrfromuf(uright_int a, sright_int fmt);
-CORE_API ccstring ccstrfromi(sright_int a);
-CORE_API ccstring ccstrfromif(sright_int a, sright_int fmt);
+l_extern const char* l_utos(uright_int a);
+l_extern const char* l_itos(sright_int a);
+l_extern l_string l_emptystr();
+l_extern l_string l_strfromu(uright_int a);
+l_extern l_string l_strfromuf(uright_int a, sright_int fmt);
+l_extern l_string l_strfromi(sright_int a);
+l_extern l_string l_strfromif(sright_int a, sright_int fmt);
 
-CORE_API ccstring ccstring_emptystr();
-CORE_API sright_int ccstring_getlen(const ccstring* self);
-CORE_API const char* ccstring_getcstr(const ccstring* self);
-CORE_API nauty_bool ccstring_equalcstr(const ccstring* self, const void* cstr);
+l_extern l_string l_string_emptystr();
+l_extern sright_int l_string_getlen(const l_string* self);
+l_extern const char* l_string_getcstr(const l_string* self);
+l_extern int l_string_equalcstr(const l_string* self, const void* cstr);
 
-CORE_API void ccstring_free(ccstring* self);
-CORE_API void ccstring_setempty(ccstring* self);
-CORE_API void ccstring_setcstr(ccstring* self, const void* cstr);
+l_extern void l_string_free(l_string* self);
+l_extern void l_string_setempty(l_string* self);
+l_extern void l_string_setcstr(l_string* self, const void* cstr);
 
-CORE_API ccfrom ccstring_getfrom(const ccstring* s);
-CORE_API nauty_bool ccstring_contain(struct ccfrom s, nauty_char ch);
-CORE_API nauty_bool ccstring_containp(const struct ccfrom* s, nauty_char ch);
+l_extern l_from l_string_getfrom(const l_string* s);
+l_extern int l_string_contain(l_from s, nauty_char ch);
+l_extern int l_string_containp(const l_from* s, nauty_char ch);
 
 #if 0
-CCINLINE nauty_char cclower(nauty_char ch) {
+CCINLINE nauty_char l_lower(nauty_char ch) {
   return (ch >= 'A' && ch <= 'Z') ? (ch + 32) : ch;
 }
 
-CCINLINE void cclowerp(nauty_char* ch) {
-  *ch = cclower(*ch);
+CCINLINE void l_lowerp(nauty_char* ch) {
+  *ch = l_lower(*ch);
 }
 
-CCINLINE nauty_char ccupper(nauty_char ch) {
+CCINLINE nauty_char l_upper(nauty_char ch) {
   return (ch >= 'a' && ch <= 'z') ? (ch - 32) : ch;
 }
 
-CCINLINE void ccupperp(nauty_char* ch) {
-  *ch = ccupper(*ch);
+CCINLINE void l_upperp(nauty_char* ch) {
+  *ch = l_upper(*ch);
 }
 
-CCINLINE void ccstring_lower(nauty_char* s, int len) {
+CCINLINE void l_string_lower(nauty_char* s, int len) {
   while (len > 0) {
-    cclowerp(s + (--len));
+    l_lowerp(s + (--len));
   }
 }
 
-CCINLINE void ccstring_upper(nauty_char* s, int len) {
+CCINLINE void l_string_upper(nauty_char* s, int len) {
   while (len > 0) {
-    ccupperp(s + (--len));
+    l_upperp(s + (--len));
   }
 }
 
-CCINLINE int ccisblank(int ch) {
+CCINLINE int l_isblank(int ch) {
   if (ch == ' ' || ch == '\t' || ch == '\v' || ch == '\f') return 1;
   return 0;
 }
@@ -249,57 +262,57 @@ CCINLINE int ccisblank(int ch) {
 
 /** List and queue **/
 
-typedef struct cclinknode {
-  struct cclinknode* next;
-  struct cclinknode* prev;
-} cclinknode;
+typedef struct l_linknode {
+  struct l_linknode* next;
+  struct l_linknode* prev;
+} l_linknode;
 
-CORE_API void cclinknode_init(cclinknode* node);
-CORE_API nauty_bool cclinknode_isempty(cclinknode* node);
-CORE_API void cclinknode_insertafter(cclinknode* node, cclinknode* newnode);
-CORE_API cclinknode* cclinknode_remove(cclinknode* node);
+l_extern void l_linknode_init(l_linknode* node);
+l_extern int l_linknode_isempty(l_linknode* node);
+l_extern void l_linknode_insertafter(l_linknode* node, l_linknode* newnode);
+l_extern l_linknode* l_linknode_remove(l_linknode* node);
 
-typedef struct ccsmplnode {
-  struct ccsmplnode* next;
-} ccsmplnode;
+typedef struct l_smplnode {
+  struct l_smplnode* next;
+} l_smplnode;
 
-CORE_API void ccsmplnode_init(ccsmplnode* node);
-CORE_API nauty_bool ccsmplnode_isempty(ccsmplnode* node);
-CORE_API void ccsmplnode_insertafter(ccsmplnode* node, ccsmplnode* newnode);
-CORE_API ccsmplnode* ccsmplnode_removenext(ccsmplnode* node);
+l_extern void l_smplnode_init(l_smplnode* node);
+l_extern int l_smplnode_isempty(l_smplnode* node);
+l_extern void l_smplnode_insertafter(l_smplnode* node, l_smplnode* newnode);
+l_extern l_smplnode* l_smplnode_removenext(l_smplnode* node);
 
-typedef struct ccsqueue {
-  struct ccsmplnode head;
-  struct ccsmplnode* tail;
-} ccsqueue;
+typedef struct l_squeue {
+  l_smplnode head;
+  l_smplnode* tail;
+} l_squeue;
 
-CORE_API void ccsqueue_init(ccsqueue* self);
-CORE_API void ccsqueue_push(ccsqueue* self, ccsmplnode* newnode);
-CORE_API void ccsqueue_pushqueue(ccsqueue* self, ccsqueue* queue);
-CORE_API nauty_bool ccsqueue_isempty(ccsqueue* self);
-CORE_API ccsmplnode* ccsqueue_pop(ccsqueue* self);
+l_extern void l_squeue_init(l_squeue* self);
+l_extern void l_squeue_push(l_squeue* self, l_smplnode* newnode);
+l_extern void l_squeue_pushqueue(l_squeue* self, l_squeue* queue);
+l_extern int l_squeue_isempty(l_squeue* self);
+l_extern l_smplnode* l_squeue_pop(l_squeue* self);
 
-typedef struct ccdqueue {
-  struct cclinknode head;
-} ccdqueue;
+typedef struct l_dqueue {
+  l_linknode head;
+} l_dqueue;
 
-CORE_API void ccdqueue_init(ccdqueue* self);
-CORE_API void ccdqueue_push(ccdqueue* self, cclinknode* newnode);
-CORE_API void ccdqueue_pushqueue(ccdqueue* self, ccdqueue* queue);
-CORE_API nauty_bool ccdqueue_isempty(ccdqueue* self);
-CORE_API cclinknode* ccdqueue_pop(ccdqueue* self);
+l_extern void l_dqueue_init(l_dqueue* self);
+l_extern void l_dqueue_push(l_dqueue* self, l_linknode* newnode);
+l_extern void l_dqueue_pushqueue(l_dqueue* self, l_dqueue* queue);
+l_extern int l_dqueue_isempty(l_dqueue* self);
+l_extern l_linknode* l_dqueue_pop(l_dqueue* self);
 
-typedef struct ccpriorq {
-  struct cclinknode node;
+typedef struct l_priorq {
+  l_linknode node;
   /* elem with less number has higher priority, i.e., 0 is the highest */
-  nauty_bool (*less)(void* elem_is_less_than, void* this_one);
-} ccpriorq;
+  int (*less)(void* elem_is_less_than, void* this_one);
+} l_priorq;
 
-CORE_API void ccpriorq_init(ccpriorq* self, nauty_bool (*less)(void*, void*));
-CORE_API void ccpriorq_push(ccpriorq* self, cclinknode* elem);
-CORE_API void ccpriorq_remove(ccpriorq* self, cclinknode* elem);
-CORE_API nauty_bool ccpriorq_isempty(ccpriorq* self);
-CORE_API cclinknode* ccpriorq_pop(ccpriorq* self);
+l_extern void l_priorq_init(l_priorq* self, int (*less)(void*, void*));
+l_extern void l_priorq_push(l_priorq* self, l_linknode* elem);
+l_extern void l_priorq_remove(l_priorq* self, l_linknode* elem);
+l_extern int l_priorq_isempty(l_priorq* self);
+l_extern l_linknode* l_priorq_pop(l_priorq* self);
 
 /** Userful structures **/
 
@@ -308,79 +321,79 @@ CORE_API cclinknode* ccpriorq_pop(ccpriorq* self);
  */
 
 #define CCMMHEAP_MIN_SIZE (8)
-struct ccmmheap {
+struct l_mmheap {
   umedit_int size;
   umedit_int capacity;
   unsign_ptr* a; /* array of elements with pointer size */
-  nauty_bool (*less)(void* this_elem_is_less, void* than_this_one);
+  int (*less)(void* this_elem_is_less, void* than_this_one);
 };
 
 /* min. heap - pass less function to less, max. heap - pass greater function to less */
-CORE_API void ccmmheap_init(struct ccmmheap* self, nauty_bool (*less)(void*, void*), int initsize);
-CORE_API void ccmmheap_free(struct ccmmheap* self);
-CORE_API void ccmmheap_add(struct ccmmheap* self, void* elem);
-CORE_API void* ccmmheap_del(struct ccmmheap* self, umedit_int i);
+l_extern void l_mmheap_init(l_mmheap* self, int (*less)(void*, void*), int initsize);
+l_extern void l_mmheap_free(l_mmheap* self);
+l_extern void l_mmheap_add(l_mmheap* self, void* elem);
+l_extern void* l_mmheap_del(l_mmheap* self, umedit_int i);
 
 /**
  * hash table - add/remove/search quick, need re-hash when enlarge buffer size
  */
 
-CORE_API nauty_bool ccisprime(umedit_int n);
-CORE_API umedit_int ccmidprime(nauty_byte bits);
+l_extern int l_isprime(umedit_int n);
+l_extern umedit_int l_midprime(nauty_byte bits);
 
-struct cchashslot {
+struct l_hashslot {
   void* next;
 };
 
-struct cchashtable {
+struct l_hashtable {
   nauty_byte slotbits;
   ushort_int offsetofnext;
   umedit_int nslot; /* prime number size not near 2^n */
   umedit_int nbucket;
   umedit_int (*getkey)(void*);
-  struct cchashslot* slot;
+  l_hashslot* slot;
 };
 
-CORE_API void cchashtable_init(struct cchashtable* self, nauty_byte sizebits, int offsetofnext, umedit_int (*getkey)(void*));
-CORE_API void cchashtable_free(struct cchashtable* self);
-CORE_API void cchashtable_foreach(struct cchashtable* self, void (*cb)(void*));
-CORE_API void cchashtable_add(struct cchashtable* self, void* elem);
-CORE_API void* cchashtable_find(struct cchashtable* self, umedit_int key);
-CORE_API void* cchashtable_del(struct cchashtable* self, umedit_int key);
+l_extern void l_hashtable_init(l_hashtable* self, nauty_byte sizebits, int offsetofnext, umedit_int (*getkey)(void*));
+l_extern void l_hashtable_free(l_hashtable* self);
+l_extern void l_hashtable_foreach(l_hashtable* self, void (*cb)(void*));
+l_extern void l_hashtable_add(l_hashtable* self, void* elem);
+l_extern void* l_hashtable_find(l_hashtable* self, umedit_int key);
+l_extern void* l_hashtable_del(l_hashtable* self, umedit_int key);
 
 /* table size is enlarged auto */
-struct ccbackhash {
-  struct cchashtable* cur;
-  struct cchashtable* old;
-  struct cchashtable a;
-  struct cchashtable b;
+struct l_backhash {
+  l_hashtable* cur;
+  l_hashtable* old;
+  l_hashtable a;
+  l_hashtable b;
 };
 
-CORE_API void ccbackhash_init(struct ccbackhash* self, nauty_byte initsizebits, int offsetofnext, umedit_int (*getkey)(void*));
-CORE_API void ccbackhash_free(struct ccbackhash* self);
-CORE_API void ccbackhash_add(struct ccbackhash* self, void* elem);
-CORE_API void* ccbackhash_find(struct ccbackhash* self, umedit_int key);
-CORE_API void* ccbackhash_del(struct ccbackhash* self, umedit_int key);
+l_extern void l_backhash_init(l_backhash* self, nauty_byte initsizebits, int offsetofnext, umedit_int (*getkey)(void*));
+l_extern void l_backhash_free(l_backhash* self);
+l_extern void l_backhash_add(l_backhash* self, void* elem);
+l_extern void* l_backhash_find(l_backhash* self, umedit_int key);
+l_extern void* l_backhash_del(l_backhash* self, umedit_int key);
 
 /** Thread and synchronization **/
 
-struct ccmutex {
+struct l_mutex {
   CCPLAT_IMPL_SIZE(CC_MUTEX_BYTES);
 };
 
-struct ccrwlock {
+struct l_rwlock {
   CCPLAT_IMPL_SIZE(CC_RWLOCK_BYTES);
 };
 
-struct cccondv {
+struct l_condv {
   CCPLAT_IMPL_SIZE(CC_CONDV_BYTES);
 };
 
-struct ccthrid {
+struct l_thrid {
   CCPLAT_IMPL_SIZE(CC_THRID_BYTES);
 };
 
-struct ccthrkey {
+struct l_thrkey {
   CCPLAT_IMPL_SIZE(CC_THKEY_BYTES);
 };
 
@@ -388,64 +401,53 @@ struct ccthrkey {
  * thread-specific data key
  */
 
-CORE_API nauty_bool ccthrkey_init(struct ccthrkey* self);
-CORE_API void ccthrkey_free(struct ccthrkey* self);
-CORE_API nauty_bool ccthrkey_setdata(struct ccthrkey* self, const void* data);
-CORE_API void* ccthrkey_getdata(struct ccthrkey* self);
+l_extern int l_thrkey_init(l_thrkey* self);
+l_extern void l_thrkey_free(l_thrkey* self);
+l_extern int l_thrkey_setdata(l_thrkey* self, const void* data);
+l_extern void* l_thrkey_getdata(l_thrkey* self);
 
 /**
  * mutex
  */
 
-CORE_API nauty_bool ccmutex_init(struct ccmutex* self);
-CORE_API void ccmutex_free(struct ccmutex* self);
-CORE_API nauty_bool ccmutex_lock(struct ccmutex* self);
-CORE_API void ccmutex_unlock(struct ccmutex* self);
-CORE_API nauty_bool ccmutex_trylock(struct ccmutex* self);
+l_extern int l_mutex_init(l_mutex* self);
+l_extern void l_mutex_free(l_mutex* self);
+l_extern int l_mutex_lock(l_mutex* self);
+l_extern void l_mutex_unlock(l_mutex* self);
+l_extern int l_mutex_trylock(l_mutex* self);
 
 /**
  * read/write lock
  */
 
-CORE_API nauty_bool ccrwlock_init(struct ccrwlock* self);
-CORE_API void ccrwlock_free(struct ccrwlock* self);
-CORE_API nauty_bool ccrwlock_read(struct ccrwlock* self);
-CORE_API nauty_bool ccrwlock_write(struct ccrwlock* self);
-CORE_API nauty_bool ccrwlock_tryread(struct ccrwlock* self);
-CORE_API nauty_bool ccrwlock_trywrite(struct ccrwlock* self);
-CORE_API void ccrwlock_unlock(struct ccrwlock* self);
+l_extern int l_rwlock_init(l_rwlock* self);
+l_extern void l_rwlock_free(l_rwlock* self);
+l_extern int l_rwlock_read(l_rwlock* self);
+l_extern int l_rwlock_write(l_rwlock* self);
+l_extern int l_rwlock_tryread(l_rwlock* self);
+l_extern int l_rwlock_trywrite(l_rwlock* self);
+l_extern void l_rwlock_unlock(l_rwlock* self);
 
 /**
  * condition variable
  */
 
-CORE_API nauty_bool cccondv_init(struct cccondv* self);
-CORE_API void cccondv_free(struct cccondv* self);
-CORE_API nauty_bool cccondv_wait(struct cccondv* self, struct ccmutex* mutex);
-CORE_API nauty_bool cccondv_timedwait(struct cccondv* self, struct ccmutex* mutex, sright_int ns);
-CORE_API void cccondv_signal(struct cccondv* self);
-CORE_API void cccondv_broadcast(struct cccondv* self);
+l_extern int l_condv_init(l_condv* self);
+l_extern void l_condv_free(l_condv* self);
+l_extern int l_condv_wait(l_condv* self, l_mutex* mutex);
+l_extern int l_condv_timedwait(l_condv* self, l_mutex* mutex, sright_int ns);
+l_extern void l_condv_signal(l_condv* self);
+l_extern void l_condv_broadcast(l_condv* self);
 
 /**
  * thread
  */
 
-CORE_API struct ccthrid ccplat_selfthread();
-CORE_API nauty_bool ccplat_createthread(struct ccthrid* thrid, void* (*start)(void*), void* para);
-CORE_API void ccplat_threadsleep(uright_int us);
-CORE_API void ccplat_threadexit();
-CORE_API int ccplat_threadjoin(struct ccthrid* thrid);
-
-typedef struct {
-  const l_byte* start;
-  const l_byte* end;
-} l_from;
-
-#define l_from_literal(s) l_from_lstring("" s, (sizeof(s)/sizeof(char))-1)
-#define l_from_empty() l_cast(l_from, {0})
-
-l_extern l_from l_from_cstring(const void* s)
-l_extern l_from l_from_lstring(const void* s, int len);
+l_extern l_thrid l_plat_selfthread();
+l_extern int l_plat_createthread(l_thrid* thrid, void* (*start)(void*), void* para);
+l_extern void l_plat_threadsleep(uright_int us);
+l_extern void l_plat_threadexit();
+l_extern int l_plat_threadjoin(l_thrid* thrid);
 
 #define l_byte ccnauty_byte
 #define l_rune ccnauty_byte
