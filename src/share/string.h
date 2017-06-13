@@ -3,11 +3,11 @@
 #include "thatcore.h"
 
 typedef struct {
-  void* outfile;
+  void* file;
   l_rune* a;
   int capacity;
   int size;
-} l_servicelog;
+} l_logger;
 
 typedef union {
   double f;
@@ -16,24 +16,24 @@ typedef union {
   const void* s;
 } l_value;
 
-void l_slog_func(const void* s) {
-  l_slog_func_impl(s, 0, 0);
+void l_log_func_s(const void* s) {
+  l_log_func_impl(s, 0, 0);
 }
 
-void l_slog_func_v(const void* fmt, l_value a) {
-  l_slog_func_impl(fmt, 1, a);
+void l_log_func_one(const void* fmt, l_value a) {
+  l_log_func_impl(fmt, 1, a);
 }
 
-void l_slog_func_vv(const void* fmt, l_value a, l_value b) {
-  l_slog_func_impl(fmt, 2, a, b);
+void l_log_func_two(const void* fmt, l_value a, l_value b) {
+  l_log_func_impl(fmt, 2, a, b);
 }
 
-void l_slog_func_vvv(const void* fmt, l_value a, l_value b, l_value c) {
-  l_slog_func_impl(fmt, 3, a, b, c);
+void l_log_func_three(const void* fmt, l_value a, l_value b, l_value c) {
+  l_log_func_impl(fmt, 3, a, b, c);
 }
 
-void l_slog_func_vvvv(const void* fmt, l_value a, l_value b, l_value c, l_value d) {
-  l_slog_func_impl(fmt, 4, a, b, c, d);
+void l_log_func_four(const void* fmt, l_value a, l_value b, l_value c, l_value d) {
+  l_log_func_impl(fmt, 4, a, b, c, d);
 }
 
 #define L_FORMAT_HEX     0x01000000
@@ -51,16 +51,16 @@ void l_slog_func_vvvv(const void* fmt, l_value a, l_value b, l_value c, l_value 
 #define L_FORMAT_REVERSE 0x00008000
 #define L_FORMAT_MASKS   0xff808000
 
-void l_slog_print_reverse(l_servicelog* l, const l_rune* s, const l_rune* e) {
+void l_log_string_reverse(l_logger* l, const l_rune* s, const l_rune* e) {
   if (l->capacity - l->size <= e - s) {
-    l_slog_flush(log);
+    l_log_flush(l);
   }
   while (e > s) {
     l->a[l->size++] = *(--e);
   }
 }
 
-void l_slog_print_string(l_servicelog* log, l_rune* a, l_rune* p, l_umedit flags) {
+void l_log_string(l_logger* log, l_rune* a, l_rune* p, l_umedit flags) {
   l_rune fill = l_cast(l_rune, flags & 0xff);
   int width = ((flags & 0x7f00) >> 8);
   int reverse = (flags & L_FORMAT_REVERSE) != 0;
@@ -88,42 +88,42 @@ void l_slog_print_string(l_servicelog* log, l_rune* a, l_rune* p, l_umedit flags
   }
 
   if (reverse) {
-    l_slog_print_reverse(log, a, p);
+    l_log_print_reverse(log, a, p);
   } else {
-    l_slog_print(log, a, p);
+    l_log_print(log, a, p);
   }
 }
 
-void l_slog_printl(l_servicelog* self, const l_rune* s, int len) {
+void l_log_printl(l_logger* self, const l_rune* s, int len) {
 
 }
 
-void l_slog_printe(l_servicelog* self, const l_rune* start, const l_rune* end) {
-  l_slog_printl(self, start, end - start);
+void l_log_printe(l_logger* self, const l_rune* start, const l_rune* end) {
+  l_log_printl(self, start, end - start);
 }
 
-void l_slog_printc(l_servicelog* self, const void* s) {
-  l_slog_printl(self, s, strlen(s));
+void l_log_printc(l_logger* self, const void* s) {
+  l_log_printl(self, s, strlen(s));
 }
 
-void l_slog_l(l_servicelog* log, const rune* s, int len, l_umedit flags) {
+void l_log_l(l_logger* log, const rune* s, int len, l_umedit flags) {
   int width = ((flags & 0x7f00) >> 8);
   if (len >= width) {
-    l_slog_printl(log, s, len);
+    l_log_printl(log, s, len);
   } else {
     l_rune a[128];
     l_copyl(s, len, a);
-    l_slog_print_string(log, a, a + len, flags);
+    l_log_print_string(log, a, a + len, flags);
   }
 }
 
-void l_slog_f(l_servicelog* log, double a, l_umedit flags) {
+void l_log_f(l_logger* log, double a, l_umedit flags) {
 
 }
 
 static const l_rune* l_hex_runes[] = {"0123456789abcdef", "0123456789ABCDEF"};
 
-void l_slog_u(l_servicelog* log, l_uinteger a, l_umedit flags) {
+void l_log_u(l_logger* log, l_uinteger a, l_umedit flags) {
   /* 64-bit unsigned int max value 18446744073709552046 (20 runes) */
   l_rune a[127];
   l_rune basechar = 0;
@@ -209,56 +209,56 @@ void l_slog_u(l_servicelog* log, l_uinteger a, l_umedit flags) {
     }
   }
 
-  l_slog_print_string(log, a, p, flags | L_FORMAT_REVERSE);
+  l_log_print_string(log, a, p, flags | L_FORMAT_REVERSE);
 }
 
-void l_slog_s(l_servicelog* log, const void* a, l_umedit flags) {
-  l_slog_l(log, l_str(a), strlen(l_cast(char*)a), flags);
+void l_log_s(l_logger* log, const void* a, l_umedit flags) {
+  l_log_l(log, l_str(a), strlen(l_cast(char*)a), flags);
 }
 
-void l_slog_i(l_servicelog* log, l_integer a, l_umedit flags) {
+void l_log_i(l_logger* log, l_integer a, l_umedit flags) {
   l_uinteger n = a;
   if (a < 0) {
     n = (-a);
     flags |= L_FORMAT_NEGSIGN;
   }
-  l_slog_u(log, n, flags);
+  l_log_u(log, n, flags);
 }
 
-void l_slog_c(l_servicelog* log, l_uinteger a, l_umedit flags) {
+void l_log_c(l_logger* log, l_uinteger a, l_umedit flags) {
 
 }
 
-void l_slog_t(l_servicelog* log, l_uinteger a, l_umedit flags) {
+void l_log_t(l_logger* log, l_uinteger a, l_umedit flags) {
   if (a) {
-    l_slog_l(log, "true", 4, flags);
+    l_log_l(log, "true", 4, flags);
   } else {
-    l_slog_l(log, "false", 5, flags);
+    l_log_l(log, "false", 5, flags);
   }
 }
 
-void l_slog_w(l_servicelog* log, const void* a, l_umedit flags) {
+void l_log_w(l_logger* log, const void* a, l_umedit flags) {
   const l_from* s = l_cast(const l_from*, a);
-  l_slog_l(log, s->start, s->end - s->start, flags);
+  l_log_l(log, s->start, s->end - s->start, flags);
 }
 
-static int l_slog_level = 2;
+static int l_log_level = 2;
 
-void l_slog_func_impl(const char* tag, const void* fmt, int n, ...) {
+void l_log_func_impl(const char* tag, const void* fmt, int n, ...) {
   int nfmt = 0, level = tag[0] - '0';
   const l_rune* prev = l_str(fmt);
   const l_rune* cur = prev;
-  l_servicelog* log = 0;
+  l_logger* log = 0;
   l_umedit flags = 0, width = 0;
   int fmtend = 0, ch = 0;
   va_list vl;
 
-  if (level > l_slog_level || !fmt) return 0;
+  if (level > l_log_level || !fmt) return 0;
 
   log = l_service_log();
 
   if (n <= 0) {
-    l_slog_cstring(log, fmt);
+    l_log_cstring(log, fmt);
     return;
   }
 
@@ -270,7 +270,7 @@ void l_slog_func_impl(const char* tag, const void* fmt, int n, ...) {
       continue;
     }
 
-    l_slog_printe(log, prev, cur);
+    l_log_printe(log, prev, cur);
     prev = cur;
     if (nfmt >= n) {
       break;
@@ -346,31 +346,31 @@ ParseFormat:
       goto ParseFormat;
     case 's': case 'S':
       ++nfmt;
-      l_slog_s(log, va_arg(vl, l_value).s, flags);
+      l_log_cstring(log, va_arg(vl, l_value).s, flags);
       break;
     case 'f': case 'F':
       ++nfmt;
-      l_slog_f(log, va_arg(vl, l_value).f, flags);
+      l_log_float(log, va_arg(vl, l_value).f, flags);
       break;
     case 'u': case 'U':
       ++nfmt;
-      l_slog_u(log, va_arg(vl, l_value).u, flags);
+      l_log_uinteger(log, va_arg(vl, l_value).u, flags);
       break;
     case 'i': case 'I':
       ++nfmt;
-      l_slog_i(log, va_arg(vl, l_value).i, flags);
+      l_log_integer(log, va_arg(vl, l_value).i, flags);
       break;
-    case 'w': case 'W':
+    case 'm': case 'M':
       ++nfmt;
-      l_slog_w(log, va_arg(vl, l_value).s, flags);
+      l_log_sfrom(log, va_arg(vl, l_value).s, flags);
       break;
     case 'c': case 'C':
       ++nfmt;
-      l_slog_c(log, va_arg(vl, l_value).u, flags);
+      l_log_char(log, va_arg(vl, l_value).u, flags);
       break;
     case 't': cast 'T':
       ++nfmt;
-      l_slog_t(log, va_arg(vl, l_value).u, flags);
+      l_log_true(log, va_arg(vl, l_value).u, flags);
       break;
     case 'B':
       flags |= L_FORMAT_UPPER;
@@ -378,7 +378,7 @@ ParseFormat:
     case 'b':
       flags |= L_FORMAT_BIN;
       ++nfmt;
-      l_slog_u(log, va_arg(vl, l_value).u, flags);
+      l_log_uinteger(log, va_arg(vl, l_value).u, flags);
       break;
     case 'O':
       flags |= L_FORMAT_UPPER;
@@ -386,7 +386,7 @@ ParseFormat:
     case 'o':
       flags |= L_FORMAT_OCT;
       ++nfmt;
-      l_slog_u(log, va_arg(vl, l_value).u, flags);
+      l_log_uinteger(log, va_arg(vl, l_value).u, flags);
       break;
     case 'X': case 'P':
       flags |= L_FORMAT_UPPER;
@@ -394,7 +394,7 @@ ParseFormat:
     case 'x': case 'p':
       flags |= L_FORMAT_HEX;
       ++nfmt;
-      l_slog_u(log, va_arg(vl, l_value).u. flags);
+      l_log_uinteger(log, va_arg(vl, l_value).u. flags);
       break;
     case 0:
       fmtend = 1;
@@ -423,7 +423,7 @@ ParseFormat:
   va_end(vl);
 
   if (prev < cur) {
-    l_slog_printe(log, prev, cur);
+    l_log_string(log, prev, cur);
   }
 }
 
