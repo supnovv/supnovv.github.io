@@ -1,9 +1,9 @@
-#define CCLIB_AUTOCONF_TOOL
-#include "ccprefix.h"
+#define L_CORE_AUTO_CONFIG
+#include "l_prefix.h"
 #include "plationf.h"
 #include "platsock.h"
 
-#if defined(CC_OS_WINDOWS)
+#if defined(L_PLAT_WINDOWS)
 #define UNICODE
 #define _UNICODE
 #define WIN32_LEAN_AND_MEAN
@@ -21,275 +21,231 @@
 #include <time.h>
 #include <stdlib.h>
 #include <stddef.h>
-#define byte unsigned char
+#define l_byte unsigned char
 
-#if defined(CC_OS_WINDOWS)
+#if defined(L_PLAT_WINDOWS)
 /* window platform */
 #else
-int ccmutexbytes = sizeof(pthread_mutex_t);
-int ccrwlockbytes = sizeof(pthread_rwlock_t);
-int cccondvbytes = sizeof(pthread_cond_t);
-int ccthkeybytes = sizeof(pthread_key_t);
-int ccthridbytes = sizeof(pthread_t);
+int l_mutex_size = sizeof(pthread_mutex_t);
+int l_rwlock_size = sizeof(pthread_rwlock_t);
+int l_condv_size = sizeof(pthread_cond_t);
+int l_thrkey_size = sizeof(pthread_key_t);
+int l_thrid_size = sizeof(pthread_t);
 #endif
 
-static void ccloge(const void* fmt, ...) {
-  const byte* p = (const byte*)fmt;
+static void l_log_e(const void* fmt, ...) {
+  const l_byte* p = (const l_byte*)fmt;
   va_list args;
   for (; *p; ++p) {
     if (*p != '%') continue;
     if (*(p+1) == '%' || *(p+1) == 's') continue;
-    ccloge("format invalid: %s", fmt);
+    l_log_e("format invalid: %s", fmt);
     return;
   }
   fprintf(stdout, "[E] ");
   va_start(args, fmt);
   vfprintf(stdout, (const char*)fmt, args);
   va_end(args);
-  fprintf(stdout, CCNEWLINE);
+  fprintf(stdout, L_NEWLINE);
 }
 
-static int ccwriteline(FILE* self, const void* fmt, ...) {
+static int l_write_line(FILE* self, const void* fmt, ...) {
   va_list args;
   int sz = 0;
   if (!self || !fmt) return 0;
   va_start(args, fmt);
   sz = vfprintf(self, (const char*)fmt, args);
   va_end(args);
-  if (sz > 0) fprintf(self, CCNEWLINE);
-  else ccloge("vfprintf %s", strerror(errno));
+  if (sz > 0) fprintf(self, L_NEWLINE);
+  else l_log_e("vfprintf %s", strerror(errno));
   return sz;
 }
 
-union ccbyteorder {
+typedef union {
   unsigned char c[sizeof(unsigned long)];
   unsigned long i;
-};
+} l_byteorder;
 
 int main(void) {
-  union ccbyteorder data;
+  l_byteorder data;
   FILE* file = fopen("autoconf.h", "wb");
-  if (!file) { ccloge("fopen autoconf.h %s", strerror(errno)); return 1; }
-  ccwriteline(file, "#ifndef CCLIB_AUTOCONF_H_%s#define CCLIB_AUTOCONF_H_", CCNEWLINE);
-  ccwriteline(file, "#define _CRT_SECURE_NO_WARNINGS%s", CCNEWLINE);
+  if (!file) { l_log_e("fopen autoconf.h %s", strerror(errno)); return 1; }
+  l_write_line(file, "#ifndef l_autoconf_lib_h%s#define l_autoconf_lib_h", L_NEWLINE);
+  l_write_line(file, "#define _CRT_SECURE_NO_WARNINGS%s", L_NEWLINE);
 
-  ccwriteline(file, "/* platform bits */");
-  ccwriteline(file, "#undef CC_PLAT_32BIT");
-  ccwriteline(file, "#undef CC_PLAT_64BIT");
+  l_write_line(file, "/* platform bits */");
+  l_write_line(file, "#undef L_PLAT_32BIT");
+  l_write_line(file, "#undef L_PLAT_64BIT");
   if (sizeof(void*) == 4) {
-    ccwriteline(file, "#define CC_PLAT_32BIT");
+    l_write_line(file, "#define L_PLAT_32BIT");
   } else if (sizeof(void*) == 8) {
-    ccwriteline(file, "#define CC_PLAT_64BIT");
+    l_write_line(file, "#define L_PLAT_64BIT");
   } else {
-    ccwriteline(file, "/* unsupported %d-bit platform */", sizeof(void*)*8);
+    l_write_line(file, "/* unsupported %d-bit platform */", sizeof(void*)*8);
   }
 
-  ccwriteline(file, "%s/* byteorder */", CCNEWLINE);
+  l_write_line(file, "%s/* byteorder */", L_NEWLINE);
   if (sizeof(unsigned long) < 4) {
-    ccloge("the size of long is less than 4-byte");
-    ccwriteline(file, "#error \"the size of long is less than 4-byte\"");
+    l_log_e("the size of long is less than 4-byte");
+    l_write_line(file, "#error \"the size of long is less than 4-byte\"");
   }
-  ccwriteline(file, "#undef CC_LIT_ENDIAN /* lower byte is stored at lower address */");
-  ccwriteline(file, "#undef CC_BIG_ENDIAN /* lower byte is stored at higher address */");
+  l_write_line(file, "#undef L_LIT_ENDIAN /* lower byte is stored at lower address */");
+  l_write_line(file, "#undef L_BIG_ENDIAN /* lower byte is stored at higher address */");
   data.i = 0xabcdef;
   if (data.c[0] == 0xef) {
-    ccwriteline(file, "#define CC_LIT_ENDIAN");
+    l_write_line(file, "#define L_LIT_ENDIAN");
     if (data.c[1] != 0xcd || data.c[2] != 0xab || data.c[3] != 0x00) {
-      ccloge("little endian test failed");
-      ccwriteline(file, "#error \"little endian test failed\"");
+      l_log_e("little endian test failed");
+      l_write_line(file, "#error \"little endian test failed\"");
     }
   }
   else {
-    ccwriteline(file, "#define CC_BIG_ENDIAN");
+    l_write_line(file, "#define L_BIG_ENDIAN");
     if (data.c[0] != 0x00 || data.c[1] != 0xab || data.c[2] != 0xcd || data.c[3] != 0xef) {
-      ccloge("big endian test failed");
-      ccwriteline(file, "#error \"big endian test failed\"");
+      l_log_e("big endian test failed");
+      l_write_line(file, "#error \"big endian test failed\"");
     }
   }
 
-  ccwriteline(file, "%s/* false true nauty_bool nauty_char nauty_byte uoctet_int soctet_int */", CCNEWLINE);
-  ccwriteline(file, "#undef false");
-  ccwriteline(file, "#undef true");
-  ccwriteline(file, "#undef nauty_bool");
-  ccwriteline(file, "#undef nauty_char");
-  ccwriteline(file, "#undef nauty_byte");
-  ccwriteline(file, "#undef uoctet_int");
-  ccwriteline(file, "#undef soctet_int");
-  ccwriteline(file, "#undef ccoctet_int");
-  ccwriteline(file, "#undef ccoctet_uint");
-  ccwriteline(file, "#undef ccnauty_byte");
-  ccwriteline(file, "#undef ccnauty_char");
-  ccwriteline(file, "#define false 0");
-  ccwriteline(file, "#define true 1");
+  l_write_line(file, "%s/* false true l_rune l_byte l_sbyte */", L_NEWLINE);
+  l_write_line(file, "#undef false");
+  l_write_line(file, "#undef true");
+  l_write_line(file, "#undef l_rune");
+  l_write_line(file, "#undef l_byte");
+  l_write_line(file, "#undef l_sbyte");
+  l_write_line(file, "#define false 0");
+  l_write_line(file, "#define true 1");
   if (sizeof(unsigned char) == 1 && sizeof(signed char) == 1) {
-    ccwriteline(file, "#define nauty_bool unsigned char");
-    ccwriteline(file, "#define nauty_char unsigned char");
-    ccwriteline(file, "#define nauty_byte unsigned char");
-    ccwriteline(file, "#define uoctet_int unsigned char");
-    ccwriteline(file, "#define soctet_int signed char");
-    ccwriteline(file, "#define ccoctet_int signed char");
-    ccwriteline(file, "#define ccoctet_uint unsigned char");
-    ccwriteline(file, "#define ccnauty_byte unsigned char");
-    ccwriteline(file, "#define ccnauty_char unsigned char");
+    l_write_line(file, "#define l_rune unsigned char");
+    l_write_line(file, "#define l_byte unsigned char");
+    l_write_line(file, "#define l_sbyte signed char");
   } else {
-    ccloge("the size of char shall be 1-byte");
-    ccwriteline(file, "#error \"the size of char shall be 1-byte\"");
+    l_log_e("the size of char shall be 1-byte");
+    l_write_line(file, "#error \"the size of char shall be 1-byte\"");
   }
 
-  ccwriteline(file, "%s/* sshort_int ushort_int - 16-bit */", CCNEWLINE);
-  ccwriteline(file, "#undef sshort_int");
-  ccwriteline(file, "#undef ushort_int");
-  ccwriteline(file, "#undef ccshort_int");
-  ccwriteline(file, "#undef ccshort_uint");
+  l_write_line(file, "%s/* l_short l_ushort - 16-bit */", L_NEWLINE);
+  l_write_line(file, "#undef l_short");
+  l_write_line(file, "#undef l_ushort");
   if (sizeof(unsigned short) == 2 && sizeof(short) == 2) {
-    ccwriteline(file, "#define sshort_int short");
-    ccwriteline(file, "#define ushort_int unsigned short");
-    ccwriteline(file, "#define ccshort_int short");
-    ccwriteline(file, "#define ccshort_uint unsigned short");
+    l_write_line(file, "#define l_short short");
+    l_write_line(file, "#define l_ushort unsigned short");
   } else if (sizeof(unsigned int) == 2 && sizeof(int) == 2) {
-    ccwriteline(file, "#define sshort_int int");
-    ccwriteline(file, "#define ushort_int unsigned int");
-    ccwriteline(file, "#define ccshort_int int");
-    ccwriteline(file, "#define ccshort_uint unsigned int");
+    l_write_line(file, "#define l_short int");
+    l_write_line(file, "#define l_ushort unsigned int");
   } else {
-    ccloge("no 16-bit integer type found");
-    ccwriteline(file, "#error \"no 16-bit integer type found\"");
+    l_log_e("no 16-bit integer type found");
+    l_write_line(file, "#error \"no 16-bit integer type found\"");
   }
 
-  ccwriteline(file, "%s/* smedit_int umedit_int - 32-bit */", CCNEWLINE);
-  ccwriteline(file, "#undef smedit_int");
-  ccwriteline(file, "#undef umedit_int");
-  ccwriteline(file, "#undef ccmedit_int");
-  ccwriteline(file, "#undef ccmedit_uint");
+  l_write_line(file, "%s/* l_medit l_umedit - 32-bit */", L_NEWLINE);
+  l_write_line(file, "#undef l_medit");
+  l_write_line(file, "#undef l_umedit");
   if (sizeof(unsigned int) == 4 && sizeof(int) == 4) {
-    ccwriteline(file, "#define smedit_int int");
-    ccwriteline(file, "#define umedit_int unsigned int");
-    ccwriteline(file, "#define ccmedit_int int");
-    ccwriteline(file, "#define ccmedit_uint unsigned int");
+    l_write_line(file, "#define l_medit int");
+    l_write_line(file, "#define l_umedit unsigned int");
   } else if (sizeof(unsigned long) == 4 && sizeof(long) == 4) {
-    ccwriteline(file, "#define smedit_int long");
-    ccwriteline(file, "#define umedit_int unsigned long");
-    ccwriteline(file, "#define ccmedit_int long");
-    ccwriteline(file, "#define ccmedit_uint unsigned long");
+    l_write_line(file, "#define l_medit long");
+    l_write_line(file, "#define l_umedit unsigned long");
   } else {
-    ccloge("no 32-bit integer type found");
-    ccwriteline(file, "#error \"no 32-bit integer type found\"");
+    l_log_e("no 32-bit integer type found");
+    l_write_line(file, "#error \"no 32-bit integer type found\"");
   }
 
-  ccwriteline(file, "%s/* sright_int uright_int - 64-bit */", CCNEWLINE);
-  ccwriteline(file, "#undef sright_int");
-  ccwriteline(file, "#undef uright_int");
-  ccwriteline(file, "#undef ccnauty_int");
-  ccwriteline(file, "#undef ccnauty_uint");
-  if (sizeof(unsigned long) == 8 && sizeof(long) == 8) {
-    ccwriteline(file, "#define sright_int long");
-    ccwriteline(file, "#define ccnauty_int long");
-    ccwriteline(file, "#define ccnauty_uint unsigned long");
-    ccwriteline(file, "#define uright_int unsigned long");
+  l_write_line(file, "%s/* l_integer l_uinteger - 64-bit */", L_NEWLINE);
+  l_write_line(file, "#undef l_integer");
+  l_write_line(file, "#undef l_uinteger");
+  if (sizeof(unsigned int) == 8 && sizeof(int) == 8) {
+    l_write_line(file, "#define l_integer int");
+    l_write_line(file, "#define l_uinteger unsigned int");
+  } else if (sizeof(unsigned long) == 8 && sizeof(long) == 8) {
+    l_write_line(file, "#define l_integer long");
+    l_write_line(file, "#define l_uinteger unsigned long");
   } else if (sizeof(unsigned long long) == 8 && sizeof(long long) == 8) {
-    ccwriteline(file, "#define sright_int long long");
-    ccwriteline(file, "#define ccnauty_int long long");
-    ccwriteline(file, "#define ccnauty_uint unsigned long long");
-    ccwriteline(file, "#define uright_int unsigned long long");
+    l_write_line(file, "#define l_integer long long");
+    l_write_line(file, "#define l_uinteger unsigned long long");
   } else {
-    ccloge("no 64-bit integer type found");
-    ccwriteline(file, "#error \"no 64-bit integer type found\"");
+    l_log_e("no 64-bit integer type found");
+    l_write_line(file, "#error \"no 64-bit integer type found\"");
   }
 
-  ccwriteline(file, "%s/* signed_ptr unsign_ptr - pointer-size integer */", CCNEWLINE);
-  ccwriteline(file, "#undef signed_ptr");
-  ccwriteline(file, "#undef unsign_ptr");
-  ccwriteline(file, "#undef ccnauty_iptr");
-  ccwriteline(file, "#undef ccnauty_uptr");
+  l_write_line(file, "%s/* l_intptr l_uintptr - pointer-size integer */", L_NEWLINE);
+  l_write_line(file, "#undef l_intptr");
+  l_write_line(file, "#undef l_uintptr");
   if (sizeof(short) == sizeof(void*)) {
-    ccwriteline(file, "#define signed_ptr short");
-    ccwriteline(file, "#define unsign_ptr unsigned short");
-    ccwriteline(file, "#define ccnauty_iptr");
-    ccwriteline(file, "#define ccnauty_uptr");
+    l_write_line(file, "#define l_intptr short");
+    l_write_line(file, "#define l_uintptr unsigned short");
   } else if (sizeof(int) == sizeof(void*)) {
-    ccwriteline(file, "#define signed_ptr int");
-    ccwriteline(file, "#define unsign_ptr unsigned int");
-    ccwriteline(file, "#define ccnauty_iptr int");
-    ccwriteline(file, "#define ccnauty_uptr unsigned int");
+    l_write_line(file, "#define l_intptr int");
+    l_write_line(file, "#define l_uintptr unsigned int");
   } else if (sizeof(long) == sizeof(void*)) {
-    ccwriteline(file, "#define signed_ptr long");
-    ccwriteline(file, "#define unsign_ptr unsigned long");
-    ccwriteline(file, "#define ccnauty_iptr long");
-    ccwriteline(file, "#define ccnauty_uptr unsigned long");
+    l_write_line(file, "#define l_intptr long");
+    l_write_line(file, "#define l_uintptr unsigned long");
   } else if (sizeof(long long) == sizeof(void*)) {
-    ccwriteline(file, "#define signed_ptr long long");
-    ccwriteline(file, "#define unsign_ptr unsigned long long");
-    ccwriteline(file, "#define ccnauty_iptr long long");
-    ccwriteline(file, "#define ccnauty_uptr unsigned long long");
+    l_write_line(file, "#define l_intptr long long");
+    l_write_line(file, "#define l_uintptr unsigned long long");
   } else {
-    ccloge("no pointer-size integer type found");
-    ccwriteline(file, "#error \"no pointer-size integer type found\"");
+    l_log_e("no pointer-size integer type found");
+    l_write_line(file, "#error \"no pointer-size integer type found\"");
   }
 
-  ccwriteline(file, "%s/* handle_int */", CCNEWLINE);
-  ccwriteline(file, "#undef handle_int");
-  ccwriteline(file, "#undef cchandle_int");
-  ccwriteline(file, "#define cchandle_int handle_int");
-  if (LLIONFHDL_TYPE_BYTES == sizeof(short)) {
-    ccwriteline(file, "#define handle_int %s", LLIONFHDL_TYPE_IS_SIGNED ? "short" : "unsigned short");
-  } else if (LLIONFHDL_TYPE_BYTES == sizeof(int)) {
-    ccwriteline(file, "#define handle_int %s", LLIONFHDL_TYPE_IS_SIGNED ? "int" : "unsigned int");
-  } else if (LLIONFHDL_TYPE_BYTES == sizeof(long)) {
-    ccwriteline(file, "#define handle_int %s", LLIONFHDL_TYPE_IS_SIGNED ? "long" : "unsigned long");
-  } else if (LLIONFHDL_TYPE_BYTES == sizeof(long long)) {
-    ccwriteline(file, "#define handle_int %s", LLIONFHDL_TYPE_IS_SIGNED ? "long long" : "unsigned long long");
+  l_write_line(file, "%s/* l_handle */", L_NEWLINE);
+  l_write_line(file, "#undef l_handle");
+  if (L_HANDLE_TYPE_SIZE == sizeof(short)) {
+    l_write_line(file, "#define l_handle %s", L_HANDLE_TYPE_IS_SIGNED ? "short" : "unsigned short");
+  } else if (L_HANDLE_TYPE_SIZE == sizeof(int)) {
+    l_write_line(file, "#define l_handle %s", L_HANDLE_TYPE_IS_SIGNED ? "int" : "unsigned int");
+  } else if (L_HANDLE_TYPE_SIZE == sizeof(long)) {
+    l_write_line(file, "#define l_handle %s", L_HANDLE_TYPE_IS_SIGNED ? "long" : "unsigned long");
+  } else if (L_HANDLE_TYPE_SIZE == sizeof(long long)) {
+    l_write_line(file, "#define l_handle %s", L_HANDLE_TYPE_IS_SIGNED ? "long long" : "unsigned long long");
   } else {
-    ccloge("no handle-size integer type found");
-    ccwriteline(file, "#error \"no handle-size integer type found\"");
+    l_log_e("no handle-size integer type found");
+    l_write_line(file, "#error \"no handle-size integer type found\"");
   }
 
-  ccwriteline(file, "%s/* slarge_int ularge_int - 128-bit */", CCNEWLINE);
-  ccwriteline(file, "%s/* cclarge_int cclarge_uint - 128-bit */", CCNEWLINE);
+  l_write_line(file, "%s/* l_large l_ularge - 128-bit */", L_NEWLINE);
 
-  ccwriteline(file, "%s/* float point */", CCNEWLINE);
-  ccwriteline(file, "#undef speed_real");
-  ccwriteline(file, "#undef short_real");
-  ccwriteline(file, "#undef right_real");
-  ccwriteline(file, "#undef large_real");
-  ccwriteline(file, "#define speed_real float");
-  ccwriteline(file, "#define short_real float");
-  ccwriteline(file, "#define right_real double");
-  ccwriteline(file, "#define large_real long double");
+  l_write_line(file, "%s/* float point */", L_NEWLINE);
+  l_write_line(file, "#undef l_float");
+  l_write_line(file, "#define l_float float");
 
-  ccwriteline(file, "%s/* platform specific */", CCNEWLINE);
-  ccwriteline(file, "#undef CC_MUTEX_BYTES");
-  ccwriteline(file, "#undef CC_RWLOCK_BYTES");
-  ccwriteline(file, "#undef CC_CONDV_BYTES");
-  ccwriteline(file, "#undef CC_THKEY_BYTES");
-  ccwriteline(file, "#undef CC_THRID_BYTES");
-  ccwriteline(file, "#define CC_MUTEX_BYTES %d", ccmutexbytes);
-  ccwriteline(file, "#define CC_RWLOCK_BYTES %d", ccrwlockbytes);
-  ccwriteline(file, "#define CC_CONDV_BYTES %d", cccondvbytes);
-  ccwriteline(file, "#define CC_THKEY_BYTES %d", ccthkeybytes);
-  ccwriteline(file, "#define CC_THRID_BYTES %d", ccthridbytes);
-  ccwriteline(file, "#define CC_IONFMGR_BYTES %d", LLIONFMGR_TYPE_BYTES);
-  ccwriteline(file, "#define CC_SOCKADDR_BYTES %d", LLSOCKADDR_TYPE_BYTES);
+  l_write_line(file, "%s/* platform specific */", L_NEWLINE);
+  l_write_line(file, "#undef L_MUTEX_SIZE");
+  l_write_line(file, "#undef L_RWLOCK_SIZE");
+  l_write_line(file, "#undef L_CONDV_SIZE");
+  l_write_line(file, "#undef L_THKEY_SIZE");
+  l_write_line(file, "#undef L_THRID_SIZE");
+  l_write_line(file, "#undef L_IONFMGR_SIZE");
+  l_write_line(file, "#undef L_SOCKADDR_SIZE");
+  l_write_line(file, "#define L_MUTEX_SIZE %d", l_mutex_size);
+  l_write_line(file, "#define L_RWLOCK_SIZE %d", l_rwlock_size);
+  l_write_line(file, "#define L_CONDV_SIZE %d", l_condv_size);
+  l_write_line(file, "#define L_THKEY_SIZE %d", l_thrkey_size);
+  l_write_line(file, "#define L_THRID_SIZE %d", l_thrid_size);
+  l_write_line(file, "#define L_IONFMGR_SIZE %d", L_IONFMGR_TYPE_SIZE);
+  l_write_line(file, "#define L_SOCKADDR_SIZE %d", L_SOCKADDR_TYPE_SIZE);
 
-  ccwriteline(file, "%s/* char %d-bit */", CCNEWLINE, sizeof(char)*8);
-  ccwriteline(file, "/* short %d-bit */", sizeof(short)*8);
-  ccwriteline(file, "/* int %d-bit */", sizeof(int)*8);
-  ccwriteline(file, "/* long %d-bit */", sizeof(long)*8);
-  ccwriteline(file, "/* long long %d-bit */", sizeof(long long)*8);
-  ccwriteline(file, "/* void* %d-bit */", sizeof(void*)*8);
-  ccwriteline(file, "/* size_t %d-bit */", sizeof(size_t)*8);
-  ccwriteline(file, "/* time_t %d-bit */", sizeof(time_t)*8);
-  ccwriteline(file, "/* clock_t %d-bit */", sizeof(clock_t)*8);
-  ccwriteline(file, "/* ptrdiff_t %d-bit */", sizeof(ptrdiff_t)*8);
-  ccwriteline(file, "/* CLOCKS_PER_SEC %d */", CLOCKS_PER_SEC);
-  ccwriteline(file, "/* BUFSIZ %d */", BUFSIZ);
-  ccwriteline(file, "/* EOF %d */", EOF);
-  ccwriteline(file, "/* FILENAME_MAX %d */", FILENAME_MAX);
-  ccwriteline(file, "/* FOPEN_MAX %d */", FOPEN_MAX);
-  ccwriteline(file, "/* TMP_MAX %d */", TMP_MAX);
-  ccwriteline(file, "/* L_tmpnam %d */", L_tmpnam);
-  ccwriteline(file, "/* RAND_MAX %d */", RAND_MAX);
+  l_write_line(file, "%s/* char %d-bit */", L_NEWLINE, sizeof(char)*8);
+  l_write_line(file, "/* short %d-bit */", sizeof(short)*8);
+  l_write_line(file, "/* int %d-bit */", sizeof(int)*8);
+  l_write_line(file, "/* long %d-bit */", sizeof(long)*8);
+  l_write_line(file, "/* long long %d-bit */", sizeof(long long)*8);
+  l_write_line(file, "/* void* %d-bit */", sizeof(void*)*8);
+  l_write_line(file, "/* size_t %d-bit */", sizeof(size_t)*8);
+  l_write_line(file, "/* time_t %d-bit */", sizeof(time_t)*8);
+  l_write_line(file, "/* clock_t %d-bit */", sizeof(clock_t)*8);
+  l_write_line(file, "/* ptrdiff_t %d-bit */", sizeof(ptrdiff_t)*8);
+  l_write_line(file, "/* CLOCKS_PER_SEC %d */", CLOCKS_PER_SEC);
+  l_write_line(file, "/* BUFSIZ %d */", BUFSIZ);
+  l_write_line(file, "/* EOF %d */", EOF);
+  l_write_line(file, "/* FILENAME_MAX %d */", FILENAME_MAX);
+  l_write_line(file, "/* FOPEN_MAX %d */", FOPEN_MAX);
+  l_write_line(file, "/* TMP_MAX %d */", TMP_MAX);
+  l_write_line(file, "/* L_tmpnam %d */", L_tmpnam);
+  l_write_line(file, "/* RAND_MAX %d */", RAND_MAX);
 
-  ccwriteline(file, "%s#endif /* CCLIB_AUTOCONF_H_ */", CCNEWLINE);
+  l_write_line(file, "%s#endif /* l_autoconf_lib_h */", L_NEWLINE);
   fclose(file);
   return 0;
 }

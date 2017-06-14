@@ -41,6 +41,74 @@ dont use "get" if the words in the name is two or more.
 creation style - use return value to create the structure
 access style - use the 1st parameter named 'self' to access or modify */
 
+#define L_MKSTR(a) #a
+#define L_X_MKSTR(a) L_MKSTR(a)
+#define L_MKFLSTR __FILE__ " (" L_X_MKSTR(__LINE__) ") "
+
+#define l_assert(e) l_assert_func((e), (#e), L_MKFLSTR)                           /* 0:assert */
+#define l_log_e(fmt, ...) l_logger_func("1[E] " L_MKFLSTR, (fmt), ## __VA_ARGS__) /* 1:error */
+#define l_log_w(fmt, ...) l_logger_func("2[W] " L_MKFLSTR, (fmt), ## __VA_ARGS__) /* 2:warning */
+#define l_log_i(fmt, ...) l_logger_func("3[I] " L_MKFLSTR, (fmt), ## __VA_ARGS__) /* 3:important */
+#define l_log_d(fmt, ...) l_logger_func("4[D] " L_MKFLSTR, (fmt), ## __VA_ARGS__) /* 4:debug */
+
+l_extern void l_assert_func(int pass, const void* expr, const void* fileline);
+l_extern int l_logger_func(const void* tag, const void* fmt, ...);
+l_extern void l_set_log_level(int level);
+l_extern int l_get_log_level();
+
+
+void l_assert_func(int pass, const void* expr, const void* fileline) {
+  if (pass) {
+    l_logger_func("4[D] ", "%sassert pass: %s", fileline, expr);
+  } else {
+    l_logger_func("0[E] ", "%sassert fail: %s", fileline, expr);
+  }
+}
+
+static l_integer l_log_level = 2;
+int l_logger_func(const void* tag, const void* fmt, ...) {
+  int n = 0, level = tag[0] - '0';
+  const l_byte* p = l_cast(const l_byte*, fmt);
+  int printed = 0;
+  if (level > l_log_level) return 0;
+  for (; *p; ++p) {
+    if (*p != '%') continue;
+    if (*(p+1) == 0) {
+      l_loge("l_logger_func invalid (1) %s", fmt);
+      return 0;
+    }
+    p += 1;
+    if (*p == '%' || *p == 's' || *p == 'p') continue;
+    l_loge("l_logger_func invalid (2) %s", fmt);
+    return 0;
+  }
+  if ((n = (int)fprintf(stdout, "%s", tag + 1)) < 0) {
+    n = 0;
+  }
+  if (fmt) {
+    va_list args;
+    va_start(args, fmt);
+    if ((printed = vfprintf(stdout, (const char*)fmt, args)) > 0) {
+      n += (int)printed;
+    }
+    va_end(args);
+  }
+  if ((printed = fprintf(stdout, CCNEWLINE)) > 0) {
+    n += (int)printed;
+  }
+  return n;
+}
+
+void l_setloglevel(int level) {
+  l_loglevel = level;
+}
+
+int l_getloglevel() {
+  return l_loglevel;
+}
+
+
+
 
 #define ccassert(e) ccimplassert((e), #e, __FILE__, __LINE__)          /* 0:assert */
 #define ccloge(fmt, ...) ccimploutput(0, 1, "[E] ", (fmt), ## __VA_ARGS__) /* 1:error */
@@ -128,6 +196,514 @@ _int ccimploutput(struct ccfile* file, _int level, const void* tag, const void* 
   }
   return (uint)sz;
 }
+
+
+
+
+
+
+l_from* l_setfrom(l_from* self, const void* start, l_integer bytes) {
+  *self = l_fromn(start, bytes);
+  return self;
+}
+
+l_dest l_dest(void* start, l_integer bytes) {
+  l_dest dest = {0, 0};
+  if (start && bytes > 0) {
+    size_t n = (size_t)bytes;
+    if ((l_uinteger)n != (l_uinteger)bytes) {
+      l_loge("l_dest size too large %s", l_itos(bytes));
+      return dest;
+    }
+    dest.start = (l_byte*)start;
+    dest.beyond = dest.start + n;
+  }
+  return dest;
+}
+
+l_dest l_destrange(void* start, void* beyond) {
+  l_dest dest = {0, 0};
+  if (start < beyond) {
+    dest.start = (l_byte*)start;
+    dest.beyond = (l_byte*)beyond;
+  }
+  return dest;
+}
+
+const l_dest* l_destheap(const l_heap* heap) {
+  return (const l_dest*)heap;
+}
+
+
+l_heap l_heap_allocrawbuffer(l_integer size) {
+  l_heap heap = {0, 0};
+  size_t bytes;
+  if ((bytes = llgetallocsize(size)) == 0) {
+    l_loge("allocrawbuffer too large %s", l_itos(size));
+    return heap;
+  }
+  /* returned buffer is not initialized */
+  if ((heap.start = (l_byte*)llrawalloc(bytes))) {
+    heap.beyond = heap.start + bytes;
+  }
+  return heap;
+}
+
+l_heap l_heap_alloc(l_integer size) {
+  l_heap heap = l_heap_allocrawbuffer(size);
+  l_zero(heap.start, heap.beyond);
+  return heap;
+}
+
+l_heap l_heap_allocfrom(l_integer size, l_from from) {
+  l_heap heap = l_heap_allocrawbuffer(size);
+  l_byte* beyond = heap.start + l_copyfromptodest(&from, l_destheap(&heap));
+  if (beyond < heap.beyond) {
+    l_zero(beyond, heap.beyond);
+  }
+  return heap;
+}
+
+void l_heap_relloc(l_heap* self, l_integer newsize) {
+  size_t n;
+  void* buffer;
+
+  if (self->start == 0 || (n = llgetallocsize(newsize)) == 0) {
+    l_loge("l_heap_relloc too large %s", l_itos(newsize));
+    l_heap_free(self);
+    return;
+  }
+
+  /* already large enough */
+  if (self->start + n <= self->beyond) {
+    self->beyond = self->start + n;
+    return;
+  }
+
+  /* request size is larger */
+  if ((buffer = llrawrelloc(self->start, n)) == 0) {
+    l_loge("l_heap_relloc failed %s", l_utos(n));
+    return;
+  }
+  l_zero(self->beyond, buffer + n);
+  self->start = (l_byte*)buffer;
+  self->beyond = self->start + n;
+}
+
+void l_heap_free(l_heap* self) {
+  if (self->start == 0) return;
+  free(self->start);
+  self->start = 0;
+  self->beyond = 0;
+}
+
+
+
+static l_integer llcopy(const l_byte* start, size_t n, l_byte* dest) {
+  if (dest + n <= start || dest >= start + n) {
+    memcpy(dest, start, n);
+  } else {
+    memmove(dest, start, n);
+  }
+  if ((l_uinteger)((l_integer)n) != (l_uinteger)n) {
+    l_loge("llcopy size too large %s", l_utos(n));
+  }
+  return (l_integer)n;
+}
+
+l_integer l_copyfromptodest(const l_from* from, const l_dest* dest) {
+  size_t nfrom, ndest;
+  if (from->start >= from->beyond) return 0;
+  if (dest->start >= dest->beyond) return 0;
+  nfrom = from->beyond - from->start;
+  ndest = dest->beyond - dest->start;
+  return llcopy(from->start, (ndest < nfrom ? ndest : nfrom), dest->start);
+}
+
+l_integer l_copyfrom(l_from from, void* dest) {
+  return l_copyfromp(&from, dest);
+}
+
+l_integer l_copyfromp(const l_from* from, void* dest) {
+  if (from->start < from->beyond && dest) {
+    return llcopy(from->start, from->beyond - from->start, (l_byte*)dest);
+  }
+  return 0;
+}
+
+static l_integer llrcopy(const l_byte* start, size_t n, l_byte* dest) {
+  if (dest + n <= start || dest >= start + n) {
+    const l_byte* beyond = start + n;
+    while (beyond-- > start) {
+      *dest++ = *beyond;
+    }
+  } else {
+    l_byte* last = dest + n - 1;
+    memmove(dest, start, n); /* copy content first */
+    while (dest < last) { /* and do reverse */
+      l_byte ch = *dest;
+      *dest++ = *last;
+      *last-- = ch;
+    }
+  }
+  if ((l_uinteger)((l_integer)n) != (l_uinteger)n) {
+    l_loge("llrcopy size too large %s", l_utos(n));
+  }
+  return (l_integer)n;
+}
+
+l_integer l_rcopyfromp(const l_from* from, void* dest) {
+  if (from->start < from->beyond && dest) {
+    return llrcopy(from->start, from->beyond - from->start, (l_byte*)dest);
+  }
+  return 0;
+}
+
+l_integer l_rcopyfromptodest(const l_from* from, const l_dest* dest) {
+  size_t nfrom, ndest;
+  if (from->start >= from->beyond) return 0;
+  if (dest->start >= dest->beyond) return 0;
+  nfrom = from->beyond - from->start;
+  ndest = dest->beyond - dest->start;
+  return llrcopy(from->start, (ndest < nfrom ? ndest : nfrom), dest->start);
+}
+
+typedef struct {
+  l_byte* start;
+  l_byte* end;
+} l_dest;
+
+l_extern l_dest l_heap_alloc(sright_int size);
+l_extern l_dest l_heap_allocrawbuffer(sright_int size);
+l_extern l_dest l_heap_allocfrom(sright_int size, l_from from);
+l_extern void l_heap_relloc(l_heap* self, sright_int newsize);
+l_extern void l_heap_free(l_heap* self);
+
+l_extern l_integer l_copy(const l_byte* fromstart, const l_byte* frombeyond, l_byte* dest);
+l_extern l_integer l_copyn(const l_byte* from, sright_int n, l_byte* dest);
+l_extern l_integer l_copyfrom(l_from from, void* dest);
+l_extern l_integer l_copyfromp(const l_from* from, void* dest);
+l_extern l_integer l_copyfromtodest(l_from from, const l_dest* dest);
+l_extern l_integer l_copyfromptodest(const l_from* from, const l_dest* dest);
+
+l_extern l_integer l_rcopy(const l_byte* fromstart, const l_byte* frombeyond, l_byte* dest);
+l_extern l_integer l_rcopyn(const l_byte* from, l_int n, l_byte* dest);
+l_extern l_integer l_rcopyfrom(l_from from, void* dest);
+l_extern l_integer l_rcopyfromp(const l_from* from, void* dest);
+l_extern l_integer l_rcopyfromtodest(l_from from, const l_dest* dest);
+l_extern l_integer l_rcopyfromptodest(const l_from* from, const l_dest* dest);
+
+l_extern l_from l_fromp(const void* start, const void* beyond);
+l_extern l_from l_fromn(const void* start, l_integer bytes);
+l_extern l_from l_fromcstr(const void* cstr);
+l_extern l_dest l_dest(void* start, l_integer bytes);
+l_extern l_dest l_destrange(void* start, void* beyond);
+
+l_extern l_from* l_setfrom(l_from* self, const void* start, l_integer bytes);
+l_extern l_from* l_setfromcstr(l_from* self, const void* cstr);
+l_extern l_from* l_setfromrange(l_from* self, const void* start, const void* beyond);
+l_extern l_dest* l_setdest(l_dest* self, void* start, l_integer bytes);
+l_extern l_dest* l_setdestrange(l_dest* self, void* start, void* beyond);
+l_extern const l_dest* l_destheap(const l_heap* heap);
+
+/** String **/
+
+#define CCSTRING_SIZEOF 32
+#define CCSTRING_STATIC_CHARS 30
+
+typedef struct l_string {
+  l_heap heap;
+  sright_int len;
+  uoctet_int a[CCSTRING_SIZEOF-sizeof(l_heap)-sizeof(sright_int)-1];
+  uoctet_int flag; /* flag==0xFF ? heap-string : stack-string */
+} l_string; /* a sequence of bytes with zero terminated */
+
+l_extern const char* l_utos(uright_int a);
+l_extern const char* l_itos(sright_int a);
+l_extern l_string l_emptystr();
+l_extern l_string l_strfromu(uright_int a);
+l_extern l_string l_strfromuf(uright_int a, sright_int fmt);
+l_extern l_string l_strfromi(sright_int a);
+l_extern l_string l_strfromif(sright_int a, sright_int fmt);
+
+l_extern l_string l_string_emptystr();
+l_extern sright_int l_string_getlen(const l_string* self);
+l_extern const char* l_string_getcstr(const l_string* self);
+l_extern int l_string_equalcstr(const l_string* self, const void* cstr);
+
+l_extern void l_string_free(l_string* self);
+l_extern void l_string_setempty(l_string* self);
+l_extern void l_string_setcstr(l_string* self, const void* cstr);
+
+l_extern l_from l_string_getfrom(const l_string* s);
+l_extern int l_string_contain(l_from s, nauty_char ch);
+l_extern int l_string_containp(const l_from* s, nauty_char ch);
+
+
+/** String **/
+
+#define LLSMASK 0x0700
+#define LLNSIGN 0x0100
+#define CCPSIGN 0x0200
+#define CCESIGN 0x0400
+#define CCZFILL 0x0800
+#define CCJUSTL 0x1000
+#define CCFORCE 0x2000
+#define CCTOHEX 0x4000
+
+static const l_byte l_hexchars[] = "0123456789abcdef";
+
+static l_integer llutos(l_uinteger n, l_integer minlen, void* to) {
+  /* 64-bit unsigned int max value 18446744073709552046
+     it is 20 characters, can be contained in l_string staticly */
+  l_byte a[CCSTRING_STATIC_CHARS+1] = {0};
+  l_byte* dest = (l_byte*)to;
+  l_uinteger flag = (minlen & 0x7f00);
+  l_integer i = 0, end = 0;
+  if (dest == 0) return 0;
+  if (flag & CCTOHEX) {
+    a[i++] = l_hexchars[n & 0x0f];
+    while ((n >>= 4)) {
+      a[i++] = l_hexchars[n & 0x0f];
+    }
+  } else {
+    a[i++] = (n % 10) + '0';
+    while ((n /= 10)) {
+      a[i++] = (n % 10) + '0';
+    }
+  }
+  minlen = (minlen & 0xff);
+  if (minlen > CCSTRING_STATIC_CHARS) minlen = CCSTRING_STATIC_CHARS;
+  if (flag & LLSMASK) {
+    minlen = (flag & (CCTOHEX | CCFORCE)) ? minlen - 3 : minlen - 1;
+  }
+  if (flag & CCZFILL) {
+    while (i < minlen) a[i++] = '0';
+  }
+  if (flag & (CCTOHEX | CCFORCE)) {
+    a[i++] = 'x';
+    a[i++] = '0';
+  }
+  if (flag & LLSMASK) {
+    a[i++] = (flag & LLNSIGN) ? '-' : ((flag & CCPSIGN) ? '+' : ' ');
+  }
+  if (flag & CCJUSTL) {
+    if (i < minlen && (flag & CCZFILL) == 0) {
+      end = minlen;
+      while (i > 0) a[--end] = a[--i];
+      while (i < end) a[i++] = ' ';
+      i = minlen;
+    }
+  } else { /* default is right justification */
+    if ((flag & CCZFILL) == 0) {
+      while (i < minlen) a[i++] = ' ';
+    }
+  }
+  CCDZONE(
+    l_assert(i <= CCSTRING_STATIC_CHARS);
+  )
+  while(i > 0) *dest++ = a[--i];
+  *dest = 0;
+  return dest - (l_byte*)to;
+}
+
+int l_strequal(l_from a, l_from b) {
+  if (a.beyond - a.start != b.beyond - b.start) return false;
+  while (a.start < a.beyond) {
+    if (*(a.start++) != *(b.start++)) return false;
+  }
+  return true;
+}
+
+l_integer l_strgetlen(const l_string* self) {
+  return (self->flag == 0xFF ? self->len : self->flag);
+}
+
+int l_strisempty(l_string* self) {
+  return l_strgetlen(self) == 0;
+}
+
+const char* l_strgetcstr(const l_string* self) {
+  return (self->flag == 0xFF ? (const char*)self->heap.start : (const char*)self);
+}
+
+l_from l_strgetfrom(const l_string* s) {
+  return l_fromn(l_strgetcstr(s), l_strgetlen(s));
+}
+
+l_from l_string_getfrom(const l_string* s) {
+  return l_fromn(l_strgetcstr(s), l_strgetlen(s));
+}
+
+l_integer l_strcapacity(const l_string* self) {
+  if (self->flag == 0xFF) {
+    const l_heap* heap = &self->heap;
+    return (heap->start < heap->beyond) ? (heap->beyond - heap->start - 1) : 0;
+  }
+  return CCSTRING_STATIC_CHARS;
+}
+
+static l_string* llstrsetlen(l_string* self, l_integer len) {
+  (self->flag == 0xFF) ? (self->len = len) : (self->flag = (l_byte)len);
+  return self;
+}
+
+static nauty_char* llstrenlarge(l_string* self, l_integer bytes) {
+  if (l_strcapacity(self) < bytes) {
+    l_integer len = 2 * l_strgetlen(self); /* 1-byte for zero terminal */
+    bytes = len >= (bytes+1) ? len : (bytes+1);
+    if (self->flag == 0xFF) {
+      l_heap_relloc(&self->heap, bytes);
+      return self->heap.start;
+    }
+    if ((self->heap = l_heap_allocfrom(bytes, l_strgetfrom(self))).start == 0) {
+      return 0;
+    }
+    self->len = self->flag;
+    self->flag = 0xFF;
+    return self->heap.start;
+  }
+  return (l_byte*)l_strgetcstr(self);
+}
+
+l_string l_emptystr() {
+  return (l_string){{0}, 0, {0}, 0};
+}
+
+l_string l_strfromu(l_uinteger a) {
+  return l_strfromuf(a, 0);
+}
+
+l_string l_strfromuf(l_uinteger a, l_integer fmt) {
+  l_string s = l_emptystr();
+  return *llstrsetlen(&s, llutos(a, fmt, &s));
+}
+
+l_string l_strfromi(l_integer a) {
+  return l_strfromif(a, 0);
+}
+
+l_string l_strfromif(l_integer a, l_integer fmt) {
+  return l_strfromuf(a < 0 ? (-a) : a, a < 0 ? (LLNSIGN | fmt) : fmt);
+}
+
+l_string* l_strsetuf(l_string* self, l_uinteger a, l_integer fmt) {
+  return llstrsetlen(self, llutos(a, fmt, llstrenlarge(self, CCSTRING_STATIC_CHARS)));
+}
+
+l_string* l_strsetu(l_string* self, l_uinteger a) {
+  return l_strsetuf(self, a, 0);
+}
+
+l_string* l_strsetif(l_string* self, l_integer a, l_integer fmt) {
+  return llstrsetlen(self, llutos(a < 0 ? (-a) : a, (a < 0 ? (fmt | LLNSIGN) : fmt), llstrenlarge(self, CCSTRING_STATIC_CHARS)));
+}
+
+l_string* l_strseti(l_string* self, l_integer a) {
+  return l_strsetif(self, a, 0);
+}
+
+void l_strfree(l_string* self) {
+  if (self->flag == 0xFF) {
+    l_heap_free(&self->heap);
+    self->len = 0;
+  }
+  self->flag = 0;
+}
+
+const char* l_utos(l_uinteger a) {
+  return l_strgetcstr(l_strsetu(l_thread_getdefstr(), a));
+}
+
+const char* l_itos(l_integer a) {
+  return l_strgetcstr(l_strseti(l_thread_getdefstr(), a));
+}
+
+
+void l_string_free(l_string* self) {
+  if (self->flag == 0xFF) {
+    l_heap_free(&self->heap);
+    self->len = 0;
+  }
+  self->flag = 0;
+}
+
+const char* l_string_getcstr(const l_string* self) {
+  return (self->flag == 0xFF ? (const char*)self->heap.start : (const char*)self);
+}
+
+l_integer l_string_getlen(const l_string* self) {
+  return (self->flag == 0xFF ? self->len : self->flag);
+}
+
+int l_string_equalcstr(const l_string* self, const void* cstr) {
+  return l_strequal(l_fromn(l_string_getcstr(self), l_string_getlen(self)), l_fromcstr(cstr));
+}
+
+l_string l_string_emptystr() {
+  return (l_string){{0}, 0, {0}, 0};
+}
+
+void l_string_setempty(l_string* self) {
+  l_string_free(self);
+  *self = l_string_emptystr();
+}
+
+void l_string_setcstr(l_string* self, const void* cstr) {
+  l_integer n = strlen((const char*)cstr);
+  nauty_char* p = llstrenlarge(self, n);
+  llstrsetlen(self, l_copyfrom(l_fromn(cstr, n), p));
+}
+
+int l_string_contain(l_from s, nauty_char ch) {
+  return l_string_containp(&s, ch);
+}
+
+int l_string_containp(const l_from* s, nauty_char ch) {
+  const l_byte* start = s->start;
+  if (start >= s->beyond) return false;
+  while (start < s->beyond) {
+    if (*start++ == (l_byte)ch) {
+      return true;
+    }
+  }
+  return false;
+}
+
+#if 0
+CCINLINE nauty_char l_lower(nauty_char ch) {
+  return (ch >= 'A' && ch <= 'Z') ? (ch + 32) : ch;
+}
+
+CCINLINE void l_lowerp(nauty_char* ch) {
+  *ch = l_lower(*ch);
+}
+
+CCINLINE nauty_char l_upper(nauty_char ch) {
+  return (ch >= 'a' && ch <= 'z') ? (ch - 32) : ch;
+}
+
+CCINLINE void l_upperp(nauty_char* ch) {
+  *ch = l_upper(*ch);
+}
+
+CCINLINE void l_string_lower(nauty_char* s, int len) {
+  while (len > 0) {
+    l_lowerp(s + (--len));
+  }
+}
+
+CCINLINE void l_string_upper(nauty_char* s, int len) {
+  while (len > 0) {
+    l_upperp(s + (--len));
+  }
+}
+
+CCINLINE int l_isblank(int ch) {
+  if (ch == ' ' || ch == '\t' || ch == '\v' || ch == '\f') return 1;
+  return 0;
+}
+#endif
 
 /* string */
 CORE_API const byte* ccitos(_int a);

@@ -1,8 +1,8 @@
-#ifndef CCLIB_PLATIONF_H_
-#define CCLIB_PLATIONF_H_
-#include "ccprefix.h"
+#ifndef l_plationf_lib_h
+#define l_plationf_lib_h
+#include "l_prefix.h"
 
-#if defined(CC_OS_LINUX)
+#if defined(L_PLAT_LINUX)
 #define _POSIX_C_SOURCE 200809L
 #include <unistd.h>
 #include <sys/epoll.h>
@@ -10,31 +10,31 @@
 #include <pthread.h>
 /** Linux Epoll **/
 
-#define CCEPOLL_MAX_EVENTS 64
+#define L_EPOLL_MAX_EVENTS 64
 
-struct llepollmgr {
+typedef struct {
   int epfd;
   int wakeupfd;
   int nready;
   int wakeupfd_added;
   int wakeup_count;
   pthread_mutex_t mutex;
-  struct epoll_event ready[CCEPOLL_MAX_EVENTS+1];
-};
+  struct epoll_event ready[L_EPOLL_MAX_EVENTS+1];
+} llepollmgr;
 
-#ifdef CCLIB_AUTOCONF_TOOL
-#define LLIONFMGR_TYPE_BYTES sizeof(struct llepollmgr)
-#define LLIONFHDL_TYPE_BYTES sizeof(int)
-#define LLIONFHDL_TYPE_IS_SIGNED (1)
+#ifdef L_CORE_AUTO_CONFIG
+#define L_IONFMGR_TYPE_SIZE sizeof(llepollmgr)
+#define L_HANDLE_TYPE_SIZE sizeof(int)
+#define L_HANDLE_TYPE_IS_SIGNED (1)
 #endif
 
-#elif defined(CC_OS_APPLE) || defined(CC_OS_BSD)
+#elif defined(L_PLAT_APPLE) || defined(L_PLAT_BSD)
 #include <sys/types.h>
 #include <sys/event.h>
 /** BSD Kqueue **/
 
 #else
-#if !defined(CC_OS_WINDOWS)
+#if !defined(L_PLAT_WINDOWS)
 #include <poll.h>
 /** Linux Poll **/
 
@@ -43,5 +43,5 @@ struct llepollmgr {
 
 #endif
 #endif
-#endif /* CCLIB_PLATIONF_H_ */
+#endif /* l_plationf_lib_h */
 

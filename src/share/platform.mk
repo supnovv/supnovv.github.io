@@ -46,13 +46,13 @@ endif
 
 AUTOOBJ = $(BUILD_DIR)autoconf$(O)
 COREOBJ = $(BUILD_DIR)thatcore$(O) $(BUILD_DIR)linuxcore$(O) $(BUILD_DIR)thattest$(O)
+STRINGO = $(BUILD_DIR)string$(O)
 LUACOBJ = $(BUILD_DIR)luacapi$(O)
 IONFOBJ = $(BUILD_DIR)linuxionf$(O)
 SOCKOBJ = $(BUILD_DIR)linuxsock$(O)
 SRVCOBJ = $(BUILD_DIR)service$(O)
-STRINGO = $(BUILD_DIR)string$(O)
 HTTPOBJ = $(BUILD_DIR)http_service$(O)
-TESTOBJ = $(COREOBJ) $(LUACOBJ) $(IONFOBJ) $(SOCKOBJ) $(SRVCOBJ) $(STRINGO) $(HTTPOBJ)
+TESTOBJ = $(COREOBJ) $(STRINGO) $(LUACOBJ) $(IONFOBJ) $(SOCKOBJ) $(SRVCOBJ) $(HTTPOBJ)
 ALLOBJS = $(AUTOOBJ) $(TESTOBJ)
 
 AUTOCONF = $(BUILD_DIR)autoconf$(E)
@@ -100,7 +100,7 @@ $(BUILD_DIR)%$(O): %.c
 	$(CMPL) $<
 
 $(AUTOOBJ): autoconf.c
-$(COREOBJ): thatcore.c linuxcore.c thattest.c thatcore.h autoconf.h ccprefix.h
+$(COREOBJ): thatcore.c linuxcore.c thattest.c thatcore.h autoconf.h l_prefix.h
 $(IONFOBJ): linuxionf.c ionotify.h plationf.h
 $(SOCKOBJ): linuxsock.c socket.h platsock.h
 $(SRVCOBJ): service.c service.h

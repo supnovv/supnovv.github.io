@@ -1,7 +1,10 @@
 #ifndef l_core_lib_h
 #define l_core_lib_h
-#include "ccprefix.h"
+#include "l_prefix.h"
 #include "autoconf.h"
+
+#undef l_inline
+#define l_inline static
 
 #undef l_extern
 #if defined(L_BUILD_SHARED)
@@ -33,7 +36,7 @@
 #define l_cast(type, a) ((type)(a))
 #define l_str(s) l_cast(l_rune*, (s))
 
-#define l_max_rwop_size (0x7fff0000) /* 2147418112 */
+#define l_max_rdwr_size (0x7fff0000) /* 2147418112 */
 #define l_max_ubyte     l_cast(l_byte, 0xff) /* 255 */
 #define l_max_ushort    l_cast(l_ushort, 0xffff) /* 65535 */
 #define l_max_umedit    l_cast(l_umedit, 0xffffffff) /* 4294967295 */
@@ -64,81 +67,119 @@
 #define L_DEBUG_HERE(...) { ((void)0); }
 #endif
 
+typedef struct {
+  void* file;
+  l_rune* a;
+  int capacity;
+  int size;
+} l_logger;
+
+typedef union {
+  l_integer d;
+  l_uinteger u;
+  double f;
+  const void* p;
+} l_value;
+
+#define ls(s) lp(s)
+
+l_inline l_value lp(const void* p) {
+  l_value a;
+  a.p = p;
+  reutrn a;
+}
+
+l_inline l_value ld(l_integer d) {
+  l_value a;
+  a.d = d;
+  return a;
+}
+
+l_inline l_value lu(l_uinteger u) {
+  l_value a;
+  a.u = u;
+  return a;
+}
+
+l_inline l_value lf(double f) {
+  l_value a;
+  a.f = f;
+  return a;
+}
+
+l_inline void l_logger_func_s(const void* tag, const void* s) {
+  l_logger_func_impl(tag, s, 0);
+}
+
+l_inline void l_logger_func_1(const void* tag, const void* s, l_value a) {
+  l_logger_func_impl(tag, s, a);
+}
+
+l_inline void l_logger_func_2(const void* tag, const void* s, l_value a, l_value b) {
+  l_logger_func_impl(tag, s, a, b);
+}
+
+l_inline void l_logger_func_3(const void* tag, const void* s, l_value a, l_value b, l_value c) {
+  l_logger_func_impl(tag, s, a, b, c);
+}
+
+l_inline void l_logger_func_4(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d) {
+  l_logger_func_impl(tag, s, a, b, c, d);
+}
+
 #define L_MKSTR(a) #a
 #define L_X_MKSTR(a) L_MKSTR(a)
 #define L_MKFLSTR __FILE__ " (" L_X_MKSTR(__LINE__) ") "
 
-#define l_assert(e) l_assert_func((e), (#e), L_MKFLSTR)                           /* 0:assert */
-#define l_log_e(fmt, ...) l_logger_func("1[E] " L_MKFLSTR, (fmt), ## __VA_ARGS__) /* 1:error */
-#define l_log_w(fmt, ...) l_logger_func("2[W] " L_MKFLSTR, (fmt), ## __VA_ARGS__) /* 2:warning */
-#define l_log_i(fmt, ...) l_logger_func("3[I] " L_MKFLSTR, (fmt), ## __VA_ARGS__) /* 3:important */
-#define l_log_d(fmt, ...) l_logger_func("4[D] " L_MKFLSTR, (fmt), ## __VA_ARGS__) /* 4:debug */
+#define l_assert(e)               l_assert_func_impl((e), (#e), L_MKFLSTR) /* 0:assert */
+#define l_loge_s(s)               l_logger_func_s("10[E] " L_MKFLSTR, (s)) /* 1:error */
+#define l_loge_1(fmt, a)          l_logger_func_1("11[E] " L_MKFLSTR, (fmt), a)
+#define l_loge_2(fmt, a, b)       l_logger_func_2("12[E] " L_MKFLSTR, (fmt), a, b)
+#define l_loge_3(fmt, a, b, c)    l_logger_func_3("13[E] " L_MKFLSTR, (fmt), a, b, c)
+#define l_loge_4(fmt, a, b, c, d) l_logger_func_4("14[E] " L_MKFLSTR, (fmt), a, b, c, d)
+#define l_logw_s(s)               l_logger_func_s("20[W] " L_MKFLSTR, (s)) /* 2:warning */
+#define l_logw_1(fmt, a)          l_logger_func_1("21[W] " L_MKFLSTR, (fmt), a);
+#define l_logw_2(fmt, a, b)       l_logger_func_2("22[W] " L_MKFLSTR, (fmt), a, b);
+#define l_logw_3(fmt, a, b, c)    l_logger_func_3("23[W] " L_MKFLSTR, (fmt), a, b, c);
+#define l_logw_4(fmt, a, b, c, d) l_logger_func_4("24[W] " L_MKFLSTR, (fmt), a, b, c, d);
+#define l_logm_s(s)               l_logger_func_s("30[A] " L_MKFLSTR, (s)) /* 3:main log */
+#define l_logm_1(fmt, a)          l_logger_func_1("31[A] " L_MKFLSTR, (fmt), a);
+#define l_logm_2(fmt, a, b)       l_logger_func_2("32[A] " L_MKFLSTR, (fmt), a, b);
+#define l_logm_3(fmt, a, b, c)    l_logger_func_3("33[A] " L_MKFLSTR, (fmt), a, b, c);
+#define l_logm_4(fmt, a, b, c, d) l_logger_func_4("34[A] " L_MKFLSTR, (fmt), a, b, c, d);
+#define l_logd_s(s)               l_logger_func_s("40[D] " L_MKFLSTR, (s)) /* 4:debug log */
+#define l_logd_1(fmt, a)          l_logger_func_1("41[D] " L_MKFLSTR, (fmt), a);
+#define l_logd_2(fmt, a, b)       l_logger_func_2("42[D] " L_MKFLSTR, (fmt), a, b);
+#define l_logd_3(fmt, a, b, c)    l_logger_func_3("43[D] " L_MKFLSTR, (fmt), a, b, c);
+#define l_logd_4(fmt, a, b, c, d) l_logger_func_4("44[D] " L_MKFLSTR, (fmt), a, b, c, d);
 
-l_extern void l_assert_func(int pass, const char* expr, const char* fileline);
-l_extern int l_logger_func(const char* tag, const void* fmt, ...);
+l_extern void l_assert_func_impl(int pass, const void* expr, const void* fileline);
+l_extern void l_logger_func_impl(const void* tag, const void* fmt, ...);
 l_extern void l_set_log_level(int level);
 l_extern int l_get_log_level();
 l_extern void l_exit();
 
-l_extern void* l_raw_alloc(l_integer size);
-l_extern void* l_raw_alloc_and_zero(l_integer size);
-l_extern void* l_raw_realloc(void* buffer, l_integer oldsize, l_integer newsize);
-l_extern void l_raw_free(void* buffer);
-
-l_extern l_integer l_zeroe(void* start, const void* end);
-l_extern l_integer l_zerol(void* start, l_integer len);
-
 typedef struct {
   const l_byte* start;
   const l_byte* end;
-} l_from;
+} l_strt;
 
-#define l_from_empty() l_cast(l_from, {0,0})
-#define l_from_literal(s) l_froml("" s, (sizeof(s)/sizeof(char))-1)
-l_extern l_from l_fromc(const void* s)
-l_extern l_from l_froml(const void* s, int len);
-l_extern l_from l_frome(const void* s, const void* e);
+#define l_strt_empty() l_cast(l_strt, {0,0})
+#define l_strt_literal(s) l_strt_l("" s, (sizeof(s)/sizeof(char))-1)
+#define l_strt l_strt_c(s) l_strt_l((s), strlen(l_cast(char*, (s))))
+#define l_strt l_strt_e(s, e) l_strt_l((s), l_str(e) - l_str(s))
+l_extern l_strt l_strt_l(const void* s, l_integer len);
 
-#if 0
-typedef struct {
-  l_byte* start;
-  l_byte* end;
-} l_dest;
+#define l_zero_e(void* start, const void* end) l_zero_l(start, l_str(end) - l_str(start))
+l_extern void l_zero_l(void* start, l_integer len);
 
-l_extern l_dest l_heap_alloc(sright_int size);
-l_extern l_dest l_heap_allocrawbuffer(sright_int size);
-l_extern l_dest l_heap_allocfrom(sright_int size, l_from from);
-l_extern void l_heap_relloc(l_heap* self, sright_int newsize);
-l_extern void l_heap_free(l_heap* self);
+#define l_copy_e(from, end, to) l_copy_l(from, l_str(end) - l_str(from), (to))
+l_extern void l_copy_l(const void* from, l_integer len, void* to);
 
-l_extern l_integer l_copy(const l_byte* fromstart, const l_byte* frombeyond, l_byte* dest);
-l_extern l_integer l_copyn(const l_byte* from, sright_int n, l_byte* dest);
-l_extern l_integer l_copyfrom(l_from from, void* dest);
-l_extern l_integer l_copyfromp(const l_from* from, void* dest);
-l_extern l_integer l_copyfromtodest(l_from from, const l_dest* dest);
-l_extern l_integer l_copyfromptodest(const l_from* from, const l_dest* dest);
-
-l_extern l_integer l_rcopy(const l_byte* fromstart, const l_byte* frombeyond, l_byte* dest);
-l_extern l_integer l_rcopyn(const l_byte* from, l_int n, l_byte* dest);
-l_extern l_integer l_rcopyfrom(l_from from, void* dest);
-l_extern l_integer l_rcopyfromp(const l_from* from, void* dest);
-l_extern l_integer l_rcopyfromtodest(l_from from, const l_dest* dest);
-l_extern l_integer l_rcopyfromptodest(const l_from* from, const l_dest* dest);
-
-l_extern l_from l_fromp(const void* start, const void* beyond);
-l_extern l_from l_fromn(const void* start, l_integer bytes);
-l_extern l_from l_fromcstr(const void* cstr);
-l_extern l_dest l_dest(void* start, l_integer bytes);
-l_extern l_dest l_destrange(void* start, void* beyond);
-
-l_extern l_from* l_setfrom(l_from* self, const void* start, l_integer bytes);
-l_extern l_from* l_setfromcstr(l_from* self, const void* cstr);
-l_extern l_from* l_setfromrange(l_from* self, const void* start, const void* beyond);
-l_extern l_dest* l_setdest(l_dest* self, void* start, l_integer bytes);
-l_extern l_dest* l_setdestrange(l_dest* self, void* start, void* beyond);
-l_extern const l_dest* l_destheap(const l_heap* heap);
-
-#endif
+l_extern void* l_raw_malloc(l_integer size);
+l_extern void* l_raw_calloc(l_integer size);
+l_extern void* l_raw_realloc(void* buffer, l_integer oldsize, l_integer newsize);
+l_extern void l_raw_free(void* buffer);
 
 /**
  * The 64-bit signed integer's biggest value is 9223372036854775807.
@@ -157,30 +198,29 @@ typedef struct {
 } l_time;
 
 typedef struct {
-  l_umedit_int yearlow; /* 38-bit, can represent 274877906943 years */
-  l_umedit nsec;    /* nanoseconds that less than 1 sec */
-  l_byte high;      /* high 6-bit are extra bits for year */
-  l_byte ydaylow;   /* 1~366 */
-  l_byte month;     /* 1~12 */
-  l_byte day;       /* 1~31 */
-  l_byte wday;      /* 0~6, 0 is sunday */
-  l_byte hour;      /* 0~23 */
-  l_byte min;       /* 0~59 */
-  l_byte sec;       /* 0~61, 60 and 61 are the leap seconds */
+  l_umedit year; /* 38-bit, can represent 274877906943 years */
+  l_umedit nsec; /* nanoseconds that less than 1 sec */
+  l_ushort yday; /* 1 ~ 366 */
+  l_byte high;   /* extra bits for year */
+  l_byte wdmon;  /* 1~12, high 4-bit is wday (0~6, 0 is sunday) */
+  l_byte day;    /* 1~31 */
+  l_byte hour;   /* 0~23 */
+  l_byte min;    /* 0~59 */
+  l_byte sec;    /* 0~61, 60 and 61 are the leap seconds */
 } l_date;
 
 typedef struct {
   l_integer fsize;
-  l_integer ctime;
-  l_integer atime;
-  l_integer mtime;
+  l_integer ctm; /* creation, utc */
+  l_integer atm; /* last access, utc */
+  l_integer mtm; /* last modify, utc */
   l_integer gid;
   l_integer uid;
   l_integer mode;
   l_byte isfile;
   l_byte isdir;
   l_byte islink;
-} l_fileattr; /* creation, last access, last modify (UTC) */
+} l_fileattr;
 
 typedef struct {
   void* stream;
@@ -189,78 +229,9 @@ typedef struct {
 l_extern l_time l_system_time();
 l_extern l_time l_monotonic_time();
 l_extern l_date l_system_date();
-l_extern l_integer l_file_size(const void* name, int namelen);
-l_extern l_fileattr l_file_attr(const void* name, int namelen);
+l_extern l_integer l_get_file_size(const void* name, int namelen);
+l_extern l_fileattr l_get_file_attr(const void* name, int namelen);
 
-/** String **/
-
-#define CCSTRING_SIZEOF 32
-#define CCSTRING_STATIC_CHARS 30
-
-typedef struct l_string {
-  l_heap heap;
-  sright_int len;
-  uoctet_int a[CCSTRING_SIZEOF-sizeof(l_heap)-sizeof(sright_int)-1];
-  uoctet_int flag; /* flag==0xFF ? heap-string : stack-string */
-} l_string; /* a sequence of bytes with zero terminated */
-
-l_extern const char* l_utos(uright_int a);
-l_extern const char* l_itos(sright_int a);
-l_extern l_string l_emptystr();
-l_extern l_string l_strfromu(uright_int a);
-l_extern l_string l_strfromuf(uright_int a, sright_int fmt);
-l_extern l_string l_strfromi(sright_int a);
-l_extern l_string l_strfromif(sright_int a, sright_int fmt);
-
-l_extern l_string l_string_emptystr();
-l_extern sright_int l_string_getlen(const l_string* self);
-l_extern const char* l_string_getcstr(const l_string* self);
-l_extern int l_string_equalcstr(const l_string* self, const void* cstr);
-
-l_extern void l_string_free(l_string* self);
-l_extern void l_string_setempty(l_string* self);
-l_extern void l_string_setcstr(l_string* self, const void* cstr);
-
-l_extern l_from l_string_getfrom(const l_string* s);
-l_extern int l_string_contain(l_from s, nauty_char ch);
-l_extern int l_string_containp(const l_from* s, nauty_char ch);
-
-#if 0
-CCINLINE nauty_char l_lower(nauty_char ch) {
-  return (ch >= 'A' && ch <= 'Z') ? (ch + 32) : ch;
-}
-
-CCINLINE void l_lowerp(nauty_char* ch) {
-  *ch = l_lower(*ch);
-}
-
-CCINLINE nauty_char l_upper(nauty_char ch) {
-  return (ch >= 'a' && ch <= 'z') ? (ch - 32) : ch;
-}
-
-CCINLINE void l_upperp(nauty_char* ch) {
-  *ch = l_upper(*ch);
-}
-
-CCINLINE void l_string_lower(nauty_char* s, int len) {
-  while (len > 0) {
-    l_lowerp(s + (--len));
-  }
-}
-
-CCINLINE void l_string_upper(nauty_char* s, int len) {
-  while (len > 0) {
-    l_upperp(s + (--len));
-  }
-}
-
-CCINLINE int l_isblank(int ch) {
-  if (ch == ' ' || ch == '\t' || ch == '\v' || ch == '\f') return 1;
-  return 0;
-}
-#endif
-
-/** List and queue **/
 
 typedef struct l_linknode {
   struct l_linknode* next;

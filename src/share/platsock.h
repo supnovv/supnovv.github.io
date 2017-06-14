@@ -1,8 +1,8 @@
-#ifndef CCLIB_LINUXSOCK_H_
-#define CCLIB_LINUXSOCK_H_
-#include "ccprefix.h"
+#ifndef l_platsock_lib_h
+#define l_platsock_lib_h
+#include "l_prefix.h"
 
-#if defined(CC_OS_WINDOWS)
+#if defined(L_PLAT_WINDOWS)
 /** Windows Socket **/
 #else
 #define _POSIX_C_SOURCE 200809L
@@ -29,21 +29,21 @@ struct sockaddr_in6 {
     uint32_t        sin6_scope_id; // Scope ID (new in 2.4)
 }; */
 
-union ll_sock_addr {
+typedef union {
   struct sockaddr sa;
   struct sockaddr_in in;
   struct sockaddr_in6 in6;
-};
+} ll_sock_addr;
 
-struct llsockaddr {
+typedef struct {
   socklen_t len;
-  union ll_sock_addr addr;
-};
+  ll_sock_addr addr;
+} llsockaddr;
 
-#ifdef CCLIB_AUTOCONF_TOOL
-#define LLSOCKADDR_TYPE_BYTES sizeof(struct llsockaddr)
+#ifdef L_CORE_AUTO_CONFIG
+#define L_SOCKADDR_TYPE_SIZE sizeof(llsockaddr)
 #endif
 
 #endif
-#endif /* CCLIB_LINUXSOCK_H_ */
+#endif /* l_platsock_lib_h */
 
