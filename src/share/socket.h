@@ -1,38 +1,38 @@
-#ifndef CCLIB_SOCKET_H_
-#define CCLIB_SOCKET_H_
+#ifndef l_socket_lib_h
+#define l_socket_lib_h
 #include "thatcore.h"
 
-#define SOCKET_BACKLOG  (32)
-#define SOCKET_IPSTRLEN (48)
+#define L_SOCKET_BACKLOG  (32)
+#define L_SOCKET_IPSTRLEN (48)
 
-typedef struct ccsockaddr {
-  CCPLAT_IMPL_SIZE(CC_SOCKADDR_BYTES);
-} ccsockaddr;
+typedef struct {
+  L_PLAT_IMPL_SIZE(L_SOCKADDR_SIZE);
+} l_sockaddr;
 
-typedef struct ccsockconn {
-  handle_int sock;
-  ccsockaddr remote;
-} ccsockconn;
+typedef struct {
+  l_handle sock;
+  l_sockaddr remote;
+} l_sockconn;
 
-CORE_API nauty_bool ccsockaddr_init(ccsockaddr* self, ccfrom ip, ushort_int port);
-CORE_API nauty_bool ccsockaddr_initp(ccsockaddr* self, const ccfrom* ip, ushort_int port);
-CORE_API ushort_int ccsockaddr_getport(ccsockaddr* self);
-CORE_API nauty_bool ccsockaddr_getipstr(ccsockaddr* self, ccstring* out);
+l_extern int l_sockaddr_init(l_sockaddr* self, l_strt ip, l_ushort port);
+l_extern int l_sockaddr_initp(l_sockaddr* self, const l_strt* ip, l_ushort port);
+l_extern l_ushort l_sockaddr_getport(l_sockaddr* self);
+l_extern int l_sockaddr_getipstr(l_sockaddr* self, l_string* out);
 
-CORE_API handle_int ccsocket_listen(const ccsockaddr* addr, int backlog);
-CORE_API void ccsocket_accept(handle_int sock, void (*cb)(void*, ccsockconn*), void* ud);
-CORE_API void ccsocket_close(handle_int sock);
-CORE_API void ccsocket_shutdown(handle_int sock, nauty_char r_w_a);
-CORE_API void ccsocketconn_init(ccsockconn* self, ccfrom ip, ushort_int port);
+l_extern l_handle l_socket_listen(const l_sockaddr* addr, int backlog);
+l_extern void l_socket_accept(l_handle sock, void (*cb)(void*, l_sockconn*), void* ud);
+l_extern void l_socket_close(l_handle sock);
+l_extern void l_socket_shutdown(l_handle sock, l_rune r_w_a);
+l_extern void l_socketconn_init(l_sockconn* self, l_strt ip, l_ushort port);
 
-CORE_API nauty_bool ccsocket_connect(ccsockconn* conn);
-CORE_API nauty_bool ccsocket_isopen(handle_int sock);
-CORE_API ccsockaddr ccsocket_getlocaladdr(handle_int sock);
-CORE_API sright_int ccsocket_read(handle_int sock, void* out, sright_int count, sright_int* status);
-CORE_API sright_int ccsocket_write(handle_int sock, const void* buf, sright_int count, sright_int* status);
+l_extern int l_socket_connect(l_sockconn* conn);
+l_extern int l_socket_isopen(l_handle sock);
+l_extern l_sockaddr l_socket_getlocaladdr(l_handle sock);
+l_extern l_integer l_socket_read(l_handle sock, void* out, l_integer count, l_integer* status);
+l_extern l_integer l_socket_write(l_handle sock, const void* buf, l_integer count, l_integer* status);
 
-CORE_API void ccsockettest();
-CORE_API void ccplatsocktest();
+l_extern void l_socket_test();
+l_extern void l_plat_sock_test();
 
-#endif /* CCLIB_SOCKET_H_ */
+#endif /* l_socket_lib_h */
 

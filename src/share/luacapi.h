@@ -1,29 +1,31 @@
-#ifndef CCLIB_LUACAPI_H_
-#define CCLIB_LUACAPI_H_
+#ifndef l_luacapi_lib_h
+#define l_luacapi_lib_h
 #include "thatcore.h"
 
 typedef struct lua_State lua_State;
-CORE_API struct lua_State* cclua_newstate();
-CORE_API void cclua_close(lua_State* L);
+l_extern lua_State* l_new_luastate();
+l_extern void l_close_luastate(lua_State* L);
 
-typedef struct ccservice ccservice;
-typedef struct ccmessage ccmessage;
-typedef struct ccstate {
-  struct ccsmplnode node;
+typedef struct l_service l_service;
+typedef struct l_message l_message;
+
+typedef struct l_state {
+  l_smplnode node;
   lua_State* L;
   lua_State* co;
   int coref;
-  int (*func)(struct ccstate*);
-  int (*kfunc)(struct ccstate*);
-  ccservice* srvc;
-  ccmessage* msg;
-} ccstate;
+  int (*func)(struct l_state*);
+  int (*kfunc)(struct l_state*);
+  l_service* srvc;
+  l_message* msg;
+} l_state;
 
-CORE_API nauty_bool ccstate_init(ccstate* co, lua_State* L, int (*func)(ccstate*), ccservice* srvc);
-CORE_API void ccstate_free(ccstate* co);
-CORE_API int ccstate_resume(ccstate* co);
-CORE_API int ccstate_yield(ccstate* co, int (*kfunc)(ccstate*));
-CORE_API void ccluatest();
+l_extern int l_state_init(l_state* co, lua_State* L, int (*func)(l_state*), l_service* srvc);
+l_extern void l_state_free(l_state* co);
+l_extern int l_state_resume(l_state* co);
+l_extern int l_state_yield(l_state* co, int (*kfunc)(l_state*));
+l_extern int l_state_yield_with_code(l_state* co, int (*kfunc)(l_state*), int code);
+l_extern void l_lua_test();
 
-#endif /* CCLIB_LUACAPI_H_ */
+#endif /* l_luacapi_lib_h */
 

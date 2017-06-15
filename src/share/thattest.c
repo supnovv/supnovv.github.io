@@ -6,14 +6,14 @@
 #include "service.h"
 #include "string.h"
 
-int cctest_start() {
-  ccsetloglevel(4);
-  ccthattest();
-  ccluatest();
-  ccplattest();
-  ccplationftest();
-  ccplatsocktest();
-  ccstringtest();
+int l_test_start() {
+  l_set_log_level(4);
+  l_core_test();
+  l_luac_test();
+  l_plat_test();
+  l_plat_ionf_test();
+  l_plat_sock_test();
+  l_string_test();
   return 0;
 }
 

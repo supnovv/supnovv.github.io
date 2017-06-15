@@ -1,12 +1,4 @@
-#define _POSIX_C_SOURCE 200809L
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/time.h>
-#include <pthread.h>
-#include <dirent.h>
-#include <time.h>
-#include <string.h>
-#include <errno.h>
+#include "linuxpref.h"
 #include "thatcore.h"
 
 /** The software clock, HZ, and jiffies **
@@ -95,8 +87,8 @@ How is the clock affected when the system suspended?
  ** References **
 UEAP 6.10; USPM 10, 23; */
 
-#if defined(CC_OS_APPLE)
-static struct cctime llsystime() {
+#if defined(L_PLAT_APPLE)
+static l_time l_aux_system_time() {
   /** gettimeofday **
   #include <sys/time.h>
   int gettimeofday(struct timeval* tv, struct timezone* tz);
@@ -114,139 +106,82 @@ static struct cctime llsystime() {
   相比，gettimeofday提供了更高的微妙级时间精度。And POSIX.1-2008
   marks gettimefoday() as obsolete, recommending the use of
   clock_gettime() instead. */
+  l_time time = {0};
   struct timeval tv = {0};
+
   if (gettimeofday(&tv, 0) != 0) {
-    ccloge("gettimeofday %s", strerror(errno));
-    return (struct cctime){0};
+    l_loge_1("gettimeofday %s", lserror(errno));
+    return time;
   }
-  return (struct cctime){(sright_int)tv.tv_sec, (umedit_int)tv.tv_usec*1000};
+
+  time.sec = l_cast(l_integer, tv.tv_sec);
+  time.nsec = l_cast(l_umedit, tv.tv_usec * 1000);
+  return time;
 }
+
 #else
-static struct cctime llgettime(clockid_t id) {
+
+static l_time l_aux_gettime(clockid_t id) {
+  l_time time = {0};
   struct timespec spec = {0};
+
   if (clock_gettime(id, &spec) != 0) {
-    ccloge("clock_gettime %d %s", id, strerror(errno));
-    return (struct cctime){0};
+    l_loge_2("clock_gettime %d %s", ld(id), lserror(errno));
+    return time;
   }
-  return (struct cctime){(sright_int)spec.tv_sec, (umedit_int)spec.tv_nsec};
+
+  time.sec = l_cast(l_integer, spec.tv_sec);
+  time.nsec = l_cast(l_umedit, spec.tv_nsec);
+  return time;
 }
 
-struct cctime ccthreadtime() {
-  return llgettime(CLOCK_THREAD_CPUTIME_ID);
+l_time l_thread_time() {
+  return l_aux_gettime(CLOCK_THREAD_CPUTIME_ID);
 }
 
-struct cctime ccprocesstime() {
-  return llgettime(CLOCK_PROCESS_CPUTIME_ID);
+l_time l_process_time() {
+  return l_aux_gettime(CLOCK_PROCESS_CPUTIME_ID);
 }
 
-static sright_int llgetres(clockid_t id) {
+static l_integer l_aux_getres(clockid_t id) {
   struct timespec spec = {0};
   if (clock_getres(id, &spec) != 0) {
-    ccloge("clock_getres %s", strerror(errno));
+    l_loge_1("clock_getres %s", lserror(errno));
     return 0;
   }
-  return ((sright_int)spec.tv_sec)*1000000000LL + (sright_int)spec.tv_nsec;
+  return ((l_integer)spec.tv_sec)*1000000000LL + (l_integer)spec.tv_nsec;
 }
 
-sright_int ccgetsres() {
-  return llgetres(CLOCK_REALTIME);
+l_integer l_system_time_res() {
+  return l_aux_getres(CLOCK_REALTIME);
 }
 
-sright_int ccgetbres() {
+l_integer l_monotonic_time_res() {
   clockid_t id = CLOCK_MONOTONIC;
-#ifdef CC_OS_LINUX
+#ifdef L_PLAT_LINUX
   id = CLOCK_BOOTTIME;
 #endif
-  return llgetres(id);
+  return l_aux_getres(id);
 }
 
-sright_int ccgettres() {
-  return llgetres(CLOCK_THREAD_CPUTIME_ID);
+l_integer l_thread_time_res() {
+  return l_aux_getres(CLOCK_THREAD_CPUTIME_ID);
 }
 
-sright_int ccgetpres() {
-  return llgetres(CLOCK_PROCESS_CPUTIME_ID);
+l_integer l_process_time_res() {
+  return l_aux_getres(CLOCK_PROCESS_CPUTIME_ID);
 }
 #endif
 
-struct cctime ccsystime() {
-#if defined(CC_OS_APPLE)
-  return llsystime();
+l_time l_system_time() {
+#if defined(L_PLAT_APPLE)
+  return l_aux_system_time();
 #else
-  return llgettime(CLOCK_REALTIME);
+  return l_aux_gettime(CLOCK_REALTIME);
 #endif
 }
 
-static void llsetyear(struct ccdate* date, sright_int year, sright_int yday) {
-  uoctet_int sign = 0;
-  if (year < 0) { year = -year; sign = 2; }
-  if (yday < 1 || yday > 366) {
-    yday = (yday < 1 ? 1 : 366);
-    ccloge("tm_yday invalid %s", ccitos(yday));
-  }
-  date->yearlow = (umedit_int)(year & 0xFFFFFFFF);
-  date->ydaylow = (uoctet_int)(yday & 0xFF);
-  date->high = (((uoctet_int)((year >> 30) & 0xFC)) | sign | ((uoctet_int)((yday >> 8) & 0x01)));
-}
-
-static struct ccdate llgetdate(time_t secs) {
-  struct tm st;
-  struct ccdate date = {0};
-  cczeron(&st, sizeof(struct tm));
-  /* struct tm* gmtime_r(const time_t* secs, struct tm* out);
-  The function converts the time secs to broken-down time representation,
-  expressed in Coordinated Universal Time (UTC), i.e. since Epoch. */
-  if (gmtime_r(&secs, &st) != &st) { /* gmtime_r needs _POSIX_C_SOURCE >= 1 */
-    ccloge("gmtime_r %s", strerror(errno));
-    return date;
-  }
-  /* tm_year - number of years since 1900, tm_yday - from 0 to 365 */
-  llsetyear(&date, st.tm_year + 1900, st.tm_yday + 1);
-  date.month = (soctet_int)(st.tm_mon + 1); /* tm_mon - from 0 to 11 */
-  date.wday = (soctet_int)st.tm_wday; /* tm_wday - from 0 to 6, 0 is Sunday */
-  /* in many implementations, including glibc, a 0 in tm_mday is
-  interpreted as meaning the last day of the preceding month.
-  这里的意思是，在将分解结构tm转换成time_t时（例如mktime），如果将
-  tm_mday设为0则表示当前天数是前一个月的最后一天 */
-  date.day = (soctet_int)st.tm_mday; /* tm_mday - from 1 to 31 */
-  date.hour = (soctet_int)st.tm_hour; /* tm_hour - from 0 to 23 */
-  date.min = (soctet_int)st.tm_min; /* tm_min - from 0 to 59 */
-  date.sec = (soctet_int)st.tm_sec; /* tm_sec - from 0 to 60, 60 can be leap second */
-  /* Single UNIX Specification 的以前版本允许双闰秒，于是tm_sec值的有效范围是
-  0到61。但是UTC的正式定义不允许双闰秒，所以现在tm_sec值的有效范围是0到60。*/
-  if (st.tm_isdst > 0) {
-    /* daylight saving time is in effect. gmtime_r将时间转换成协调统一时间的分解
-    结构，不会像localtime_r那样考虑本地时区和夏令时，该值应该在此处无效 */
-    cclogw("gmtime_r invalid tm_isdst");
-  }
-  return date;
-}
-
-sright_int ccgetyear(struct ccdate* date) {
-  sright_int year = (((sright_int)(date->high >> 2)) << 32) | ((sright_int)date->yearlow);
-  if (date->high & 0x02) { year = -year; }
-  return year;
-}
-
-sright_int ccgetyday(struct ccdate* date) {
-  return (((sright_int)(date->high & 0x01)) << 8) | ((sright_int)date->ydaylow);
-}
-
-struct ccdate ccdatefromi(sright_int utcsecs) {
-  return llgetdate(utcsecs);
-}
-
-struct ccdate ccdatefrom(struct cctime utc) {
-  struct ccdate date = llgetdate(utc.sec);
-  date.nsec = utc.nsec;
-  return date;
-}
-
-struct ccdate ccgetdate() {
-  return ccdatefrom(ccsystime());
-}
-
-struct cctime ccinctime() {
+l_time l_monotonic_time() {
   /** clock_gettime **
   #include <sys/time.h>
   int clock_gettime(clockid_t id, struct timespec* out);
@@ -269,20 +204,82 @@ struct cctime ccinctime() {
   the complications of CLOCK_REALTIME, which may have discontinuities
   if the time is changed using settimeofday or similar.
   @@OSX doesn't support this function */
-#ifdef CC_OS_APPLE
-  return llsystime();
+#ifdef L_PLAT_APPLE
+  return l_aux_system_time();
 #else
   clockid_t id = CLOCK_MONOTONIC;
-#ifdef CC_OS_LINUX
+#ifdef L_PLAT_LINUX
   id = CLOCK_BOOTTIME;
 #endif
-  return llgettime(id);
+  return l_aux_gettime(id);
 #endif
+}
+
+static void l_aux_set_year(l_date* date, l_integer year) {
+  if (year > l_max_umedit) {
+    date->year = l_cast(l_umedit, year & 0xffffffff);
+    date->high = l_cast(l_byte, (year & 0xff00000000) >> 32);
+  } else {
+    date->year = l_cast(l_umedit, year & 0xffffffff);
+    date->high = 0;
+  }
+}
+
+static void l_aux_set_wday_month(l_date* date, int wday, int month) {
+  date->wdmon = (l_cast(l_byte, wday & 0x0f) << 4) | l_cast(l_byte, month & 0x0f);
+}
+
+static l_date l_aux_getdate(time_t secs) {
+  struct tm st;
+  l_date date = {0};
+  l_zero_l(&st, sizeof(struct tm));
+  /* struct tm* gmtime_r(const time_t* secs, struct tm* out);
+  The function converts the time secs to broken-down time representation,
+  expressed in Coordinated Universal Time (UTC), i.e. since Epoch. */
+  if (gmtime_r(&secs, &st) != &st) { /* gmtime_r needs _POSIX_C_SOURCE >= 1 */
+    l_loge_1("gmtime_r %s", lserror(errno));
+    return date;
+  }
+  /* tm_year - number of years since 1900 */
+  l_aux_set_year(&date, st.tm_year + 1900);
+  /* tm_wday - from 0 to 6, 0 is Sunday, tm_mon - from 0 to 11 */
+  l_aux_set_wday_month(&date, st.tm_wday, st.tm_mon + 1);
+  /* in many implementations, including glibc, a 0 in tm_mday is
+  interpreted as meaning the last day of the preceding month.
+  这里的意思是，在将分解结构tm转换成time_t时（例如mktime），如果将
+  tm_mday设为0则表示当前天数是前一个月的最后一天 */
+  date.yday = (l_ushort)(st.tm_yday + 1); /* tm_yday - from 0 to 365 */
+  date.day = (l_byte)st.tm_mday; /* tm_mday - from 1 to 31 */
+  date.hour = (l_byte)st.tm_hour; /* tm_hour - from 0 to 23 */
+  date.min = (l_byte)st.tm_min; /* tm_min - from 0 to 59 */
+  date.sec = (l_byte)st.tm_sec; /* tm_sec - from 0 to 60, 60 can be leap second */
+  /* Single UNIX Specification 的以前版本允许双闰秒，于是tm_sec值的有效范围是
+  0到61。但是UTC的正式定义不允许双闰秒，所以现在tm_sec值的有效范围是0到60。*/
+  if (st.tm_isdst > 0) {
+    /* daylight saving time is in effect. gmtime_r将时间转换成协调统一时间的分解
+    结构，不会像localtime_r那样考虑本地时区和夏令时，该值应该在此处无效 */
+    l_logw_s("gmtime_r invalid tm_isdst");
+  }
+  return date;
+}
+
+l_date l_date_from_secs(l_integer utcsecs) {
+  return l_aux_getdate(utcsecs);
+}
+
+l_date l_date_from_time(l_time utc) {
+  l_date date = l_aux_getdate(utc.sec);
+  date.nsec = utc.nsec;
+  return date;
+}
+
+l_date l_system_date() {
+  return l_date_from_time(l_system_time());
 }
 
 /** File and attribute */
 
-sright_int ccfilesize(struct ccfrom name) {
+l_integer l_file_size(const void* name) {
   /** lstat **
   #include <sys/types.h>
   #include <sys/stat.h>
@@ -336,40 +333,38 @@ sright_int ccfilesize(struct ccfrom name) {
   The field st_ctime is changed by writing or by setting inode information (i.e.,
   owner, group, link count, mode, etc.). */
   struct stat st; /* lstat needs _POSIX_C_SOURCE >= 200112L */
-  if (name.start >= name.beyond) return 0;
-  cczeron(&st, sizeof(struct stat));
-  if (lstat((const char*)name.start, &st) != 0) {
-    ccloge("lstat %s %s", strerror(errno), name.start);
+  if (!name) { l_loge_s("empty name"); return 0; }
+  l_zero_l(&st, sizeof(struct stat));
+  if (lstat((const char*)name, &st) != 0) {
+    l_loge_2("lstat %s %s", lserror(errno), ls(name));
     return 0;
   }
-  return (sright_int)st.st_size;
+  return (l_integer)st.st_size;
 }
 
-struct ccfileattr ccgetfileattr(struct ccfrom name) {
+l_fileattr l_file_attr(const void* name) {
   struct stat st;
-  struct ccfileattr fa = {0};
-  cczeron(&st, sizeof(struct stat));
-  if (name.start >= name.beyond) return fa;
-  if (lstat((const char*)name.start, &st) != 0) {
-    ccloge("lstat %s %s", strerror(errno), name.start);
+  l_fileattr fa = {0};
+  if (!name) { l_loge_s("empty name"); return fa; }
+  l_zero_l(&st, sizeof(struct stat));
+  if (lstat((const char*)name, &st) != 0) {
+    l_loge_2("lstat %s %s", lserror(errno), ls(name));
     return fa;
   } /* the time stored in stat is measured in seconds since 00:00:00 UTC, January 1, 1970 */
-  fa.fsize = (sright_int)st.st_size;
-  fa.ctime = (sright_int)st.st_ctime;
-  fa.atime = (sright_int)st.st_atime;
-  fa.mtime = (sright_int)st.st_mtime;
-  fa.gid = (sright_int)st.st_gid;
-  fa.uid = (sright_int)st.st_uid;
-  fa.mode = (sright_int)st.st_mode;
-  fa.isfile = S_ISREG(st.st_mode);
-  fa.isdir = S_ISDIR(st.st_mode);
-  fa.islink = S_ISLNK(st.st_mode);
+  fa.fsize = (l_integer)st.st_size;
+  fa.ctm = (l_integer)st.st_ctime;
+  fa.atm = (l_integer)st.st_atime;
+  fa.mtm = (l_integer)st.st_mtime;
+  fa.gid = (l_integer)st.st_gid;
+  fa.uid = (l_integer)st.st_uid;
+  fa.mode = (l_integer)st.st_mode;
+  fa.isfile = (l_byte)(S_ISREG(st.st_mode) != 0);
+  fa.isdir = (l_byte)(S_ISDIR(st.st_mode) != 0);
+  fa.islink = (l_byte)(S_ISLNK(st.st_mode) != 0);
   return fa;
 }
 
-/** Directory stream **/
-
-struct ccdirstream ccopendir(struct ccfrom name) {
+l_dirstream l_open_dir(const void* name) {
   /** opendir **
   #include <sys/types.h>
   #include <dirent.h>
@@ -378,25 +373,24 @@ struct ccdirstream ccopendir(struct ccfrom name) {
   a pointer to the directory stream. The stream is positioned at the
   first entry in the directory. Filename entries can be read from a
   directory stream using readdir(3). */
-  struct ccdirstream d = {0};
-  if (name.start >= name.beyond) return d;
-  if ((d.stream = opendir((const char*)name.start)) == 0) {
-    ccloge("opendir %s", strerror(errno));
-    return d;
+  l_dirstream d = {0};
+  if (!name) { l_loge_s("empty name"); return d; }
+  if ((d.stream = opendir((const char*)name)) == 0) {
+    l_loge_1("opendir %s", lserror(errno));
   }
   return d;
 }
 
-void ccclosedir(struct ccdirstream* d) {
+void l_close_dir(l_dirstream* d) {
   if (d->stream) {
     if (closedir((DIR*)d->stream) != 0) {
-      ccloge("closedir %s", strerror(errno));
+      l_loge_1("closedir %s", lserror(errno));
     }
     d->stream = 0;
   }
 }
 
-struct ccfrom ccreaddir(struct ccdirstream* d) {
+const l_rune* l_read_dir(l_dirstream* d) {
   /** readdir **
   struct dirent* readdir(DIR* d);
   It returns a pointer to a dirent structure representing the next
@@ -434,25 +428,16 @@ struct ccfrom ccreaddir(struct ccdirstream* d) {
   It is expected a future version of POSIX.1 will make readdir_r() obsolete,
   and require that readdir(3) be thread-safe when concurrently employed on
   different directory streams. */
-  struct ccfrom s = {0};
   struct dirent* entry = 0;
   errno = 0;
   if ((entry = readdir((DIR*)d->stream)) == 0) {
-    if (errno != 0) { ccloge("readdir %s", strerror(errno)); }
-    return s;
+    if (errno != 0) { l_loge_1("readdir %s", lserror(errno)); }
+    return 0;
   }
-  s.start = (uoctet_int*)entry->d_name;
-  s.beyond = s.start + strlen(entry->d_name);
-  return s;
+  return l_str(entry->d_name);
 }
 
-/** Thread and synchronization **/
-
-/**
- * thread-specific data key
- */
-
-nauty_bool ccthrkey_init(struct ccthrkey* self) {
+void l_thrkey_init(l_thrkey* self) {
   /** pthread_key_create - thread-specific data key creation **
   #include <pthread.h>
   int pthread_key_create(pthread_key_t* key, void (*destructor)(void*));
@@ -461,23 +446,21 @@ nauty_bool ccthrkey_init(struct ccthrkey* self) {
   indicate the error. */
   int n = pthread_key_create((pthread_key_t*)self, 0);
   if (n != 0) {
-    ccloge("pthread_key_create %s", strerror(n));
-    return false;
+    l_loge_1("pthread_key_create %s", lserror(n));
   }
-  return true;
 }
 
-void ccthrkey_free(struct ccthrkey* self) {
+void l_thrkey_free(l_thrkey* self) {
   /** pthread_key_delete - thread-specific data key deletion **
   #include <pthread.h>
   int pthread_key_delete(pthread_key_t key); */
   int n = pthread_key_delete(*(pthread_key_t*)self);
   if (n != 0) {
-    ccloge("pthread_key_delete %s", strerror(n));
+    l_loge_1("pthread_key_delete %s", lserror(n));
   }
 }
 
-void* ccthrkey_getdata(struct ccthrkey* self) {
+void* l_thrkey_get_data(l_thrkey* self) {
   /** thread-specific data management **
   #include <pthread.h>
   void* pthread_getspecific(pthread_key_t key);
@@ -488,188 +471,160 @@ void* ccthrkey_getdata(struct ccthrkey* self) {
   return pthread_getspecific(*(pthread_key_t*)self);
 }
 
-nauty_bool ccthrkey_setdata(struct ccthrkey* self, const void* data) {
+void l_thrkey_set_data(l_thrkey* self, const void* data) {
   /* different threads may bind different values to the same key, the value
   is typically a pointer to blocks of dynamically allocated memory that have
   been reserved for use by the calling thread. */
   int n = pthread_setspecific(*(pthread_key_t*)self, data);
   if (n != 0) {
-    ccloge("pthread_setspecific %s", strerror(n));
-    return false;
+    l_loge_1("pthread_setspecific %s", lserror(n));
   }
-  return true;
 }
 
-/**
- * mutex
- */
-
-nauty_bool ccmutex_init(struct ccmutex* self) {
+void l_mutex_init(l_mutex* self) {
   pthread_mutex_t* mutex = (pthread_mutex_t*)self;
   int n = pthread_mutex_init(mutex, 0);
   if (n != 0) {
-    ccloge("pthread_mutex_init %s", strerror(n));
-    return false;
+    l_loge_1("pthread_mutex_init %s", lserror(n));
   }
-  return true;
 }
 
-void ccmutex_free(struct ccmutex* self) {
+void l_mutex_free(l_mutex* self) {
   pthread_mutex_t* mutex = (pthread_mutex_t*)self;
   int n = pthread_mutex_destroy(mutex);
   if (n != 0) {
-    ccloge("pthread_mutex_destroy %s", strerror(n));
+    l_loge_1("pthread_mutex_destroy %s", lserror(n));
   }
 }
 
-nauty_bool ccmutex_lock(struct ccmutex* self) {
+void l_mutex_lock(l_mutex* self) {
   pthread_mutex_t* mutex = (pthread_mutex_t*)self;
   int n = pthread_mutex_lock(mutex);
   if (n != 0) {
-    ccloge("pthread_mutex_lock %s", strerror(n));
-    return false;
+    l_loge_1("pthread_mutex_lock %s", lserror(n));
   }
-  return true;
 }
 
-void ccmutex_unlock(struct ccmutex* self) {
+void l_mutex_unlock(l_mutex* self) {
   pthread_mutex_t* mutex = (pthread_mutex_t*)self;
   int n = pthread_mutex_unlock(mutex);
   if (n != 0) {
-    ccloge("pthread_mutex_unlock %s", strerror(n));
+    l_loge_1("pthread_mutex_unlock %s", lserror(n));
   }
 }
 
-nauty_bool ccmutex_trylock(struct ccmutex* self) {
+int l_mutex_trylock(l_mutex* self) {
   pthread_mutex_t* mutex = (pthread_mutex_t*)self;
   int n = pthread_mutex_trylock(mutex);
   if (n == 0) {
     return true;
   }
   if (n != EBUSY) {
-    ccloge("pthread_mutex_trylock %s", strerror(n));
+    l_loge_1("pthread_mutex_trylock %s", lserror(n));
   }
   return false;
 }
 
-/**
- * read/write lock
- */
-
-nauty_bool ccrwlock_init(struct ccrwlock* self) {
+void l_rwlock_init(l_rwlock* self) {
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_init(lock, 0);
   if (n != 0) {
-    ccloge("pthread_rwlock_init %s", strerror(n));
-    return false;
+    l_loge_1("pthread_rwlock_init %s", lserror(n));
   }
-  return true;
 }
 
-void ccrwlock_free(struct ccrwlock* self) {
+void l_rwlock_free(l_rwlock* self) {
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_destroy(lock);
   if (n != 0) {
-    ccloge("pthread_rwlock_destroy %s", strerror(n));
+    l_loge_1("pthread_rwlock_destroy %s", lserror(n));
   }
 }
 
-nauty_bool ccrwlock_read(struct ccrwlock* self) {
+void l_rwlock_read(l_rwlock* self) {
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_rdlock(lock);
   if (n != 0) {
-    ccloge("pthread_rwlock_rdlock %s", strerror(n));
-    return false;
+    l_loge_1("pthread_rwlock_rdlock %s", lserror(n));
   }
-  return true;
 }
 
-nauty_bool ccrwlock_write(struct ccrwlock* self) {
+void l_rwlock_write(l_rwlock* self) {
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_wrlock(lock);
   if (n != 0) {
-    ccloge("pthread_rwlock_wrlock %s", strerror(n));
-    return false;
+    l_loge_1("pthread_rwlock_wrlock %s", lserror(n));
   }
-  return true;
 }
 
-nauty_bool ccrwlock_tryread(struct ccrwlock* self) {
+int l_rwlock_tryread(l_rwlock* self) {
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_tryrdlock(lock);
   if (n != 0) {
-    ccloge("pthread_rwlock_tryrdlock %s", strerror(n));
+    l_loge_1("pthread_rwlock_tryrdlock %s", lserror(n));
     return false;
   }
   return true;
 }
 
-nauty_bool ccrwlock_trywrite(struct ccrwlock* self) {
+int l_rwlock_trywrite(l_rwlock* self) {
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_trywrlock(lock);
   if (n != 0) {
-    ccloge("pthread_rwlock_trywrlock %s", strerror(n));
+    l_loge_1("pthread_rwlock_trywrlock %s", lserror(n));
     return false;
   }
   return true;
 }
 
-void ccrwlock_unlock(struct ccrwlock* self) {
+void l_rwlock_unlock(l_rwlock* self) {
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_unlock(lock);
   if (n != 0) {
-    ccloge("pthread_rwlock_unlock %s", strerror(n));
+    l_loge_1("pthread_rwlock_unlock %s", lserror(n));
   }
 }
 
-/**
- * condition variable
- */
-
-nauty_bool cccondv_init(struct cccondv* self) {
+void l_condv_init(l_condv* self) {
   pthread_cond_t* cond = (pthread_cond_t*)self;
   int n = pthread_cond_init(cond, 0);
   if (n != 0) {
-    ccloge("pthread_cond_init %s", strerror(n));
-    return false;
+    l_loge_1("pthread_cond_init %s", lserror(n));
   }
-  return true;
 }
 
-void cccondv_free(struct cccondv* self) {
+void l_condv_free(l_condv* self) {
   pthread_cond_t* cond = (pthread_cond_t*)self;
   int n = pthread_cond_destroy(cond);
   if (n != 0) {
-    ccloge("pthread_cond_destroy %s", strerror(n));
+    l_loge_1("pthread_cond_destroy %s", lserror(n));
   }
 }
 
-nauty_bool cccondv_wait(struct cccondv* self, struct ccmutex* mutex) {
+void l_condv_wait(l_condv* self, l_mutex* mutex) {
   pthread_cond_t* c = (pthread_cond_t*)self;
   pthread_mutex_t* m = (pthread_mutex_t*)mutex;
   int n = pthread_cond_wait(c, m);
   if (n != 0) {
-    ccloge("pthread_cond_wait %s", strerror(n));
-    return false;
+    l_loge_1("pthread_cond_wait %s", lserror(n));
   }
-  return true;
 }
 
-nauty_bool cccondv_timedwait(struct cccondv* self, struct ccmutex* mutex, sright_int ns) {
+int l_condv_timedwait(l_condv* self, l_mutex* mutex, l_integer ns) {
   pthread_cond_t* c = (pthread_cond_t*)self;
   pthread_mutex_t* m = (pthread_mutex_t*)mutex;
-  struct cctime curtime = ccsystime();
+  l_time curtime = l_system_time();
   struct timespec tm;
   int n = 0;
 
   /* caculate the absolute time */
-  ns += curtime.nsec + curtime.sec * CCNSECS_OF_SECOND;
+  ns += curtime.nsec + curtime.sec * l_nsecs_per_second;
   if (ns < 0) {
     ns = 0;
-    ccloge("invalid timeout value");
+    l_loge_s("invalid timeout value");
   }
-  tm.tv_sec = (time_t)(ns / CCNSECS_OF_SECOND);
-  tm.tv_nsec = (long)(ns - tm.tv_sec * CCNSECS_OF_SECOND);
+  tm.tv_sec = (time_t)(ns / l_nsecs_per_second);
+  tm.tv_nsec = (long)(ns - tm.tv_sec * l_nsecs_per_second);
 
   /* int pthread_cond_timedwait(pthread_cond_t* cond,
   pthread_mutex_t* mutex, const struct timespec* abstime); */
@@ -677,11 +632,11 @@ nauty_bool cccondv_timedwait(struct cccondv* self, struct ccmutex* mutex, sright
   if (n == 0 || n == ETIMEDOUT) {
     return true;
   }
-  ccloge("pthread_cond_timedwait %d", strerror(n));
+  l_loge_1("pthread_cond_timedwait %d", lserror(n));
   return false;
 }
 
-void cccondv_signal(struct cccondv* self) {
+void l_condv_signal(l_condv* self) {
   pthread_cond_t* cond = (pthread_cond_t*)self;
   /* pthread_cond_signal() shall unblock at least one of the threads
   that are blocked on the specified condition variable cond (if any
@@ -696,54 +651,50 @@ void cccondv_signal(struct cccondv* self) {
   a waiting thread by signaling from code running in a signal handler. */
   int n = pthread_cond_signal(cond);
   if (n != 0) {
-    ccloge("pthread_cond_signal %s", strerror(n));
+    l_loge_1("pthread_cond_signal %s", lserror(n));
   }
 }
 
-void cccondv_broadcast(struct cccondv* self) {
+void l_condv_broadcast(l_condv* self) {
   pthread_cond_t* cond = (pthread_cond_t*)self;
   int n = pthread_cond_broadcast(cond);
   if (n != 0) {
-    ccloge("pthread_cond_broadcast %s", strerror(n));
+    l_loge_1("pthread_cond_broadcast %s", lserror(n));
   }
 }
 
-/**
- * thread
- */
-
-struct ccthrid ccplat_selfthread() {
-  struct ccthrid thrid;
+l_thrid l_raw_self_thread() {
+  l_thrid thrid;
   *((pthread_t*)&thrid) = pthread_self();
   return thrid;
 }
 
-nauty_bool ccplat_createthread(struct ccthrid* thrid, void* (*start)(void*), void* para) {
+int l_raw_create_thread(l_thrid* thrid, void* (*start)(void*), void* para) {
   pthread_t* thread = (pthread_t*)thrid;
   int n = pthread_create(thread, 0, start, para);
   if (n != 0) {
-    ccloge("pthread_create %s", strerror(n));
+    l_loge_1("pthread_create %s", lserror(n));
     return false;
   }
   return true;
 }
 
-void ccplat_threadsleep(uright_int us) {
+void l_raw_thread_sleep(l_integer us) {
   struct timespec req;
   req.tv_sec = (time_t)(us/1000000);
   req.tv_nsec = (long)(us%1000000*1000);
   if (nanosleep(&req, 0) != 0) {
     if (errno != EINTR) {
-      ccloge("nanosleep %s", strerror(errno));
+      l_loge_1("nanosleep %s", lserror(errno));
     }
   }
 }
 
-void ccplat_threadexit() {
+void l_raw_thread_exit() {
   pthread_exit((void*)1);
 }
 
-int ccplat_threadjoin(struct ccthrid* thrid) {
+int l_raw_thread_join(l_thrid* thrid) {
   int n = 0;
   void* exitcode = 0;
   pthread_t* thread = (pthread_t*)thrid;
@@ -751,20 +702,18 @@ int ccplat_threadjoin(struct ccthrid* thrid) {
   immediately. the thread needs to be joinable. join a alreay
   joined thread will results in undefined behavior. */
   if ((n = pthread_join(*thread, &exitcode)) != 0) {
-    ccloge("pthread_join %s", strerror(n));
+    l_loge_1("pthread_join %s", lserror(n));
   }
-  return (int)(signed_ptr)exitcode;
+  return (int)(l_intptr)exitcode;
 }
 
-/** Linux core test **/
-
-void ccplattest() {
-  ccassert(sizeof(struct ccmutex) >= sizeof(pthread_mutex_t));
-  ccassert(sizeof(struct ccrwlock) >= sizeof(pthread_rwlock_t));
-  ccassert(sizeof(struct cccondv) >= sizeof(pthread_cond_t));
-  ccassert(sizeof(int) <= sizeof(umedit_int)); /* test file descriptor size */
-  cclogd("pthread_t %s-byte", ccutos(sizeof(pthread_t)));
-  cclogd("pthread_mutext_t %s-byte", ccutos(sizeof(pthread_mutex_t)));
-  cclogd("pthread_rwlock_t %s-byte", ccutos(sizeof(pthread_rwlock_t)));
+void l_plat_test() {
+  l_assert(sizeof(l_mutex) >= sizeof(pthread_mutex_t));
+  l_assert(sizeof(l_rwlock) >= sizeof(pthread_rwlock_t));
+  l_assert(sizeof(l_condv) >= sizeof(pthread_cond_t));
+  l_assert(sizeof(int) == sizeof(l_umedit)); /* test file descriptor size */
+  l_logd_1("pthread_t %s-byte", ld(sizeof(pthread_t)));
+  l_logd_1("pthread_mutext_t %s-byte", ld(sizeof(pthread_mutex_t)));
+  l_logd_1("pthread_rwlock_t %s-byte", ld(sizeof(pthread_rwlock_t)));
 }
 

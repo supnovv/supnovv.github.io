@@ -1,10 +1,6 @@
-#include <string.h>
-#include <errno.h>
+#include "linuxpref.h"
 #include "plationf.h"
-#include "ionotify.h"
-
-#if defined(CC_OS_LINUX)
-/** Linux Epoll **/
+#include "ionfmgr.h"
 
 /** eventfd - create a file descriptor for event notification **
 #include <sys/eventfd.h>
@@ -100,25 +96,25 @@ mechanisms could not be multiplexed via select(2), poll(2), or epoll(7)). */
 static int ll_event_fd() {
   int n = eventfd(0, EFD_NONBLOCK);
   if (n == -1) {
-    ccloge("eventfd %s", strerror(n));
+    l_loge_1("eventfd %s", lserror(n));
   }
   return n;
 }
 
-static void ll_event_fd_close(handle_int fd) {
+static void ll_event_fd_close(l_handle fd) {
   if (close(fd) != 0) {
-    ccloge("eventfd close %s", strerror(errno));
+    l_loge_1("eventfd close %s", lserror(errno));
   }
 }
 
-sright_int ll_read(handle_int fd, void* out, sright_int count);
-sright_int ll_write(handle_int fd, const void* buf, sright_int count);
+l_integer ll_read(l_handle fd, void* out, l_integer count);
+l_integer ll_write(l_handle fd, const void* buf, l_integer count);
 
 /* return > 0 success, -1 block, -2 error */
 static int ll_event_fd_write(int fd) {
-  uright_int count = 1;
-  int n = ll_write(fd, &count, sizeof(uright_int));
-  if (n == sizeof(uright_int)) {
+  l_uinteger count = 1;
+  int n = ll_write(fd, &count, sizeof(l_uinteger));
+  if (n == sizeof(l_uinteger)) {
     return n;
   }
   if (n == -1) return n;
@@ -127,9 +123,9 @@ static int ll_event_fd_write(int fd) {
 
 /* return > 0 success, -1 block, -2 error */
 static int ll_event_fd_read(int fd) {
-  uright_int count = 0;
-  int n = ll_read(fd, &count, sizeof(uright_int));
-  if (n == sizeof(uright_int)) {
+  l_uinteger count = 0;
+  int n = ll_read(fd, &count, sizeof(l_uinteger));
+  if (n == sizeof(l_uinteger)) {
     return (int)count;
   }
   if (n == -1) return n;
@@ -260,20 +256,20 @@ static int ll_epoll_create() {
   ENOMEM - There was insufficient memory to create the kernel object. */
   int epfd = epoll_create1(0);
   if (epfd == -1) {
-    ccloge("epoll_create1 %s", strerror(errno));
+    l_loge_1("epoll_create1 %s", lserror(errno));
   }
   return epfd;
 }
 
 static void llepollmgr_close(int epfd) {
   if (close(epfd) != 0) {
-    ccloge("close epoll %s", strerror(errno));
+    l_loge_1("close epoll %s", lserror(errno));
   }
 }
 
-static nauty_bool llepollmgr_ctl(int epfd, int op, int fd, struct epoll_event* event) {
+static int llepollmgr_ctl(int epfd, int op, int fd, struct epoll_event* event) {
   if (epfd == -1 || fd == -1 || epfd == fd) {
-    ccloge("llepollmgr_ctl invalid fd");
+    l_loge_s("llepollmgr_ctl invalid fd");
     return false;
   }
   /** epoll_event **
@@ -313,25 +309,25 @@ static nauty_bool llepollmgr_ctl(int epfd, int op, int fd, struct epoll_event* e
   return (epoll_ctl(epfd, op, fd, event) != 0);
 }
 
-static nauty_bool llepollmgr_add(int epfd, int fd, struct epoll_event* event) {
+static int llepollmgr_add(int epfd, int fd, struct epoll_event* event) {
   if (!llepollmgr_ctl(epfd, EPOLL_CTL_ADD, fd, event)) {
     if (errno != EEXIST || !llepollmgr_ctl(epfd, EPOLL_CTL_MOD, fd, event)) {
-      ccloge("llepollmgr_add %s", strerror(errno));
+      l_loge_1("llepollmgr_add %s", lserror(errno));
       return false;
     }
   }
   return true;
 }
 
-static nauty_bool llepollmgr_mod(int epfd, int fd, struct epoll_event* event) {
+static int llepollmgr_mod(int epfd, int fd, struct epoll_event* event) {
   if (!llepollmgr_ctl(epfd, EPOLL_CTL_MOD, fd, event)) {
-    ccloge("llepollmgr_mod %s", strerror(errno));
+    l_loge_1("llepollmgr_mod %s", lserror(errno));
     return false;
   }
   return true;
 }
 
-static nauty_bool llepollmgr_del(int epfd, int fd) {
+static int llepollmgr_del(int epfd, int fd) {
   /* In kernel versions before 2.6.9, the EPOLL_CTL_DEL
   operation required a non-null pointer in event, even
   though this argument is ignored. Since Linux 2.6.9, event
@@ -339,15 +335,15 @@ static nauty_bool llepollmgr_del(int epfd, int fd) {
   Applications that need to be portable to kernels before
   2.6.9 should specify a non-null pointer in event. */
   struct epoll_event event;
-  cczeron(&event, sizeof(struct epoll_event));
+  l_zero_l(&event, sizeof(struct epoll_event));
   if (!llepollmgr_ctl(epfd, EPOLL_CTL_DEL, fd, &event)) {
-    ccloge("llepollmgr_del %s", strerror(errno));
+    l_loge_1("llepollmgr_del %s", lserror(errno));
     return false;
   }
   return true;
 }
 
-static void llepollmgr_wait(struct llepollmgr* self, int ms) {
+static void llepollmgr_wait(llepollmgr* self, int ms) {
   /** epoll_wait **
   #include <sys/epoll.h>
   int epoll_wait(int epfd, struct epoll_event* events, int maxevents, int timeout);
@@ -394,22 +390,22 @@ static void llepollmgr_wait(struct llepollmgr* self, int ms) {
   int n = 0;
 
   errno = 0;
-  if ((self->nready = epoll_wait(self->epfd, self->ready, CCEPOLL_MAX_EVENTS, ms)) < 0) {
+  if ((self->nready = epoll_wait(self->epfd, self->ready, L_EPOLL_MAX_EVENTS, ms)) < 0) {
     self->nready = 0;
   }
 
   n = errno;
   if (n == EINTR) {
-    cclogw("epoll_wait interrupted %s", strerror(n));
+    l_logw_1("epoll_wait interrupted %s", lserror(n));
   } else if (n != 0) {
-    ccloge("epoll_wait %s", strerror(errno));
+    l_loge_1("epoll_wait %s", lserror(errno));
   }
 }
 
-nauty_bool ccionfmgr_init(struct ccionfmgr* self) {
-  struct llepollmgr* mgr = (struct llepollmgr*)self;
-  cczeron(mgr, sizeof(struct llepollmgr));
-  ccmutex_init((struct ccmutex*)&(mgr->mutex));
+int l_ionfmgr_init(l_ionfmgr* self) {
+  llepollmgr* mgr = (llepollmgr*)self;
+  l_zero_l(mgr, sizeof(llepollmgr));
+  l_mutex_init((l_mutex*)&(mgr->mutex));
   if ((mgr->epfd = ll_epoll_create()) == -1) {
     return false;
   }
@@ -419,11 +415,11 @@ nauty_bool ccionfmgr_init(struct ccionfmgr* self) {
   return true;
 }
 
-void ccionfmgr_free(struct ccionfmgr* self) {
-  struct llepollmgr* mgr = (struct llepollmgr*)self;
+void l_ionfmgr_free(l_ionfmgr* self) {
+  llepollmgr* mgr = (llepollmgr*)self;
   mgr->wakeupfd_added = false;
   mgr->wakeup_count = 0;
-  ccmutex_free((struct ccmutex*)&(mgr->mutex));
+  l_mutex_free((l_mutex*)&(mgr->mutex));
   if (mgr->epfd != -1) {
     llepollmgr_close(mgr->epfd);
     mgr->epfd = -1;
@@ -455,40 +451,40 @@ static uint32_t llepollmasks[] = {
   /* 0x11 */ 0
 };
 
-static ushort_int llionfrd[] = {0, CCM_EVENT_READ};
-static ushort_int llionfwr[] = {0, CCM_EVENT_WRITE};
-static ushort_int llionfpri[] = {0, CCM_EVENT_PRI};
-static ushort_int llionfrdh[] = {0, CCM_EVENT_RDH};
-static ushort_int llionfhup[] = {0, CCM_EVENT_HUP};
-static ushort_int llionferr[] = {0, CCM_EVENT_ERR};
+static l_ushort llionfrd[] = {0, L_IOEVENT_READ};
+static l_ushort llionfwr[] = {0, L_IOEVENT_WRITE};
+static l_ushort llionfpri[] = {0, L_IOEVENT_PRI};
+static l_ushort llionfrdh[] = {0, L_IOEVENT_RDH};
+static l_ushort llionfhup[] = {0, L_IOEVENT_HUP};
+static l_ushort llionferr[] = {0, L_IOEVENT_ERR};
 
-static uint32_t llgetepollmasks(struct ccioevent* event) {
-  return (llepollmasks[event->masks & CCM_EVENT_READ] | llepollmasks[event->masks & CCM_EVENT_WRITE] |
-    llepollmasks[event->masks & CCM_EVENT_PRI] | llepollmasks[event->masks & CCM_EVENT_RDH]);
+static uint32_t llgetepollmasks(l_ioevent* event) {
+  return (llepollmasks[event->masks & L_IOEVENT_READ] | llepollmasks[event->masks & L_IOEVENT_WRITE] |
+    llepollmasks[event->masks & L_IOEVENT_PRI] | llepollmasks[event->masks & L_IOEVENT_RDH]);
 }
 
-static ushort_int llgetionfmasks(struct epoll_event* event) {
+static l_ushort llgetionfmasks(struct epoll_event* event) {
   uint32_t masks = event->events;
   return (llionfrd[(masks&EPOLLIN)!=0] | llionfwr[(masks&EPOLLOUT)!=0] | llionfpri[(masks&EPOLLPRI)!=0] |
-    llionfrdh[(masks&EPOLLRDHUP)!=0] | llionfhup[(masks&EPOLLHUP)!=0] | llionferr[(masks&CCM_EVENT_ERR)!=0]);
+    llionfrdh[(masks&EPOLLRDHUP)!=0] | llionfhup[(masks&EPOLLHUP)!=0] | llionferr[(masks&L_IOEVENT_ERR)!=0]);
 }
 
-static uint64_t llgetepolludata(struct ccioevent* event) {
+static uint64_t llgetepolludata(l_ioevent* event) {
   uint32_t fd = event->fd;
   uint64_t udata = event->udata;
   return ((udata << 32) | fd);
 }
 
-static handle_int llgetionfhandle(struct epoll_event* event) {
+static l_handle llgetionfhandle(struct epoll_event* event) {
   uint32_t fd = (uint32_t)(event->data.u64 & 0xFFFFFFFF);
-  return (handle_int)fd;
+  return (l_handle)fd;
 }
 
-static umedit_int llgetionfudata(struct epoll_event* event) {
-  return (umedit_int)(event->data.u64 >> 32);
+static l_umedit llgetionfudata(struct epoll_event* event) {
+  return (l_umedit)(event->data.u64 >> 32);
 }
 
-nauty_bool ccionfmgr_add(struct ccionfmgr* self, struct ccioevent* event) {
+int l_ionfmgr_add(l_ionfmgr* self, l_ioevent* event) {
   /** event masks **
   The bit masks can be composed using the following event types:
   EPOLLIN - The associated file is available for read operations.
@@ -551,30 +547,30 @@ nauty_bool ccionfmgr_add(struct ccionfmgr* self, struct ccioevent* event) {
   to epoll_ctl that specifies EPOLLEXCLUSIVE and specifies the target
   fd as an epoll instance will likewise fail. The error in all of
   these cases is EINVAL. */
-  struct llepollmgr* mgr = (struct llepollmgr*)self;
+  llepollmgr* mgr = (llepollmgr*)self;
   struct epoll_event e;
   e.events = (EPOLLHUP | EPOLLERR | llgetepollmasks(event));
   e.data.u64 = llgetepolludata(event);
   return llepollmgr_add(mgr->epfd, event->fd, &e);
 }
 
-nauty_bool ccionfmgr_mod(struct ccionfmgr* self, struct ccioevent* event) {
-  struct llepollmgr* mgr = (struct llepollmgr*)self;
+int l_ionfmgr_mod(l_ionfmgr* self, l_ioevent* event) {
+  llepollmgr* mgr = (llepollmgr*)self;
   struct epoll_event e;
   e.events = (EPOLLHUP | EPOLLERR | llgetepollmasks(event));
   e.data.u64 = llgetepolludata(event);
   return llepollmgr_mod(mgr->epfd, event->fd, &e);
 }
 
-nauty_bool ccionfmgr_del(struct ccionfmgr* self, struct ccioevent* event) {
-  struct llepollmgr* mgr = (struct llepollmgr*)self;
+int l_ionfmgr_del(l_ionfmgr* self, l_ioevent* event) {
+  llepollmgr* mgr = (llepollmgr*)self;
   return llepollmgr_del(mgr->epfd, event->fd);
 }
 
 /* return > 0 success, -1 block, -2 error, -3 already signaled */
-int ccionfmgr_wakeup(struct ccionfmgr* self) {
-  struct llepollmgr* mgr = (struct llepollmgr*)self;
-  nauty_bool needtowakeup = false;
+int l_ionfmgr_wakeup(l_ionfmgr* self) {
+  llepollmgr* mgr = (llepollmgr*)self;
+  int needtowakeup = false;
 
   /* if we use a flag like "wait_is_called" to indicate master called epoll_wait() or not,
   and then write eventfd to signal master wakeup only "wait_is_called" is true, then master
@@ -585,12 +581,12 @@ int ccionfmgr_wakeup(struct ccionfmgr* self) {
   /* here is the another trick to count the wakeup times.
   this function can be called from any thread, the counter
   need to be protected by a lock.*/
-  ccmutex_lock((struct ccmutex*)&(mgr->mutex));
+  l_mutex_lock((l_mutex*)&(mgr->mutex));
   if (mgr->wakeup_count < 2) {
     mgr->wakeup_count += 1;
     needtowakeup = true;
   }
-  ccmutex_unlock((struct ccmutex*)&(mgr->mutex));
+  l_mutex_unlock((l_mutex*)&(mgr->mutex));
 
   if (!needtowakeup) {
     /* already signaled to wakeup */
@@ -601,11 +597,11 @@ int ccionfmgr_wakeup(struct ccionfmgr* self) {
 }
 
 /* return number of events waited and handled */
-int ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccioevent*)) {
-  struct llepollmgr* mgr = (struct llepollmgr*)self;
+int l_ionfmgr_timedwait(l_ionfmgr* self, int ms, void (*cb)(l_ioevent*)) {
+  llepollmgr* mgr = (llepollmgr*)self;
   struct epoll_event* start = 0;
   struct epoll_event* beyond = 0;
-  struct ccioevent event;
+  l_ioevent event;
   int n = 0;
 
   /* timeout cannot be negative except infinity (-1) */
@@ -625,7 +621,7 @@ int ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccioev
     e.events = EPOLLERR | EPOLLIN;
     e.data.fd = mgr->wakeupfd;
     if (!llepollmgr_add(mgr->epfd, mgr->wakeupfd, &e)) {
-      ccloge("epoll_wait add wakeupfd failed");
+      l_loge_s("epoll_wait add wakeupfd failed");
     }
   }
 
@@ -640,13 +636,13 @@ int ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccioev
     if (start->data.fd == mgr->wakeupfd) {
       /* return > 0 success, -1 block, -2 error */
       n = ll_event_fd_read(mgr->wakeupfd);
-      cclogd("ionf wakeup %s", ccitos(n));
+      l_logd_1("ionf wakeup %d", ld(n));
       /* count down wakeup_count */
-      ccmutex_lock((struct ccmutex*)&(mgr->mutex));
+      l_mutex_lock((l_mutex*)&(mgr->mutex));
       if (mgr->wakeup_count > 0) {
         mgr->wakeup_count -= 1;
       }
-      ccmutex_unlock((struct ccmutex*)&(mgr->mutex));
+      l_mutex_unlock((l_mutex*)&(mgr->mutex));
       continue;
     }
     event.masks = llgetionfmasks(start);
@@ -658,105 +654,15 @@ int ccionfmgr_timedwait(struct ccionfmgr* self, int ms, void (*cb)(struct ccioev
   return mgr->nready;
 }
 
-int ccionfmgr_wait(struct ccionfmgr* self, void (*cb)(struct ccioevent*)) {
-  return ccionfmgr_timedwait(self, -1, cb);
+int l_ionfmgr_wait(l_ionfmgr* self, void (*cb)(l_ioevent*)) {
+  return l_ionfmgr_timedwait(self, -1, cb);
 }
 
-int ccionfmgr_trywait(struct ccionfmgr* self, void (*cb)(struct ccioevent*)) {
-  return ccionfmgr_timedwait(self, 0, cb);
+int l_ionfmgr_trywait(l_ionfmgr* self, void (*cb)(l_ioevent*)) {
+  return l_ionfmgr_timedwait(self, 0, cb);
 }
 
-#elif defined(CC_OS_APPLE) || defined(CC_OS_BSD)
-/** BSD Kqueue **/
-
-
-#else
-/** Linux Poll **/
-
-struct ccepoll {
-  struct ccarray fdset;
-  struct cchashtbl fdud;
-};
-
-#define CCEPOLLINITFDBITS 6  /* 2 ^ 6 = 64 */
-#define CCEPOLLINITFDSIZE (1 << CCEPOLLINITFDBITS)
-
-void ccepollinit(struct ccepoll* self) {
-  cczeron(self, sizeof(struct ccepoll));
-}
-
-nauty_bool ccepollcreate(struct ccepoll* self) {
-  ccarrayinit(&self->fdset, sizeof(struct pollfd), CCEPOLLINITFDSIZE);
-  cchashtblinit(&self->fdud, CCEPOLLINITFDBITS);
-  return true;
-}
-
-void ccepollclose(struct ccepoll* self) {
-  ccarrayfree(&self->fdset);
-  cchashtblfree(&self->fdud);
-}
-
-#define CCEPOLLIN POLLIN
-#define CCEPOLLPRI POLLPRI
-#define CCEPOLLOUT POLLOUT
-#define CCEPOLLERR (POLLERR | POLLNVAL)
-#define CCEPOLLHUP POLLHUP
-
-nauty_bool ccepolladd(struct ccepoll* self, int fd, char flag) {
-  struct pollfd event;
-  event.fd = fd;
-  event.revents = 0;
-  event.events = POLLIN | POLLPRI;
-  if (flag == 'a') {
-    event.events |= POLLOUT;
-  } else if (flag == 'w') {
-    event.events = POLLOUT;
-  } else if (flag != 'r') {
-    event.events = 0;
-    ccloge("epolladd invalid falg");
-    return false;
-  }
-  return ccarrayadd(&self->fdset, &event);
-}
-
-nauty_bool ccepollmod(struct ccepoll* self, int fd, char flag) {
-  struct pollfd event = {0};
-  event.fd = fd;
-  struct pollfd* p = ccarrayfind(&self->fdset, fd, ccepollequalfunc);
-  if (p == 0) return;
-  p->revents = 0;
-  p->events = POLLIN | POLLPRI;
-  if (flag == 'a') {
-    event.events |= POLLOUT;
-  } else if (flag == 'w') {
-    event.events = POLLOUT;
-  } else if (flag != 'r') {
-    event.events = 0;
-    ccloge("epollmod invalid flag");
-  }
-}
-
-void ccepolldel(struct ccepoll* self, int fd) {
-  struct pollfd event = {0};
-  event.fd = fd;
-  ccarraydel(&self->fdset, &event, ccepollequalfunc);
-}
-
-void ccepollwait(struct ccepoll* self) {
-  ccepollwaitms(self, INFTIM);
-}
-
-void ccepolltrywait(struct ccepoll* self) {
-  ccepollwaitms(self, 0);
-}
-
-void ccepollwaitms(struct ccepoll* self, int ms) {
-  poll(self->fdset.buffer, self->fdset.nelem, ms);
-}
-
-#endif /* CC_OS_LINUX */
-
-void ccplationftest() {
-  ccassert(sizeof(handle_int) <= 4);
+void l_plationftest() {
+  l_assert(sizeof(l_handle) <= 4);
 }
 

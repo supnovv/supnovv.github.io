@@ -10,7 +10,7 @@ SHARED =
 
 CC = gcc
 CC89 = gcc -std=c89
-CWARNS = -Wall -Wextra -Werror
+CWARNS = -Wall -Wextra -Werror -Wno-error=unused-function
 CMACRO = $(MACRO)
 POSINDEPCODE = -fPIC # position independent code
 CFLAGS = $(CWARNS) $(CMACRO) $(MYINC) -g -O2
@@ -48,7 +48,7 @@ AUTOOBJ = $(BUILD_DIR)autoconf$(O)
 COREOBJ = $(BUILD_DIR)thatcore$(O) $(BUILD_DIR)linuxcore$(O) $(BUILD_DIR)thattest$(O)
 STRINGO = $(BUILD_DIR)string$(O)
 LUACOBJ = $(BUILD_DIR)luacapi$(O)
-IONFOBJ = $(BUILD_DIR)linuxionf$(O)
+IONFOBJ = $(BUILD_DIR)ionfmgr$(O)
 SOCKOBJ = $(BUILD_DIR)linuxsock$(O)
 SRVCOBJ = $(BUILD_DIR)service$(O)
 HTTPOBJ = $(BUILD_DIR)http_service$(O)
@@ -101,7 +101,7 @@ $(BUILD_DIR)%$(O): %.c
 
 $(AUTOOBJ): autoconf.c
 $(COREOBJ): thatcore.c linuxcore.c thattest.c thatcore.h autoconf.h l_prefix.h
-$(IONFOBJ): linuxionf.c ionotify.h plationf.h
+$(IONFOBJ): ionfmgr.c ionfmgr.h plationf.h
 $(SOCKOBJ): linuxsock.c socket.h platsock.h
 $(SRVCOBJ): service.c service.h
 $(STRINGO): string.c string.h

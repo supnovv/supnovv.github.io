@@ -21,7 +21,7 @@ l_extern const l_stringmap* l_string_space_map();
 l_extern const l_stringmap* l_string_newline_map();
 l_extern const l_stringmap* l_string_blank_map();
 
-l_extern l_string_map l_string_new_map(int maxstrlen, const l_rune** str, int numofstr, int casesensitive);
+l_extern l_stringmap l_string_new_map(int maxstrlen, const l_rune** str, int numofstr, int casesensitive);
 l_extern void l_string_set_map(l_stringmap* self, const l_rune** str, int numofstr, int casesensitive);
 l_extern void l_string_free_map(l_stringmap* self);
 

@@ -1,3 +1,5 @@
+#include <string.h>
+#include <stdarg.h>
 #include "string.h"
 
 #define L_FORMAT_HEX     0x01000000
@@ -15,9 +17,18 @@
 #define L_FORMAT_REVERSE 0x00008000
 #define L_FORMAT_MASKS   0xff808000
 
+static l_umedit l_right_most_bit(l_umedit n) {
+  return n & (-n);
+}
+
+static void l_log_write_to_file(l_logger* l) {
+  l_write_file(&l->f, l->a, l->size);
+  l->size = 0;
+}
+
 static void l_log_print(l_logger* l, const l_rune* s, const l_rune* e) {
   if (l->capacity - l->size <= e - s) {
-    l_log_flush(l);
+    l_log_write_to_file(l);
   }
   while (s < e) {
     l->a[l->size++] = *s++;
@@ -34,7 +45,7 @@ static void l_log_printcstr(l_logger* self, const l_rune* s) {
 
 static void l_log_print_reverse(l_logger* l, const l_rune* s, const l_rune* e) {
   if (l->capacity - l->size <= e - s) {
-    l_log_flush(l);
+    l_log_write_to_file(l);
   }
   while (e > s) {
     l->a[l->size++] = *(--e);
@@ -77,11 +88,12 @@ static void l_log_string_fill_and_print(l_logger* log, l_rune* a, l_rune* p, l_u
 
 static void l_log_string(l_logger* log, const l_rune* s, const l_rune* e, l_umedit flags) {
   int width = ((flags & 0x7f00) >> 8);
+  int len = e - s;
   if (len >= width) {
     l_log_print(log, s, e);
   } else {
     l_rune a[128];
-    l_copyl(s, len, a);
+    l_copy_l(s, len, a);
     l_log_string_fill_and_print(log, a, a + len, flags);
   }
 }
@@ -91,11 +103,11 @@ static void l_log_lstring(l_logger* log, const l_rune* s, int len, l_umedit flag
 }
 
 static void l_log_format_string(l_logger* log, const void* a, l_umedit flags) {
-  l_log_lstring(log, l_str(a), strlen(l_cast(char*)a), flags);
+  l_log_lstring(log, l_str(a), strlen((char*)a), flags);
 }
 
 static void l_log_format_strfrom(l_logger* log, const void* a, l_umedit flags) {
-  const l_from* s = l_cast(const l_from*, a);
+  const l_strt* s = l_cast(const l_strt*, a);
   l_log_string(log, s->start, s->end, flags);
 }
 
@@ -111,7 +123,7 @@ static void l_log_format_true(l_logger* log, l_uinteger a, l_umedit flags) {
   if (a) {
     l_log_lstring(log, (flags & L_FORMAT_UPPER) ? "TRUE" : "true" , 4, flags);
   } else {
-    l_log_lstring(log, (flags & L_FORMAT_UPPER) ? "FALSE", "false", 5, flags);
+    l_log_lstring(log, (flags & L_FORMAT_UPPER) ? "FALSE" : "false", 5, flags);
   }
 }
 
@@ -119,12 +131,12 @@ static const l_rune* l_hex_runes[] = {
   "0123456789abcdef", "0123456789ABCDEF"
 };
 
-static void l_log_format_uinteger(l_logger* log, l_uinteger a, l_umedit flags) {
+static void l_log_format_uinteger(l_logger* log, l_uinteger n, l_umedit flags) {
   /* 64-bit unsigned int max value 18446744073709552046 (20 runes) */
   l_rune a[127];
   l_rune basechar = 0;
   l_rune* p = a;
-  l_rune* hex = 0;
+  const l_rune* hex = 0;
   l_umedit precise = ((flags & 0x7f0000) >> 16);
   l_umedit base = 0;
   l_umedit sign = 0;
@@ -134,17 +146,17 @@ static void l_log_format_uinteger(l_logger* log, l_uinteger a, l_umedit flags) {
 
   switch (l_right_most_bit(base)) {
   case 0:
-    *p++ = (a % 10) + '0';
+    *p++ = (n % 10) + '0';
     while ((n /= 10)) {
-      a[i++] = (n % 10) + '0';
+      *p++ = (n % 10) + '0';
     }
     break;
 
   case L_FORMAT_HEX:
     hex = l_hex_runes[(flags & L_FORMAT_UPPER) != 0];
-    *p++ = hex[a & 0x0f];
-    while ((a >>= 4)) {
-      *p++ = hex[a & 0x0f];
+    *p++ = hex[n & 0x0f];
+    while ((n >>= 4)) {
+      *p++ = hex[n & 0x0f];
     }
     if (!(flags & L_FORMAT_N0B0O0X)) {
       basechar = (flags & L_FORMAT_UPPER) ? 'X' : 'x';
@@ -153,9 +165,9 @@ static void l_log_format_uinteger(l_logger* log, l_uinteger a, l_umedit flags) {
     break;
 
   case L_FORMAT_OCT:
-    *p++ = (a & 0x07) + '0';
-    while ((a >>= 3)) {
-      *p++ = (a & 0x07) + '0';
+    *p++ = (n & 0x07) + '0';
+    while ((n >>= 3)) {
+      *p++ = (n & 0x07) + '0';
     }
     if (!(flags & L_FORMAT_N0B0O0X)) {
       basechar = (flags & L_FORMAT_UPPER) ? 'O' : 'o';
@@ -164,9 +176,9 @@ static void l_log_format_uinteger(l_logger* log, l_uinteger a, l_umedit flags) {
     break;
 
   case L_FORMAT_BIN:
-    *p++ = (a & 0x01) + '0';
-    while ((a >>= 1)) {
-      *p++ = (a & 0x01) + '0';
+    *p++ = (n & 0x01) + '0';
+    while ((n >>= 1)) {
+      *p++ = (n & 0x01) + '0';
     }
     if (!(flags & L_FORMAT_N0B0O0X)) {
       basechar = (flags & L_FORMAT_UPPER) ? 'B' : 'b';
@@ -213,8 +225,18 @@ static void l_log_format_integer(l_logger* log, l_integer a, l_umedit flags) {
     n = (-a);
     flags |= L_FORMAT_NEGSIGN;
   }
-  l_log_uinteger(log, n, flags);
+  l_log_format_uinteger(log, n, flags);
 }
+
+static void l_log_print_uinteger(l_uinteger n, l_rune* p) {
+  (void)n;
+  (void)p;
+}
+
+static void l_log_print_fraction(l_uinteger n, l_uinteger intmasks, l_rune* p) {
+  (void)n;
+  (void)p;
+} 
 
 static void l_log_format_float(l_logger* log, l_value v, l_umedit flags) {
   l_rune a[127];
@@ -246,10 +268,7 @@ static void l_log_format_float(l_logger* log, l_value v, l_umedit flags) {
   exponent = (v.u & 0x7ff0000000000000) >> 52;
   fraction = (v.u & 0x000fffffffffffff);
   if (exponent == 0 && fraction == 0) {
-    if (negative) {
-      *p++ = '-';
-    } else if (flags & L_FORMAT_POSSIGN)
-    } else if (flags &
+    if (negative) *p++ = '-';
     *p++ = '0'; *p++ = '.'; *p++ = '0';
   } else if (exponent == 0x00000000000007ff) {
     if (fraction == 0) {
@@ -270,7 +289,7 @@ static void l_log_format_float(l_logger* log, l_value v, l_umedit flags) {
       if (exponent < -8) {
         intmasks = 0xf000000000000000;
         exponent += 8; /* 0000.00000001fraction * 2^exponent */
-        mantisa >>= (-exponent);
+        mantissa >>= (-exponent);
       } else {
         intmasks <<= (-exponent);
       }
@@ -281,7 +300,7 @@ static void l_log_format_float(l_logger* log, l_value v, l_umedit flags) {
       if (exponent >= 52) {
         /* only have integer part */
         if (exponent <= 63) { /* 52 + 11 */
-          mantisa <<= (exponent - 52);
+          mantissa <<= (exponent - 52);
           l_log_print_uinteger(mantissa, p);
           *p++ = '.';
           *p++ = '0';
@@ -298,14 +317,12 @@ static void l_log_format_float(l_logger* log, l_value v, l_umedit flags) {
         intmasks >>= exponent;
         l_log_print_uinteger((mantissa & intmasks) >> (52 - exponent), p);
         *p++ = '.';
-        l_log_print_fraction(mantissa &　(~intmasks), intmasks, p);
+        l_log_print_fraction(mantissa & (~intmasks), intmasks, p);
       }
     }
   }
 
-  len = p - bf;
-  cccopy(ccfrom(bf, len+1), to);
-  return len;
+  /* todo */
 }
 
 static int l_log_level = 2;
@@ -336,14 +353,15 @@ void l_logger_func_impl(const void* tag, const void* fmt, ...) {
   l_logger* log = 0;
   va_list vl;
 
-  level = tag[0] - '0';
-  numofargs = tag[1] - '0';
+  level = l_str(tag)[0] - '0';
+  numofargs = l_str(tag)[1] - '0';
 
   if (level < 0 || level > l_log_level) {
-    return 0;
+    return;
   }
 
-  log = l_get_logger();
+  log = l_thread_logger();
+  l_log_printcstr(log, l_str(tag) + 2);
   if (numofargs <= 0) {
     l_log_printcstr(log, fmt);
     return;
@@ -435,7 +453,7 @@ ParseFormat:
       }
       /* current char is digit, and next is not */
       if (flags & L_FORMAT_PRECISE) {
-        flags |= (width << 16)
+        flags |= (width << 16);
       } else {
         flags |= (width << 8);
       }
@@ -446,7 +464,7 @@ ParseFormat:
       /* fallthrough */
     case 's':
       ++fmtcnt;
-      l_log_format_string(log, va_arg(vl, l_value).s, flags);
+      l_log_format_string(log, va_arg(vl, l_value).p, flags);
       break;
 
     case 'f': case 'F':
@@ -466,7 +484,7 @@ ParseFormat:
 
     case 'w': case 'W':
       ++fmtcnt;
-      l_log_format_strfrom(log, va_arg(vl, l_value).s, flags);
+      l_log_format_strfrom(log, va_arg(vl, l_value).p, flags);
       break;
 
     case 'C':
@@ -509,7 +527,7 @@ ParseFormat:
     case 'x': case 'p':
       flags |= L_FORMAT_HEX;
       ++fmtcnt;
-      l_log_format_uinteger(log, va_arg(vl, l_value).u. flags);
+      l_log_format_uinteger(log, va_arg(vl, l_value).u, flags);
       break;
 
     case 0:
@@ -596,7 +614,7 @@ static l_stringmap l_space_map; /* used to match a space */
 static l_stringmap l_newline_map; /* used to match a newline */
 static l_stringmap l_blank_map; /* used to match a blank, blank is a space or a newline */
 
-const lstringmap* l_string_space_map() {
+const l_stringmap* l_string_space_map() {
   l_stringmap* map = &l_space_map;
   if (map->t) return map;
   *map = l_string_new_map(L_BLANK_MAX_LEN, l_blanks, L_NUM_OF_SPACES, true);
@@ -638,12 +656,12 @@ void l_string_set_map(l_stringmap* self, const l_rune** str, int numofstr, int c
   l_runetable* t = self->t;
   l_rune ch = 0;
 
-  cczerol(self->t, sizeof(l_chartable) * self->size);
+  l_zero_l(self->t, sizeof(l_runetable) * self->size);
 
   for (; stridx < numofstr; ++stridx) {
 
     if (stridx + 1 > self->maxnumofstr) {
-      l_log_e("too many strings");
+      l_loge_s("too many strings");
       break;
     }
 
@@ -654,7 +672,7 @@ void l_string_set_map(l_stringmap* self, const l_rune** str, int numofstr, int c
     while ((ch = s[charidx])) {
 
       if (charidx + 1 > self->size) {
-        l_log_e("string too long");
+        l_loge_s("string too long");
         ++charidx;
         break;
       }
@@ -682,7 +700,7 @@ void l_string_set_map(l_stringmap* self, const l_rune** str, int numofstr, int c
 l_stringmap l_string_new_map(int maxstrlen, const l_rune** str, int numofstr, int casesensitive) {
   l_stringmap map = {0};
   if (maxstrlen <= 0 || str == 0) return map;
-  map.t = (l_chartable*)l_rawalloc(sizeof(l_chartable) * maxstrlen);
+  map.t = (l_runetable*)l_raw_malloc(sizeof(l_runetable) * maxstrlen);
   map.size = maxstrlen;
   map.maxnumofstr = 32;
   l_string_set_map(&map, str, numofstr, casesensitive);
@@ -691,16 +709,12 @@ l_stringmap l_string_new_map(int maxstrlen, const l_rune** str, int numofstr, in
 
 void l_string_free_map(l_stringmap* self) {
   if (self->t == 0) return;
-  l_rawfree(self->t);
+  l_raw_free(self->t);
   self->t = 0;
   self->size = 0;
 }
 
 static const l_rune* const l_string_too_short = (const l_rune* const)(l_intptr)(-1);
-
-static l_umedit l_right_most_bit(l_umedit n) {
-  return n & (-n);
-}
 
 static int l_power_of_two_bit_pos(l_umedit n) {
   switch (n) {
@@ -738,7 +752,7 @@ static int l_power_of_two_bit_pos(l_umedit n) {
   case 0x80000000: return 31;
   default: break;
   }
-  l_log_e("invalid number");
+  l_loge_s("invalid number");
   return 0;
 }
 
@@ -875,7 +889,7 @@ const l_rune* l_string_skip_space_and_match_until(const l_stringmap* map, const 
 
   /* match space and skip */
   while ((e = l_string_match(l_string_space_map(), s, len)) != 0 && e != l_string_too_short) {
-    s = l_rune(s) + 1;
+    s = l_str(s) + 1;
     --len;
   }
 
@@ -936,17 +950,17 @@ void l_string_test() {
 
   map = l_string_new_map(8, methods, 3, false);
   s = l_string_match(&map, subject, 3);
-  l_log_d("get - %s", s);
+  l_logd_1("get - %s", ls(s));
   s = l_string_match(&map, subject+1, 3);
   l_assert(s == 0);
   s = l_string_match(&map, subject+4, 3);
   l_assert(s == l_string_too_short);
   s = l_string_match(&map, subject+4, 4);
-  l_log_d("head - %s", s);
+  l_logd_1("head - %s", ls(s));
   s = l_string_match(&map, subject+9, 3);
   l_assert(s == l_string_too_short);
   s = l_string_match(&map, subject+9, 5);
-  l_log_d("post - %s", s);
+  l_logd_1("post - %s", ls(s));
   s = l_string_match(&map, subject+14, 3);
   l_assert(s == 0);
 

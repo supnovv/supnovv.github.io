@@ -3,12 +3,8 @@
 #include "l_prefix.h"
 
 #if defined(L_PLAT_LINUX)
-#define _POSIX_C_SOURCE 200809L
-#include <unistd.h>
+#include "linuxpref.h"
 #include <sys/epoll.h>
-#include <sys/eventfd.h>
-#include <pthread.h>
-/** Linux Epoll **/
 
 #define L_EPOLL_MAX_EVENTS 64
 
@@ -33,15 +29,14 @@ typedef struct {
 #include <sys/event.h>
 /** BSD Kqueue **/
 
-#else
-#if !defined(L_PLAT_WINDOWS)
+#elif !defined(L_PLAT_WINDOWS)
+#include "linuxpref.h"
 #include <poll.h>
 /** Linux Poll **/
 
 #else
 /** Windows IO **/
 
-#endif
 #endif
 #endif /* l_plationf_lib_h */
 

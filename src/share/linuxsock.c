@@ -1,11 +1,4 @@
-#define _POSIX_C_SOURCE 200809L
-#include <string.h>
-#include <errno.h>
-#include <unistd.h>
-#include <signal.h>
-#include <fcntl.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
+#include "linuxpref.h"
 #include "platsock.h"
 #include "socket.h"
 

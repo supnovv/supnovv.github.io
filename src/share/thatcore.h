@@ -60,6 +60,7 @@
 #define L_STATUS_EWRITE (-4)
 #define L_STATUS_ELIMIT (-5)
 #define L_STATUS_EMATCH (-6)
+#define L_STATUS_EINVAL (-7)
 
 #ifdef L_BUILD_DEBUG
 #define L_DEBUG_HERE(...) { __VA_ARGS__ }
@@ -68,7 +69,15 @@
 #endif
 
 typedef struct {
-  void* file;
+  void* stream;
+} l_filestream;
+
+typedef struct {
+  void* stream;
+} l_dirstream;
+
+typedef struct {
+  l_filestream f;
   l_rune* a;
   int capacity;
   int size;
@@ -81,12 +90,24 @@ typedef union {
   const void* p;
 } l_value;
 
+l_extern l_logger* l_thread_get_logger();
+l_thread_local(l_logger* l_thread_local_logger);
+
+l_inline l_logger* l_thread_logger() {
+#if defined(l_thread_local_supported)
+  return l_thread_local_logger;
+#else
+  return l_thread_get_logger();
+#endif
+}
+
 #define ls(s) lp(s)
+#define lserror(n) lp(strerror(n))
 
 l_inline l_value lp(const void* p) {
   l_value a;
   a.p = p;
-  reutrn a;
+  return a;
 }
 
 l_inline l_value ld(l_integer d) {
@@ -105,26 +126,6 @@ l_inline l_value lf(double f) {
   l_value a;
   a.f = f;
   return a;
-}
-
-l_inline void l_logger_func_s(const void* tag, const void* s) {
-  l_logger_func_impl(tag, s, 0);
-}
-
-l_inline void l_logger_func_1(const void* tag, const void* s, l_value a) {
-  l_logger_func_impl(tag, s, a);
-}
-
-l_inline void l_logger_func_2(const void* tag, const void* s, l_value a, l_value b) {
-  l_logger_func_impl(tag, s, a, b);
-}
-
-l_inline void l_logger_func_3(const void* tag, const void* s, l_value a, l_value b, l_value c) {
-  l_logger_func_impl(tag, s, a, b, c);
-}
-
-l_inline void l_logger_func_4(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d) {
-  l_logger_func_impl(tag, s, a, b, c, d);
 }
 
 #define L_MKSTR(a) #a
@@ -157,7 +158,27 @@ l_extern void l_assert_func_impl(int pass, const void* expr, const void* filelin
 l_extern void l_logger_func_impl(const void* tag, const void* fmt, ...);
 l_extern void l_set_log_level(int level);
 l_extern int l_get_log_level();
-l_extern void l_exit();
+l_extern void l_process_exit();
+
+l_inline void l_logger_func_s(const void* tag, const void* s) {
+  l_logger_func_impl(tag, s, 0);
+}
+
+l_inline void l_logger_func_1(const void* tag, const void* s, l_value a) {
+  l_logger_func_impl(tag, s, a);
+}
+
+l_inline void l_logger_func_2(const void* tag, const void* s, l_value a, l_value b) {
+  l_logger_func_impl(tag, s, a, b);
+}
+
+l_inline void l_logger_func_3(const void* tag, const void* s, l_value a, l_value b, l_value c) {
+  l_logger_func_impl(tag, s, a, b, c);
+}
+
+l_inline void l_logger_func_4(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d) {
+  l_logger_func_impl(tag, s, a, b, c, d);
+}
 
 typedef struct {
   const l_byte* start;
@@ -166,11 +187,11 @@ typedef struct {
 
 #define l_strt_empty() l_cast(l_strt, {0,0})
 #define l_strt_literal(s) l_strt_l("" s, (sizeof(s)/sizeof(char))-1)
-#define l_strt l_strt_c(s) l_strt_l((s), strlen(l_cast(char*, (s))))
-#define l_strt l_strt_e(s, e) l_strt_l((s), l_str(e) - l_str(s))
+#define l_strt_c(s) l_strt_l((s), strlen(l_cast(char*, (s))))
+#define l_strt_e(s, e) l_strt_l((s), l_str(e) - l_str(s))
 l_extern l_strt l_strt_l(const void* s, l_integer len);
 
-#define l_zero_e(void* start, const void* end) l_zero_l(start, l_str(end) - l_str(start))
+#define l_zero_e(start, end) l_zero_l(start, l_str(end) - l_str(start))
 l_extern void l_zero_l(void* start, l_integer len);
 
 #define l_copy_e(from, end, to) l_copy_l(from, l_str(end) - l_str(from), (to))
@@ -180,6 +201,110 @@ l_extern void* l_raw_malloc(l_integer size);
 l_extern void* l_raw_calloc(l_integer size);
 l_extern void* l_raw_realloc(void* buffer, l_integer oldsize, l_integer newsize);
 l_extern void l_raw_free(void* buffer);
+
+typedef struct l_linknode {
+  struct l_linknode* next;
+  struct l_linknode* prev;
+} l_linknode;
+
+typedef struct l_smplnode {
+  struct l_smplnode* next;
+} l_smplnode;
+
+l_extern void l_linknode_init(l_linknode* node);
+l_extern void l_linknode_insert_after(l_linknode* node, l_linknode* newnode);
+l_extern int l_linknode_is_empty(l_linknode* node);
+l_extern l_linknode* l_linknode_remove(l_linknode* node);
+
+l_extern void l_smplnode_init(l_smplnode* node);
+l_extern void l_smplnode_insert_after(l_smplnode* node, l_smplnode* newnode);
+l_extern int l_smplnode_is_empty(l_smplnode* node);
+l_extern l_smplnode* l_smplnode_remove_next(l_smplnode* node);
+
+typedef struct l_squeue {
+  l_smplnode head;
+  l_smplnode* tail;
+} l_squeue;
+
+typedef struct l_dqueue {
+  l_linknode head;
+} l_dqueue;
+
+l_extern void l_squeue_init(l_squeue* self);
+l_extern void l_squeue_push(l_squeue* self, l_smplnode* newnode);
+l_extern void l_squeue_push_queue(l_squeue* self, l_squeue* queue);
+l_extern int l_squeue_is_empty(l_squeue* self);
+l_extern l_smplnode* l_squeue_pop(l_squeue* self);
+
+l_extern void l_dqueue_init(l_dqueue* self);
+l_extern void l_dqueue_push(l_dqueue* self, l_linknode* newnode);
+l_extern void l_dqueue_push_queue(l_dqueue* self, l_dqueue* queue);
+l_extern int l_dqueue_is_empty(l_dqueue* self);
+l_extern l_linknode* l_dqueue_pop(l_dqueue* self);
+
+typedef struct l_priorq {
+  l_linknode node;
+  /* elem with less number has higher priority, i.e., 0 is the highest */
+  int (*less)(void* elem_is_less_than, void* this_one);
+} l_priorq;
+
+l_extern void l_priorq_init(l_priorq* self, int (*less)(void*, void*));
+l_extern void l_priorq_push(l_priorq* self, l_linknode* elem);
+l_extern void l_priorq_remove(l_priorq* self, l_linknode* elem);
+l_extern int l_priorq_is_empty(l_priorq* self);
+l_extern l_linknode* l_priorq_pop(l_priorq* self);
+
+/* min/max heap - add/remove quick, search slow */
+typedef struct {
+  l_umedit size;
+  l_umedit capacity;
+  l_intptr* a; /* array of elements with pointer size */
+  int (*less)(void* this_elem_is_less, void* than_this_one);
+} l_mmheap;
+
+/* min. heap - pass less function to less, max. heap - pass greater function to less */
+l_extern void l_mmheap_init(l_mmheap* self, int (*less)(void*, void*), int initsize);
+l_extern void l_mmheap_free(l_mmheap* self);
+l_extern void l_mmheap_add(l_mmheap* self, void* elem);
+l_extern void* l_mmheap_del(l_mmheap* self, l_umedit i);
+
+typedef struct {
+  void* next;
+} l_hashslot;
+
+/* hash table - add/remove/search quick, need re-hash when enlarge size */
+typedef struct {
+  l_byte slotbits;
+  l_ushort offsetofnext;
+  l_umedit nslot; /* prime number size not near 2^n */
+  l_umedit nelem;
+  l_umedit (*getkey)(void*);
+  l_hashslot* slot;
+} l_hashtable;
+
+l_extern int l_is_prime(l_umedit n);
+l_extern l_umedit l_middle_prime(l_byte bits);
+
+l_extern void l_hashtable_init(l_hashtable* self, l_byte sizebits, int offsetofnext, l_umedit (*getkey)(void*));
+l_extern void l_hashtable_free(l_hashtable* self);
+l_extern void l_hashtable_foreach(l_hashtable* self, void (*cb)(void*));
+l_extern void l_hashtable_add(l_hashtable* self, void* elem);
+l_extern void* l_hashtable_find(l_hashtable* self, l_umedit key);
+l_extern void* l_hashtable_del(l_hashtable* self, l_umedit key);
+
+/* table size is enlarged auto */
+typedef struct {
+  l_hashtable* cur;
+  l_hashtable* old;
+  l_hashtable a;
+  l_hashtable b;
+} l_backhash;
+
+l_extern void l_backhash_init(l_backhash* self, l_byte initsizebits, int offsetofnext, l_umedit (*getkey)(void*));
+l_extern void l_backhash_free(l_backhash* self);
+l_extern void l_backhash_add(l_backhash* self, void* elem);
+l_extern void* l_backhash_find(l_backhash* self, l_umedit key);
+l_extern void* l_backhash_del(l_backhash* self, l_umedit key);
 
 /**
  * The 64-bit signed integer's biggest value is 9223372036854775807.
@@ -222,216 +347,91 @@ typedef struct {
   l_byte islink;
 } l_fileattr;
 
-typedef struct {
-  void* stream;
-} l_dir_stream;
-
 l_extern l_time l_system_time();
 l_extern l_time l_monotonic_time();
 l_extern l_date l_system_date();
-l_extern l_integer l_get_file_size(const void* name, int namelen);
-l_extern l_fileattr l_get_file_attr(const void* name, int namelen);
+l_extern l_date l_date_from_secs(l_integer utcsecs);
+l_extern l_date l_date_from_time(l_time utc);
 
+l_extern l_filestream l_open_read(const void* name);
+l_extern l_filestream l_open_write(const void* name);
+l_extern l_filestream l_open_append(const void* name);
+l_extern l_filestream l_open_read_write(const void* name);
+l_extern l_filestream l_open_write_unbuffered(const void* name);
+l_extern l_filestream l_open_append_unbuffered(const void* name);
+l_extern l_integer l_write_file(l_filestream* self, const void* s, l_integer len);
+l_extern l_integer l_read_file(l_filestream* self, void* out, l_integer len);
 
-typedef struct l_linknode {
-  struct l_linknode* next;
-  struct l_linknode* prev;
-} l_linknode;
+l_extern int l_remove_file(const void* name);
+l_extern int l_rename_file(const void* from, const void* to);
+l_extern void l_redirect_stdout(const void* name);
+l_extern void l_redirect_stderr(const void* name);
+l_extern void l_reditect_stdin(const void* name);
+l_extern void l_close_file(l_filestream* self);
+l_extern void l_flush_file(l_filestream* self);
+l_extern void l_rewind_file(l_filestream* self);
+l_extern void l_seek_from_begin(l_filestream* self, long offset);
+l_extern void l_seek_from_curpos(l_filestream* self, long offset);
+l_extern void l_clear_file_error(l_filestream* self);
 
-l_extern void l_linknode_init(l_linknode* node);
-l_extern int l_linknode_isempty(l_linknode* node);
-l_extern void l_linknode_insertafter(l_linknode* node, l_linknode* newnode);
-l_extern l_linknode* l_linknode_remove(l_linknode* node);
+l_extern l_integer l_file_size(const void* name);
+l_extern l_fileattr l_file_attr(const void* name);
+l_extern l_dirstream l_open_dir(const void* name);
+l_extern void l_close_dir(l_dirstream* d);
+l_extern const l_rune* l_read_dir(l_dirstream* d);
 
-typedef struct l_smplnode {
-  struct l_smplnode* next;
-} l_smplnode;
+typedef struct {
+  L_PLAT_IMPL_SIZE(L_MUTEX_SIZE);
+} l_mutex;
 
-l_extern void l_smplnode_init(l_smplnode* node);
-l_extern int l_smplnode_isempty(l_smplnode* node);
-l_extern void l_smplnode_insertafter(l_smplnode* node, l_smplnode* newnode);
-l_extern l_smplnode* l_smplnode_removenext(l_smplnode* node);
+typedef struct {
+  L_PLAT_IMPL_SIZE(L_RWLOCK_SIZE);
+} l_rwlock;
 
-typedef struct l_squeue {
-  l_smplnode head;
-  l_smplnode* tail;
-} l_squeue;
+typedef struct {
+  L_PLAT_IMPL_SIZE(L_CONDV_SIZE);
+} l_condv;
 
-l_extern void l_squeue_init(l_squeue* self);
-l_extern void l_squeue_push(l_squeue* self, l_smplnode* newnode);
-l_extern void l_squeue_pushqueue(l_squeue* self, l_squeue* queue);
-l_extern int l_squeue_isempty(l_squeue* self);
-l_extern l_smplnode* l_squeue_pop(l_squeue* self);
+typedef struct {
+  L_PLAT_IMPL_SIZE(L_THRID_SIZE);
+} l_thrid;
 
-typedef struct l_dqueue {
-  l_linknode head;
-} l_dqueue;
+typedef struct {
+  L_PLAT_IMPL_SIZE(L_THKEY_SIZE);
+} l_thrkey;
 
-l_extern void l_dqueue_init(l_dqueue* self);
-l_extern void l_dqueue_push(l_dqueue* self, l_linknode* newnode);
-l_extern void l_dqueue_pushqueue(l_dqueue* self, l_dqueue* queue);
-l_extern int l_dqueue_isempty(l_dqueue* self);
-l_extern l_linknode* l_dqueue_pop(l_dqueue* self);
-
-typedef struct l_priorq {
-  l_linknode node;
-  /* elem with less number has higher priority, i.e., 0 is the highest */
-  int (*less)(void* elem_is_less_than, void* this_one);
-} l_priorq;
-
-l_extern void l_priorq_init(l_priorq* self, int (*less)(void*, void*));
-l_extern void l_priorq_push(l_priorq* self, l_linknode* elem);
-l_extern void l_priorq_remove(l_priorq* self, l_linknode* elem);
-l_extern int l_priorq_isempty(l_priorq* self);
-l_extern l_linknode* l_priorq_pop(l_priorq* self);
-
-/** Userful structures **/
-
-/**
- * heap - add/remove quick, search slow
- */
-
-#define CCMMHEAP_MIN_SIZE (8)
-struct l_mmheap {
-  umedit_int size;
-  umedit_int capacity;
-  unsign_ptr* a; /* array of elements with pointer size */
-  int (*less)(void* this_elem_is_less, void* than_this_one);
-};
-
-/* min. heap - pass less function to less, max. heap - pass greater function to less */
-l_extern void l_mmheap_init(l_mmheap* self, int (*less)(void*, void*), int initsize);
-l_extern void l_mmheap_free(l_mmheap* self);
-l_extern void l_mmheap_add(l_mmheap* self, void* elem);
-l_extern void* l_mmheap_del(l_mmheap* self, umedit_int i);
-
-/**
- * hash table - add/remove/search quick, need re-hash when enlarge buffer size
- */
-
-l_extern int l_isprime(umedit_int n);
-l_extern umedit_int l_midprime(nauty_byte bits);
-
-struct l_hashslot {
-  void* next;
-};
-
-struct l_hashtable {
-  nauty_byte slotbits;
-  ushort_int offsetofnext;
-  umedit_int nslot; /* prime number size not near 2^n */
-  umedit_int nbucket;
-  umedit_int (*getkey)(void*);
-  l_hashslot* slot;
-};
-
-l_extern void l_hashtable_init(l_hashtable* self, nauty_byte sizebits, int offsetofnext, umedit_int (*getkey)(void*));
-l_extern void l_hashtable_free(l_hashtable* self);
-l_extern void l_hashtable_foreach(l_hashtable* self, void (*cb)(void*));
-l_extern void l_hashtable_add(l_hashtable* self, void* elem);
-l_extern void* l_hashtable_find(l_hashtable* self, umedit_int key);
-l_extern void* l_hashtable_del(l_hashtable* self, umedit_int key);
-
-/* table size is enlarged auto */
-struct l_backhash {
-  l_hashtable* cur;
-  l_hashtable* old;
-  l_hashtable a;
-  l_hashtable b;
-};
-
-l_extern void l_backhash_init(l_backhash* self, nauty_byte initsizebits, int offsetofnext, umedit_int (*getkey)(void*));
-l_extern void l_backhash_free(l_backhash* self);
-l_extern void l_backhash_add(l_backhash* self, void* elem);
-l_extern void* l_backhash_find(l_backhash* self, umedit_int key);
-l_extern void* l_backhash_del(l_backhash* self, umedit_int key);
-
-/** Thread and synchronization **/
-
-struct l_mutex {
-  CCPLAT_IMPL_SIZE(CC_MUTEX_BYTES);
-};
-
-struct l_rwlock {
-  CCPLAT_IMPL_SIZE(CC_RWLOCK_BYTES);
-};
-
-struct l_condv {
-  CCPLAT_IMPL_SIZE(CC_CONDV_BYTES);
-};
-
-struct l_thrid {
-  CCPLAT_IMPL_SIZE(CC_THRID_BYTES);
-};
-
-struct l_thrkey {
-  CCPLAT_IMPL_SIZE(CC_THKEY_BYTES);
-};
-
-/**
- * thread-specific data key
- */
-
-l_extern int l_thrkey_init(l_thrkey* self);
+l_extern void l_thrkey_init(l_thrkey* self);
 l_extern void l_thrkey_free(l_thrkey* self);
-l_extern int l_thrkey_setdata(l_thrkey* self, const void* data);
-l_extern void* l_thrkey_getdata(l_thrkey* self);
+l_extern void l_thrkey_set_data(l_thrkey* self, const void* data);
+l_extern void* l_thrkey_get_data(l_thrkey* self);
 
-/**
- * mutex
- */
-
-l_extern int l_mutex_init(l_mutex* self);
+l_extern void l_mutex_init(l_mutex* self);
 l_extern void l_mutex_free(l_mutex* self);
-l_extern int l_mutex_lock(l_mutex* self);
+l_extern void l_mutex_lock(l_mutex* self);
 l_extern void l_mutex_unlock(l_mutex* self);
 l_extern int l_mutex_trylock(l_mutex* self);
 
-/**
- * read/write lock
- */
-
-l_extern int l_rwlock_init(l_rwlock* self);
+l_extern void l_rwlock_init(l_rwlock* self);
 l_extern void l_rwlock_free(l_rwlock* self);
-l_extern int l_rwlock_read(l_rwlock* self);
-l_extern int l_rwlock_write(l_rwlock* self);
+l_extern void l_rwlock_read(l_rwlock* self);
+l_extern void l_rwlock_write(l_rwlock* self);
 l_extern int l_rwlock_tryread(l_rwlock* self);
 l_extern int l_rwlock_trywrite(l_rwlock* self);
 l_extern void l_rwlock_unlock(l_rwlock* self);
 
-/**
- * condition variable
- */
-
-l_extern int l_condv_init(l_condv* self);
+l_extern void l_condv_init(l_condv* self);
 l_extern void l_condv_free(l_condv* self);
-l_extern int l_condv_wait(l_condv* self, l_mutex* mutex);
-l_extern int l_condv_timedwait(l_condv* self, l_mutex* mutex, sright_int ns);
+l_extern void l_condv_wait(l_condv* self, l_mutex* mutex);
+l_extern int l_condv_timedwait(l_condv* self, l_mutex* mutex, l_integer ns);
 l_extern void l_condv_signal(l_condv* self);
 l_extern void l_condv_broadcast(l_condv* self);
 
-/**
- * thread
- */
+l_extern l_thrid l_raw_self_thread();
+l_extern int l_raw_create_thread(l_thrid* thrid, void* (*start)(void*), void* para);
+l_extern int l_raw_thread_join(l_thrid* thrid);
+l_extern void l_raw_thread_sleep(l_integer us);
+l_extern void l_raw_thread_exit();
 
-l_extern l_thrid l_plat_selfthread();
-l_extern int l_plat_createthread(l_thrid* thrid, void* (*start)(void*), void* para);
-l_extern void l_plat_threadsleep(uright_int us);
-l_extern void l_plat_threadexit();
-l_extern int l_plat_threadjoin(l_thrid* thrid);
-
-#define l_byte ccnauty_byte
-#define l_rune ccnauty_byte
-#define l_sbyte ccoctet_int
-#define l_short ccshort_int
-#define l_medit ccmedit_int
-#define l_integer ccnauty_int
-#define l_ushort ccshort_uint
-#define l_umedit ccmedit_uint
-#define l_uinteger ccnauty_int
-#define l_intptr ccnauty_iptr
-#define l_uintptr ccnauty_uptr
-#define l_handle cchandle_int
 
 l_extern void l_core_test();
 l_extern void l_plat_test();

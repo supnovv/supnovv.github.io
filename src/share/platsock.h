@@ -5,10 +5,7 @@
 #if defined(L_PLAT_WINDOWS)
 /** Windows Socket **/
 #else
-#define _POSIX_C_SOURCE 200809L
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+#include "linuxpref.h"
 /** POSIX Socket **/
 
 /** Socket addresses **
