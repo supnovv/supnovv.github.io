@@ -41,20 +41,6 @@ l_extern l_thread* l_thread_self();
 l_extern l_thread* l_thread_master();
 l_extern l_string* l_thread_defstr();
 
-typedef struct {
-  l_smplnode node;
-  l_umedit maxlimit;
-  l_umedit capacity;
-  l_umedit size;
-  l_byte a[4];
-} l_buffer;
-
-l_extern void l_buffer_ensure_capacity(l_buffer** self, l_integer size);
-l_extern void l_buffer_ensure_size_remain(l_buffer** self, l_integer remainsize);
-l_extern l_buffer* l_buffer_new(l_thread* thread, l_umedit maxlimit);
-l_extern void l_buffer_free(l_thread* thread, l_buffer* p);
-
-
 typedef struct l_service l_service;
 l_extern l_service* l_service_new(int (*entry)(l_service*, l_message*));
 l_extern void* l_service_set_data(l_service* self, void* udata);
@@ -72,7 +58,6 @@ l_extern l_handle l_service_eventfd(l_service* self);
 l_extern void l_master_dispatch_msg();
 l_extern void l_worker_handle_msg();
 
-
 l_extern l_message* message_create(l_umedit type, l_umedit flag);
 l_extern void* message_set_specific(l_message* self, void* data);
 l_extern void* message_set_allocated_specific(l_message* self, int bytes);
@@ -87,7 +72,6 @@ l_extern void* service_set_allocated_specific(l_service* service, int bytes);
 l_extern void service_set_listen(l_service* service, l_handle fd, l_ushort masks, l_ushort flags);
 l_extern void service_start_run(l_service* service);
 
-
 l_extern void* service_get_specific(l_state* state);
 l_extern l_message* service_get_message(l_state* state);
 l_extern l_handle service_get_eventfd(l_state* state);
@@ -95,7 +79,6 @@ l_extern void service_listen_event(l_state* state, l_handle fd, l_ushort masks, 
 l_extern void service_remove_listen(l_state* state);
 l_extern void service_yield(l_state* state, int (*kfunc)(l_state*));
 l_extern void service_run_completed(l_state* state);
-
 
 #endif /* l_service_lib_h */
 

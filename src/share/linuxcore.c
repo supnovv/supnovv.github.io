@@ -88,7 +88,7 @@ How is the clock affected when the system suspended?
 UEAP 6.10; USPM 10, 23; */
 
 #if defined(L_PLAT_APPLE)
-static l_time l_aux_system_time() {
+static l_time llsystemtime() {
   /** gettimeofday **
   #include <sys/time.h>
   int gettimeofday(struct timeval* tv, struct timezone* tz);
@@ -121,7 +121,7 @@ static l_time l_aux_system_time() {
 
 #else
 
-static l_time l_aux_gettime(clockid_t id) {
+static l_time llgettime(clockid_t id) {
   l_time time = {0};
   struct timespec spec = {0};
 
@@ -136,14 +136,14 @@ static l_time l_aux_gettime(clockid_t id) {
 }
 
 l_time l_thread_time() {
-  return l_aux_gettime(CLOCK_THREAD_CPUTIME_ID);
+  return llgettime(CLOCK_THREAD_CPUTIME_ID);
 }
 
 l_time l_process_time() {
-  return l_aux_gettime(CLOCK_PROCESS_CPUTIME_ID);
+  return llgettime(CLOCK_PROCESS_CPUTIME_ID);
 }
 
-static l_integer l_aux_getres(clockid_t id) {
+static l_integer llgetres(clockid_t id) {
   struct timespec spec = {0};
   if (clock_getres(id, &spec) != 0) {
     l_loge_1("clock_getres %s", lserror(errno));
@@ -153,7 +153,7 @@ static l_integer l_aux_getres(clockid_t id) {
 }
 
 l_integer l_system_time_res() {
-  return l_aux_getres(CLOCK_REALTIME);
+  return llgetres(CLOCK_REALTIME);
 }
 
 l_integer l_monotonic_time_res() {
@@ -161,23 +161,23 @@ l_integer l_monotonic_time_res() {
 #ifdef L_PLAT_LINUX
   id = CLOCK_BOOTTIME;
 #endif
-  return l_aux_getres(id);
+  return llgetres(id);
 }
 
 l_integer l_thread_time_res() {
-  return l_aux_getres(CLOCK_THREAD_CPUTIME_ID);
+  return llgetres(CLOCK_THREAD_CPUTIME_ID);
 }
 
 l_integer l_process_time_res() {
-  return l_aux_getres(CLOCK_PROCESS_CPUTIME_ID);
+  return llgetres(CLOCK_PROCESS_CPUTIME_ID);
 }
 #endif
 
 l_time l_system_time() {
 #if defined(L_PLAT_APPLE)
-  return l_aux_system_time();
+  return llsystemtime();
 #else
-  return l_aux_gettime(CLOCK_REALTIME);
+  return llgettime(CLOCK_REALTIME);
 #endif
 }
 
@@ -205,17 +205,17 @@ l_time l_monotonic_time() {
   if the time is changed using settimeofday or similar.
   @@OSX doesn't support this function */
 #ifdef L_PLAT_APPLE
-  return l_aux_system_time();
+  return llsystemtime();
 #else
   clockid_t id = CLOCK_MONOTONIC;
 #ifdef L_PLAT_LINUX
   id = CLOCK_BOOTTIME;
 #endif
-  return l_aux_gettime(id);
+  return llgettime(id);
 #endif
 }
 
-static void l_aux_set_year(l_date* date, l_integer year) {
+static void llsetyear(l_date* date, l_integer year) {
   if (year > l_max_umedit) {
     date->year = l_cast(l_umedit, year & 0xffffffff);
     date->high = l_cast(l_byte, (year & 0xff00000000) >> 32);
@@ -225,11 +225,11 @@ static void l_aux_set_year(l_date* date, l_integer year) {
   }
 }
 
-static void l_aux_set_wday_month(l_date* date, int wday, int month) {
+static void llsetwdaymonth(l_date* date, int wday, int month) {
   date->wdmon = (l_cast(l_byte, wday & 0x0f) << 4) | l_cast(l_byte, month & 0x0f);
 }
 
-static l_date l_aux_getdate(time_t secs) {
+static l_date llgetdate(time_t secs) {
   struct tm st;
   l_date date = {0};
   l_zero_l(&st, sizeof(struct tm));
@@ -241,9 +241,9 @@ static l_date l_aux_getdate(time_t secs) {
     return date;
   }
   /* tm_year - number of years since 1900 */
-  l_aux_set_year(&date, st.tm_year + 1900);
+  llsetyear(&date, st.tm_year + 1900);
   /* tm_wday - from 0 to 6, 0 is Sunday, tm_mon - from 0 to 11 */
-  l_aux_set_wday_month(&date, st.tm_wday, st.tm_mon + 1);
+  llsetwdaymonth(&date, st.tm_wday, st.tm_mon + 1);
   /* in many implementations, including glibc, a 0 in tm_mday is
   interpreted as meaning the last day of the preceding month.
   这里的意思是，在将分解结构tm转换成time_t时（例如mktime），如果将
@@ -264,11 +264,11 @@ static l_date l_aux_getdate(time_t secs) {
 }
 
 l_date l_date_from_secs(l_integer utcsecs) {
-  return l_aux_getdate(utcsecs);
+  return llgetdate(utcsecs);
 }
 
 l_date l_date_from_time(l_time utc) {
-  l_date date = l_aux_getdate(utc.sec);
+  l_date date = llgetdate(utc.sec);
   date.nsec = utc.nsec;
   return date;
 }

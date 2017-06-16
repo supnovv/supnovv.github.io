@@ -20,36 +20,36 @@ void l_close_luastate(lua_State* L) {
   if (L) lua_close(L);
 }
 
-static void l_aux_init_state(l_state* co) {
+static void llinitstate(l_state* co) {
   l_zero_l(co, sizeof(l_state));
   l_smplnode_init(&co->node);
   co->coref = LUA_NOREF;
 }
 
-int l_state_init(l_state* ccco, lua_State* L, int (*func)(l_state*), l_service* srvc) {
+int l_state_init(l_state* ccco, l_thread* belong, l_service* srvc, int (*func)(l_state*)) {
   lua_State* co = 0;
-  l_aux_init_state(ccco);
-  if ((co = lua_newthread(L)) == 0) {
+  llinitstate(ccco);
+  if ((co = lua_newthread(belong->L))) {
     l_loge_s("lua_newthread failed");
     return false;
   }
-  ccco->L = L;
+  ccco->belong = belong;
   ccco->co = co;
-  ccco->coref = luaL_ref(L, LUA_REGISTRYINDEX);
+  ccco->coref = luaL_ref(belong->L, LUA_REGISTRYINDEX);
   ccco->func = func;
   ccco->srvc = srvc;
   return true;
 }
 
 void l_state_free(l_state* co) {
-  if (co->L && co->coref != LUA_NOREF) {
+  if (co->belong->L && co->coref != LUA_NOREF) {
     /* if ref is LUA_NOREF or LUA_REFNIL, luaL_unref does nothing. */
-    luaL_unref(co->L, LUA_REGISTRYINDEX, co->coref);
+    luaL_unref(co->belong->L, LUA_REGISTRYINDEX, co->coref);
   }
 }
 
 /* return 0 OK, 1 YIELD, <0 L_STATUS_LUAERR or error code */
-static int l_aux_state_resume(l_state* co, int nargs) {
+static int llstateresume(l_state* co, int nargs) {
   /** lua_resume **
   int lua_resume(lua_State* L, lua_State* from, int nargs);
   Starts and resumes a coroutine in the given thread L.
@@ -60,7 +60,7 @@ static int l_aux_state_resume(l_state* co, int nargs) {
   stack when the function returns, and the last result is on the top
   of the stack. */
   int nelems = 0;
-  int n = lua_resume(co->co, co->L, nargs);
+  int n = lua_resume(co->co, co->belong->L, nargs);
   if (n == LUA_OK) {
     /* coroutine finishes its execution without errors, the stack in L contains
     all values returned by the coroutine main function 'func'. */
@@ -104,7 +104,7 @@ static int l_aux_state_resume(l_state* co, int nargs) {
   return L_STATUS_LUAERR;
 }
 
-static int ll_state_func(lua_State* co) {
+static int llstatefunc(lua_State* co) {
   int status = 0;
   l_state* ccco = 0;
   ccco = (l_state*)lua_touserdata(co, -1);
@@ -127,21 +127,21 @@ int l_state_resume(l_state* co) {
   LUA_YIELD - can resume a suspended coroutine */
   if ((costatus = lua_status(co->co)) == LUA_OK) {
     /* start or restart coroutine, need to provide coroutine function */
-    lua_pushcfunction(co->co, ll_state_func);
+    lua_pushcfunction(co->co, llstatefunc);
     lua_pushlightuserdata(co->co, co);
-    return l_aux_state_resume(co, nargs+1);
+    return llstateresume(co, nargs+1);
   }
 
   if (costatus == LUA_YIELD) {
     /* no need to provide func again when coroutine is suspended */
-    return l_aux_state_resume(co, 0);
+    return llstateresume(co, 0);
   }
 
   l_loge_s("coroutine cannot be resumed");
   return L_STATUS_LUAERR;
 }
 
-static int ll_state_kfunc(lua_State* co, int status, lua_KContext ctx) {
+static int llstatekfunc(lua_State* co, int status, lua_KContext ctx) {
   l_state* ccco = (l_state*)ctx;
   (void)co; /* not used here, it should be equal to co->co */
   (void)status; /* status always is LUA_YIELD when kfunc is called after lua_yieldk */
@@ -173,7 +173,7 @@ int l_state_yield_with_code(l_state* co, int (*kfunc)(l_state*), int code) {
     lua_pushinteger(co->co, code);
     nresults += 1;
   }
-  status = lua_yieldk(co->co, nresults, (lua_KContext)co, ll_state_kfunc);
+  status = lua_yieldk(co->co, nresults, (lua_KContext)co, llstatekfunc);
   l_loge_s("lua_yieldk never returns to here"); /* the code never goes here */
   return status;
 }
@@ -228,24 +228,24 @@ const char* lua_tostring(lua_State* L, int index); // get cstr or NULL
 lua_State* lua_tothread(lua_State* L, int index); // get thread or NULL
 void* lua_touserdata(lua_State* L, int index); // get userdata or NULL */
 
-static int ll_state_testfunc(l_state* co) {
+static int llstatetestfunc(l_state* co) {
   static int i = 0;
   switch (i) {
   case 0:
     ++i;
-    return l_state_yield(co, ll_state_testfunc);
+    return l_state_yield(co, llstatetestfunc);
   case 1:
     ++i;
-    return l_state_yield_with_code(co, ll_state_testfunc, 3);
+    return l_state_yield_with_code(co, llstatetestfunc, 3);
   case 2:
     ++i;
-    return l_state_yield(co, ll_state_testfunc);
+    return l_state_yield(co, llstatetestfunc);
   case -1:
     --i;
-    return l_state_yield_with_code(co, ll_state_testfunc, 5);
+    return l_state_yield_with_code(co, llstatetestfunc, 5);
   case -2:
     --i;
-    return l_state_yield(co, ll_state_testfunc);
+    return l_state_yield(co, llstatetestfunc);
   case -3:
     i = 0;
     return -3;
@@ -256,7 +256,7 @@ static int ll_state_testfunc(l_state* co) {
   return 0;
 }
 
-static int ll_state_noyield(l_state* co) {
+static int llstatenoyield(l_state* co) {
   static int i = 0;
   (void)co;
   switch (i) {
@@ -276,10 +276,12 @@ static int ll_state_noyield(l_state* co) {
   return 0;
 }
 
-void l_luatest() {
+void l_luac_test() {
   lua_State* L = l_new_luastate();
+  l_thread thread;
   l_state co;
-  l_state_init(&co, L, ll_state_testfunc, 0);
+  thread.L = L;
+  l_state_init(&co, &thread, 0, llstatetestfunc);
   l_assert(l_state_resume(&co) == L_STATUS_YIELD);
   l_assert(l_state_resume(&co) == 3); /* yield */
   l_assert(l_state_resume(&co) == L_STATUS_YIELD);
@@ -287,7 +289,7 @@ void l_luatest() {
   l_assert(l_state_resume(&co) == 5); /* yield */
   l_assert(l_state_resume(&co) == L_STATUS_YIELD);
   l_assert(l_state_resume(&co) == -3);
-  co.func = ll_state_noyield;
+  co.func = llstatenoyield;
   l_assert(l_state_resume(&co) == 0);
   l_assert(l_state_resume(&co) == -2);
   l_assert(l_state_resume(&co) == -3);

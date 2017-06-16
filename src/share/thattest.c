@@ -1,7 +1,6 @@
-#include <stdio.h>
 #include "thatcore.h"
 #include "luacapi.h"
-#include "ionotify.h"
+#include "ionfmgr.h"
 #include "socket.h"
 #include "service.h"
 #include "string.h"
@@ -18,6 +17,6 @@ int l_test_start() {
 }
 
 int main() {
-  return startmainthread(cctest_start);
+  return startmainthread(l_test_start);
 }
 

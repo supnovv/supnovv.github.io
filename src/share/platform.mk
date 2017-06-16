@@ -10,7 +10,7 @@ SHARED =
 
 CC = gcc
 CC89 = gcc -std=c89
-CWARNS = -Wall -Wextra -Werror -Wno-error=unused-function
+CWARNS = -Wall -Wextra -Werror -Wno-error=unused-function -Wno-unused-function
 CMACRO = $(MACRO)
 POSINDEPCODE = -fPIC # position independent code
 CFLAGS = $(CWARNS) $(CMACRO) $(MYINC) -g -O2

@@ -2,7 +2,7 @@
 #include "platsock.h"
 #include "socket.h"
 
-nauty_bool ccsockaddr_initp(struct ccsockaddr* self, const struct ccfrom* ip, ushort_int port) {
+int l_sockaddr_init(l_sockaddr* self, l_strt ip, l_ushort port) {
   /** inet_pton htons/l ntohs/l **
   #include <arpa/inet.h> // some systems require <netinet/in.h> instead of <arpa/inet.h>
   int inet_pton(int family, const char* str, void* dest); // convert ipv4 and ipv6 from text to binary
@@ -29,9 +29,9 @@ nauty_bool ccsockaddr_initp(struct ccsockaddr* self, const struct ccfrom* ip, us
   If family does not contain a valid address family, -1 is returned and errno is
   set to EAFNOSUPPORT. */
   int n = 0;
-  struct llsockaddr* sa = (struct llsockaddr*)self;
-  if (ccstring_containp(ip, ':')) {
-    if ((n = inet_pton(AF_INET6, (const char*)ip->start, &(sa->addr.in6.sin6_addr))) != 1) {
+  llsockaddr* sa = (llsockaddr*)self;
+  if (l_strt_contain(ip, ':')) {
+    if ((n = inet_pton(AF_INET6, (const char*)ip.start, &(sa->addr.in6.sin6_addr))) != 1) {
       goto errorlabel;
     }
     sa->len = sizeof(struct sockaddr_in6);
@@ -39,7 +39,7 @@ nauty_bool ccsockaddr_initp(struct ccsockaddr* self, const struct ccfrom* ip, us
     sa->addr.in6.sin6_port = htons(port);
     return true;
   }
-  if ((n = inet_pton(AF_INET, (const char*)ip->start, &(sa->addr.in.sin_addr))) != 1) {
+  if ((n = inet_pton(AF_INET, (const char*)ip.start, &(sa->addr.in.sin_addr))) != 1) {
     goto errorlabel;
   }
   sa->len = sizeof(struct sockaddr_in);
@@ -48,24 +48,20 @@ nauty_bool ccsockaddr_initp(struct ccsockaddr* self, const struct ccfrom* ip, us
   return true;
 errorlabel:
   if (n == 0) {
-    ccloge("inet_pton invalid ip");
+    l_loge_s("inet_pton invalid ip");
   } else {
-    ccloge("inet_pton %s", strerror(errno));
+    l_loge_1("inet_pton %s", lserror(errno));
   }
-  cczeron(sa, sizeof(struct llsockaddr));
+  l_zero_l(sa, sizeof(llsockaddr));
   return false;
 }
 
-nauty_bool ccsockaddr_init(struct ccsockaddr* self, struct ccfrom ip, ushort_int port) {
-  return ccsockaddr_initp(self, &ip, port);
-}
-
-ushort_int ccsockaddr_getport(struct ccsockaddr* self) {
-  struct llsockaddr* sa = (struct llsockaddr*)self;
+l_ushort l_sockaddr_port(l_sockaddr* self) {
+  llsockaddr* sa = (llsockaddr*)self;
   return ntohs(sa->addr.in.sin_port);
 }
 
-nauty_bool ccsockaddr_getipstr(struct ccsockaddr* self, struct ccstring* out) {
+int l_sockaddr_ipstring(l_sockaddr* self, l_string* out) {
   /** inet_ntop - convert ipv4 and ipv6 addresses from binary to text form **
   #include <arpa/inet.h>
   const char* inet_ntop(int family, const void* src, char* dest, socklen_t size);
@@ -82,33 +78,33 @@ nauty_bool ccsockaddr_getipstr(struct ccsockaddr* self, struct ccstring* out) {
   INET6_ADDRSTRLEN bytes long.
   On success, inet_ntop() returns a non-null pointer to dst. NULL is returned if
   there was an error, with errno set to indicate the error. */
-  struct llsockaddr* sa = (struct llsockaddr*)self;
+  llsockaddr* sa = (llsockaddr*)self;
   if (sa->addr.sa.sa_family == AF_INET) {
     char ipstrbuf[INET_ADDRSTRLEN+1];
     if (inet_ntop(AF_INET, &(sa->addr.in.sin_addr), ipstrbuf, INET_ADDRSTRLEN) == 0) {
-      ccloge("inet_ntop %s", strerror(errno));
-      ccstring_setempty(out);
+      l_loge_1("inet_ntop %s", lserror(errno));
+      l_string_clear(out);
       return false;
     }
-    ccstring_setcstr(out, ipstrbuf);
+    l_string_setcstr(out, ipstrbuf);
     return true;
   }
   if (sa->addr.sa.sa_family == AF_INET6) {
     char ipv6strbuf[INET6_ADDRSTRLEN+1];
     if (inet_ntop(AF_INET6, &(sa->addr.in6.sin6_addr), ipv6strbuf, INET6_ADDRSTRLEN) == 0) {
-      ccloge("inet_ntop %s", strerror(errno));
-      ccstring_setempty(out);
+      l_loge_1("inet_ntop %s", lserror(errno));
+      l_string_clear(out);
       return false;
     }
-    ccstring_setcstr(out, ipv6strbuf);
+    l_string_setcstr(out, ipv6strbuf);
     return true;
   }
-  ccloge("invalid address family");
-  ccstring_setempty(out);
+  l_loge_s("invalid address family");
+  l_string_clear(out);
   return false;
 }
 
-static nauty_bool llsetnonblock(handle_int fd) {
+static int llsetnonblock(l_handle fd) {
   /** fcntl - manipulate file descriptor **
   #include <unistd.h>
   #include <fcntl.h>
@@ -127,17 +123,17 @@ static nauty_bool llsetnonblock(handle_int fd) {
   O_NONBLOCK flags. It is not possible to change the O_DSYNC and O_SYNC flags. */
   int flag = 0;
   if ((flag = fcntl(fd, F_GETFL)) == -1) {
-    ccloge("fcntl getfl %s", strerror(errno));
+    l_loge_1("fcntl getfl %s", lserror(errno));
     return false;
   }
   if (fcntl(fd, F_SETFL, flag | O_NONBLOCK) == -1) {
-    ccloge("fcntl setfl %s", strerror(errno));
+    l_loge_1("fcntl setfl %s", lserror(errno));
     return false;
   }
   return true;
 }
 
-static nauty_bool llsocket_create(int domain, int type, int protocol, handle_int* out) {
+static int llsocket_create(int domain, int type, int protocol, l_handle* out) {
   /** socket - create an endpoint for communication **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -218,18 +214,18 @@ static nauty_bool llsocket_create(int domain, int type, int protocol, handle_int
   EPROTONOSUPPORT - the protocol type or the specified protocol is not supported.
   Other errors may be generated by the underlying protocol modules. */
   if ((*out = socket(domain, type, protocol)) == -1) {
-    ccloge("socket %s", strerror(errno));
+    l_loge_1("socket %s", lserror(errno));
     return false;
   }
   llsetnonblock(*out);
   return true;
 }
 
-nauty_bool ccsocket_isopen(handle_int sock) {
+int l_socket_isopen(l_handle sock) {
   return (sock != -1);
 }
 
-void ccsocket_close(handle_int sock) {
+void l_socket_close(l_handle sock) {
   /** close - close a file descriptor **
   #include <unistd.h>
   int close (int fd);
@@ -256,11 +252,11 @@ void ccsocket_close(handle_int sock) {
   shutdown函数以代替close()，我们将在6.5节阐述这么做的动机。*/
   if (sock == -1) return;
   if (close(sock) != 0) {
-    ccloge("close socket %d", strerror(errno));
+    l_loge_1("close socket %d", lserror(errno));
   }
 }
 
-void ccsocket_shutdown(handle_int sock, nauty_char r_w_a) {
+void l_socket_shutdown(l_handle sock, l_rune r_w_a) {
   /** shutdown - shut down part of a full-duplex connection **
   #include <sys/socket.h>
   int shutdown(int sockfd, int how);
@@ -280,15 +276,15 @@ void ccsocket_shutdown(handle_int sock, nauty_char r_w_a) {
   case 'w': case 'W': flag = SHUT_WR; break;
   case 'a': case 'A': flag = SHUT_RDWR; break;
   default:
-    ccloge("shutdown invalid argument");
+    l_loge_s("shutdown invalid argument");
     return;
   }
   if (shutdown(sock, flag) != 0) {
-    ccloge("shutdown %s", strerror(errno));
+    l_loge_1("shutdown %s", lserror(errno));
   }
 }
 
-struct ccsockaddr ccsocket_getlocaladdr(handle_int sock) {
+l_sockaddr l_socket_getlocaladdr(l_handle sock) {
   /** getsockname **
   #include <sys/socket.h>
   int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
@@ -297,22 +293,22 @@ struct ccsockaddr ccsocket_getlocaladdr(handle_int sock) {
   on return it contains the actual size of the socket address.
   the returned address is truncated if the buffer provided is too small; in
   this case, addrlen will return a value greater than was supplied to the call. */
-  struct ccsockaddr addr;
-  struct llsockaddr* sa = (struct llsockaddr*)&addr;
-  socklen_t providedlen = sizeof(union ll_sock_addr);
+  l_sockaddr addr;
+  llsockaddr* sa = (llsockaddr*)&addr;
+  socklen_t providedlen = sizeof(ll_sock_addr);
   sa->len =  providedlen;
   if (getsockname(sock, &(sa->addr.sa), &(sa->len)) != 0) {
-    ccloge("getsockname %s", strerror(errno));
+    l_loge_1("getsockname %s", lserror(errno));
     sa->len = 0;
   }
   if (sa->len > providedlen) {
-    ccloge("getsockname truncated");
+    l_loge_s("getsockname truncated");
     sa->len = providedlen;
   }
   return addr;
 }
 
-static nauty_bool llsocket_bind(handle_int sock, const struct ccsockaddr* addr) {
+static int llsocket_bind(l_handle sock, const l_sockaddr* addr) {
   /** bind - bind a address to a socket **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -354,19 +350,19 @@ static nauty_bool llsocket_bind(handle_int sock, const struct ccsockaddr* addr) 
   49152小（以免与临时端口号的“正确”范围冲突）。
   从bind返回的一个常见错误是EADDRINUSE，到7.5节讨论SO_REUSEADDR和SO_REUSEPORT
   这两个套接字选项时在详细讨论。*/
-  struct llsockaddr* sa = (struct llsockaddr*)addr;
+  llsockaddr* sa = (llsockaddr*)addr;
   if (sa->len == 0) {
-    ccloge("bind invalid address");
+    l_loge_s("bind invalid address");
     return false;
   }
   if (bind(sock, &(sa->addr.sa), sa->len) != 0) {
-    ccloge("bind %s", strerror(errno));
+    l_loge_1("bind %s", lserror(errno));
     return false;
   }
   return true;
 }
 
-static nauty_bool llsocket_listen(handle_int sock, int backlog) {
+static int llsocket_listen(l_handle sock, int backlog) {
   /** listen - listen for connections on a socket **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -424,18 +420,18 @@ static nauty_bool llsocket_listen(handle_int sock, int backlog) {
   在三次握手之后，但在服务器accept之前到达的数据应该有服务器TCP排队，最大数据量
   为相应已连接套接字的接收缓冲区大小。*/
   if (listen(sock, backlog) != 0) {
-    ccloge("listen %s", strerror(errno));
+    l_loge_1("listen %s", lserror(errno));
     return false;
   }
   return true;
 }
 
-handle_int ccsocket_listen(const struct ccsockaddr* addr, int backlog) {
-  handle_int sock = -1;
-  const struct llsockaddr* sa = (const struct llsockaddr*)addr;
+l_handle l_socket_listen(const l_sockaddr* addr, int backlog) {
+  l_handle sock = -1;
+  const llsockaddr* sa = (const llsockaddr*)addr;
   int domain = (addr == 0 ? AF_INET : sa->addr.sa.sa_family);
   if (domain != AF_INET && domain != AF_INET6) {
-    ccloge("invalid address family");
+    l_loge_s("invalid address family");
     return sock;
   }
   if (!llsocket_create(domain, SOCK_STREAM, IPPROTO_TCP, &sock)) {
@@ -444,11 +440,11 @@ handle_int ccsocket_listen(const struct ccsockaddr* addr, int backlog) {
   /* 如果一个TCP客户或服务器未曾调用bind绑定一个端口，当使用connect或
   listen 时，内核会为相应的套接字选择一个临时端口 */
   if (addr && !llsocket_bind(sock, addr)) {
-    ccsocket_close(sock);
+    l_socket_close(sock);
     return sock;
   }
-  if (!llsocket_listen(sock, (backlog <= 0 ? SOCKET_BACKLOG : backlog))) {
-    ccsocket_close(sock);
+  if (!llsocket_listen(sock, (backlog <= 0 ? L_SOCKET_BACKLOG : backlog))) {
+    l_socket_close(sock);
   }
   return sock;
 }
@@ -527,9 +523,9 @@ recvfrom。
 该信号的递交无法告诉我们是哪个套接字出的错。如果我们确实需要知道是哪个write
 出错，那么必须不理会该信号，那么从信号处理函数返回后再处理EPIPE错误。*/
 
-typedef void (*ccsigfunc)(int);
+typedef void (*l_sigfunc)(int);
 
-static ccsigfunc llsigact(int sig, ccsigfunc func) {
+static l_sigfunc llsigact(int sig, l_sigfunc func) {
   /** sigaction - examine and change a signal action **
   #include <signal.h>
   int sigaction(int signum, const struct sigaction* act, struct sigaction* oldact);
@@ -614,13 +610,13 @@ static ccsigfunc llsigact(int sig, ccsigfunc func) {
   #endif
   }
   if (sigaction(sig, &act, &oldact) != 0) {
-    ccloge("sigaction %s", strerror(errno));
+    l_loge_1("sigaction %s", lserror(errno));
     return SIG_ERR;
   }
   return oldact.sa_handler;
 }
 
-void ccsigign(int sig) {
+void l_sigign(int sig) {
   llsigact(sig, SIG_IGN);
 }
 
@@ -686,17 +682,17 @@ caused connection abort）。POSIX作出修正的理由在于，流子系统（s
 不把该错误传递给进程的做法所涉及的步骤在TCPv2中得到阐述，引发该错误的RST在第964
 页到达处理，导致tcp_close被调用。*/
 
-void ccsocket_accept(handle_int sock, void (*cb)(void*, struct ccsockconn*), void* ud) {
+void l_socket_accept(l_handle sock, void (*cb)(void*, l_sockconn*), void* ud) {
   int n = 0;
-  struct ccsockconn conn;
-  struct llsockaddr* sa = (struct llsockaddr*)&(conn.remote);
-  socklen_t providedlen = sizeof(union ll_sock_addr);
+  l_sockconn conn;
+  llsockaddr* sa = (llsockaddr*)&(conn.remote);
+  socklen_t providedlen = sizeof(ll_sock_addr);
 
   for (; ;) {
     sa->len = providedlen;
     if ((conn.sock = accept(sock, &(sa->addr.sa), &(sa->len))) != -1) {
       if (sa->len > providedlen) {
-        ccloge("accept address truncated");
+        l_loge_s("accept address truncated");
         sa->len = providedlen;
       }
       llsetnonblock(conn.sock);
@@ -717,7 +713,7 @@ void ccsocket_accept(handle_int sock, void (*cb)(void*, struct ccsockconn*), voi
       /* current connection is interrupted, aborted or has protocol error,
       so skip this connection and continue to accept next connections
       in the kernel queue until it is empty */
-      cclogw("accept %s", strerror(n));
+      l_logw_1("accept %s", lserror(n));
       break;
     case EBADF: /* sockfd is not an open fd */
     case EFAULT: /* the addr is not in a writable part of the user address space */
@@ -729,14 +725,14 @@ void ccsocket_accept(handle_int sock, void (*cb)(void*, struct ccsockconn*), voi
     case ENOTSOCK: /* the sockfd does not refer to a socket */
     case EOPNOTSUPP: /* the referenced socket is not of type SOCK_STREAM */
     case EPERM: /* firewall rules forbid connection */
-      ccloge("accept %s", strerror(n));
+      l_loge_1("accept %s", lserror(n));
       return; /* unrecoverable error, return */
     default:
       /* in addition, network errors for the new socket and as defined for the protocol
       may be returned. various linux kernels can return other errors such as ENOSR,
       ESOCKTNOSUPPORT, EPROTONOSUPPORT, ETIMEOUT. the value ERESTARTSYS may be seen
       during a trace. */
-      ccloge("accept %s", strerror(n));
+      l_loge_1("accept %s", lserror(n));
       return;
     }
   }
@@ -771,7 +767,7 @@ SIGKILL信号（该信号不能被捕获）。这么做留给所有运行进程�
 如5.12节所讨论的一样，我们必须在客户中使用select或poll函数，以防TCP断连时客户阻塞在
 其他的函数中而不能快速知道TCP已经断连了。*/
 
-static nauty_bool llsocket_connect(handle_int sock, const struct ccsockaddr* addr) {
+static int llsocket_connect(l_handle sock, const l_sockaddr* addr) {
   /** connect - initiate a conneciton on a socket **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -874,7 +870,7 @@ static nauty_bool llsocket_connect(handle_int sock, const struct ccsockaddr* add
 　这样做将导致返回EADDRINUSE错误，我们只能调用select，就像对于非阻塞connect所做的那样，
 　连接建立成功时返回套接字可写条件，连接建立失败时select返回套接字既可读也可写条件。*/
   int n = 0;
-  const struct llsockaddr* sa = (const struct llsockaddr*)addr;
+  const llsockaddr* sa = (const llsockaddr*)addr;
   if (connect(sock, &(sa->addr.sa), sa->len) == 0) {
     return true;
   }
@@ -886,25 +882,25 @@ static nauty_bool llsocket_connect(handle_int sock, const struct ccsockaddr* add
     /* the connection doesn't complete yet */
     errno = EINPROGRESS;
   } else {
-    ccloge("connect %s", strerror(n));
+    l_loge_1("connect %s", lserror(n));
   }
   return false;
 }
 
-void ccsocketconn_init(struct ccsockconn* self, struct ccfrom ip, ushort_int port) {
+void l_socketconn_init(l_sockconn* self, l_strt ip, l_ushort port) {
   self->sock = -1;
-  ccsockaddr_initp(&(self->remote), &ip, port);
+  l_sockaddr_init(&(self->remote), ip, port);
 }
 
 /* return true if success, return false if inprocess or error (socket closed on error) */
-nauty_bool ccsocket_connect(struct ccsockconn* conn) {
-  handle_int sock = conn->sock;
-  struct ccsockaddr* addr = &(conn->remote);
-  if (!ccsocket_isopen(sock)) {
-    struct llsockaddr* sa = (struct llsockaddr*)addr;
+int l_socket_connect(l_sockconn* conn) {
+  l_handle sock = conn->sock;
+  l_sockaddr* addr = &(conn->remote);
+  if (!l_socket_isopen(sock)) {
+    llsockaddr* sa = (llsockaddr*)addr;
     int domain = sa->addr.sa.sa_family;
     if (domain != AF_INET && domain != AF_INET6) {
-      ccloge("connect invalid address");
+      l_loge_s("connect invalid address");
       return false;
     }
     if (!llsocket_create(domain, SOCK_STREAM, IPPROTO_TCP, &sock)) {
@@ -917,12 +913,12 @@ nauty_bool ccsocket_connect(struct ccsockconn* conn) {
     return true;
   }
   if (errno != EINPROGRESS) {
-    ccsocket_close(sock);
+    l_socket_close(sock);
   }
   return false;
 }
 
-sright_int ll_read(handle_int fd, void* out, sright_int count) {
+l_integer ll_read(l_handle fd, void* out, l_integer count) {
   /** read - read from a file descriptor **
   #include <unistd.h>
   ssize_t read(int fd, void *buf, size_t count);
@@ -962,8 +958,8 @@ sright_int ll_read(handle_int fd, void* out, sright_int count) {
   Other errors may occurs, depending on the object connected to fd. */
   ssize_t n = 0;
 
-  if (count < 0 || count > CC_RDWR_MAX_BYTES) {
-    ccloge("read invalid argument");
+  if (count < 0 || count > l_max_rdwr_size) {
+    l_loge_s("read invalid argument");
     return -2;
   }
 
@@ -972,7 +968,7 @@ sright_int ll_read(handle_int fd, void* out, sright_int count) {
       /* note that one case about read bytes n < count is:
       at least one byte is read and then interrupted by a
       signal, the call is returned success in this case. */
-      return (sright_int)n;
+      return (l_integer)n;
     }
 
     n = errno;
@@ -991,11 +987,11 @@ sright_int ll_read(handle_int fd, void* out, sright_int count) {
     break;
   }
 
-  ccloge("read %s", strerror(n));
+  l_loge_1("read %s", lserror(n));
   return -2;
 }
 
-sright_int ll_write(handle_int fd, const void* buf, sright_int count) {
+l_integer ll_write(l_handle fd, const void* buf, l_integer count) {
   /** write - write to a file descriptor **
   #include <unistd.h>
   ssize_t write(int fd, const void *buf, size_t count);
@@ -1059,8 +1055,8 @@ sright_int ll_write(handle_int fd, const void* buf, sright_int count) {
   Other errors may occur, depending on the object connected to fd. */
   ssize_t n = 0;
 
-  if (count < 0 || count > CC_RDWR_MAX_BYTES) {
-    ccloge("write invalid argument");
+  if (count < 0 || count > l_max_rdwr_size) {
+    l_loge_s("write invalid argument");
     return -2;
   }
 
@@ -1069,7 +1065,7 @@ sright_int ll_write(handle_int fd, const void* buf, sright_int count) {
       /* note that one case about written bytes n < count is:
       at least one byte is written and then interrupted by a
       signal, the call is returned success in this case. */
-      return (sright_int)n;
+      return (l_integer)n;
     }
 
     n = errno;
@@ -1088,14 +1084,14 @@ sright_int ll_write(handle_int fd, const void* buf, sright_int count) {
     break;
   }
 
-  ccloge("write %s", strerror(n));
+  l_loge_1("write %s", lserror(n));
   return -2;
 }
 
-/* *status >=0 success, <0 CCSTATUS_ERROR */
-sright_int ccsocket_read(handle_int sock, void* out, sright_int count, sright_int* status) {
-  nauty_byte* buf = (nauty_byte*)out;
-  sright_int n = 0, sum = 0;
+/* *status >=0 success, <0 L_STATUS_ERROR */
+l_integer l_socket_read(l_handle sock, void* out, l_integer count, l_integer* status) {
+  l_byte* buf = (l_byte*)out;
+  l_integer n = 0, sum = 0;
   while ((n = ll_read(sock, buf, count)) > 0) {
     sum += n;
     buf += n;
@@ -1105,15 +1101,15 @@ sright_int ccsocket_read(handle_int sock, void* out, sright_int count, sright_in
     }
   }
   if (status) {
-    *status = (count == 0 ? 0 : (n == -2 ? CCSTATUS_ERROR : count));
+    *status = (count == 0 ? 0 : (n == -2 ? L_STATUS_ERROR : count));
   }
   return sum;
 }
 
-/* *status >=0 success, <0 CCSTATUS_ERROR */
-sright_int ccsocket_write(handle_int sock, const void* from, sright_int count, sright_int* status) {
-  sright_int n = 0, sum = 0;
-  const nauty_byte* buf = (const nauty_byte*)from;
+/* *status >=0 success, <0 L_STATUS_ERROR */
+l_integer l_socket_write(l_handle sock, const void* from, l_integer count, l_integer* status) {
+  l_integer n = 0, sum = 0;
+  const l_byte* buf = (const l_byte*)from;
   while ((n = ll_write(sock, buf, count)) > 0) {
     sum += n;
     buf += n;
@@ -1123,46 +1119,46 @@ sright_int ccsocket_write(handle_int sock, const void* from, sright_int count, s
     }
   }
   if (status) {
-    *status = (count == 0 ? 0 : (n == -2 ? CCSTATUS_ERROR : count));
+    *status = (count == 0 ? 0 : (n == -2 ? L_STATUS_ERROR : count));
   }
   return sum;
 }
 
-void ccplatsocktest() {
-  struct ccsockaddr sa;
-  struct ccstring ipstr = ccstring_emptystr();
+void l_plat_sock_test() {
+  l_sockaddr sa;
+  l_string ip = l_string_new(l_empty_strt());
   /* all kind of socket address size */
-  cclogd("socklen_t %s-byte", ccutos(sizeof(socklen_t)));
-  cclogd("struct in_addr %s-byte", ccutos(sizeof(struct in_addr)));
-  cclogd("struct in6_addr %s-byte", ccutos(sizeof(struct in6_addr)));
-  cclogd("struct sockaddr %s-byte", ccutos(sizeof(struct sockaddr)));
-  cclogd("struct sockaddr_in %s-byte", ccutos(sizeof(struct sockaddr_in)));
-  cclogd("struct sockaddr_in6 %s-byte", ccutos(sizeof(struct sockaddr_in6)));
-  cclogd("struct sockaddr_storage %s-byte", ccutos(sizeof(struct sockaddr_storage)));
-  cclogd("CC_SOCKADDR_BYTES %s-byte", ccutos(CC_SOCKADDR_BYTES));
-  cclogd("struct ccsockaddr %s-byte", ccutos(sizeof(struct ccsockaddr)));
-  cclogd("INET_ADDRSTRLEN ipv4 string max len %s", ccitos(INET_ADDRSTRLEN));
-  cclogd("INET6_ADDRSTRLEN ipv6 string max len %s", ccitos(INET6_ADDRSTRLEN));
+  l_logd_1("socklen_t %d-byte", ld(sizeof(socklen_t)));
+  l_logd_1("struct in_addr %d-byte", ld(sizeof(struct in_addr)));
+  l_logd_1("struct in6_addr %d-byte", ld(sizeof(struct in6_addr)));
+  l_logd_1("struct sockaddr %d-byte", ld(sizeof(struct sockaddr)));
+  l_logd_1("struct sockaddr_in %d-byte", ld(sizeof(struct sockaddr_in)));
+  l_logd_1("struct sockaddr_in6 %d-byte", ld(sizeof(struct sockaddr_in6)));
+  l_logd_1("struct sockaddr_storage %d-byte", ld(sizeof(struct sockaddr_storage)));
+  l_logd_1("L_SOCKADDR_SIZE %d-byte", ld(L_SOCKADDR_SIZE));
+  l_logd_1("l_sockaddr %d-byte", ld(sizeof(l_sockaddr)));
+  l_logd_1("INET_ADDRSTRLEN ipv4 string max len %d", ld(INET_ADDRSTRLEN));
+  l_logd_1("INET6_ADDRSTRLEN ipv6 string max len %d", ld(INET6_ADDRSTRLEN));
   /* ipv4 string convert */
-  ccsockaddr_init(&sa, ccfromcstr("127.0.0.1"), 1024);
-  ccsockaddr_getipstr(&sa, &ipstr);
-  ccassert(ccsockaddr_getport(&sa) == 1024);
-  ccassert(ccstring_equalcstr(&ipstr, "127.0.0.1"));
+  l_sockaddr_init(&sa, l_literal_strt("127.0.0.1"), 1024);
+  l_sockaddr_ipstring(&sa, &ip);
+  l_assert(l_sockaddr_port(&sa) == 1024);
+  l_assert(l_string_equal_c(&ip, "127.0.0.1"));
   /* ipv6 string convert */
-  ccsockaddr_init(&sa, ccfromcstr("::3742:204.152.189.116"), 2048);
-  ccsockaddr_getipstr(&sa, &ipstr);
-  ccassert(ccsockaddr_getport(&sa) == 2048);
-  ccassert(ccstring_equalcstr(&ipstr, "::3742:cc98:bd74"));
-  cclogd("ccsockaddr ip string %s", ccstring_getcstr(&ipstr));
-  ccsockaddr_init(&sa, ccfromcstr("::3742:4723:5525"), 4096);
-  ccsockaddr_getipstr(&sa, &ipstr);
-  ccassert(ccsockaddr_getport(&sa) == 4096);
-  ccassert(ccstring_equalcstr(&ipstr, "::3742:4723:5525"));
-  ccstring_free(&ipstr);
+  l_sockaddr_init(&sa, l_literal_strt("::3742:204.152.189.116"), 2048);
+  l_sockaddr_ipstring(&sa, &ip);
+  l_assert(l_sockaddr_port(&sa) == 2048);
+  l_assert(l_string_equal_c(&ip, "::3742:cc98:bd74"));
+  l_logd_1("l_sockaddr ip string %s", lstring(&ip));
+  l_sockaddr_init(&sa, l_literal_strt("::3742:4723:5525"), 4096);
+  l_sockaddr_ipstring(&sa, &ip);
+  l_assert(l_sockaddr_port(&sa) == 4096);
+  l_assert(l_string_equal_c(&ip, "::3742:4723:5525"));
+  l_string_free(&ip);
   /* protocol number */
-  cclogd("IPPROTO_IP(0) is %s", ccutos(IPPROTO_IP));
-  cclogd("IPPROTO_IPV6(41) is %s", ccutos(IPPROTO_IPV6));
-  cclogd("IPPROTO_TCP(6) is %s", ccutos(IPPROTO_TCP));
-  cclogd("IPPROTO_UDP(17) is %s", ccutos(IPPROTO_UDP));
+  l_logd_1("IPPROTO_IP(0) is %d", ld(IPPROTO_IP));
+  l_logd_1("IPPROTO_IPV6(41) is %d", ld(IPPROTO_IPV6));
+  l_logd_1("IPPROTO_TCP(6) is %d", ld(IPPROTO_TCP));
+  l_logd_1("IPPROTO_UDP(17) is %d", ld(IPPROTO_UDP));
 }
 

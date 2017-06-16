@@ -662,7 +662,7 @@ int l_ionfmgr_trywait(l_ionfmgr* self, void (*cb)(l_ioevent*)) {
   return l_ionfmgr_timedwait(self, 0, cb);
 }
 
-void l_plationftest() {
+void l_plat_ionf_test() {
   l_assert(sizeof(l_handle) <= 4);
 }
 

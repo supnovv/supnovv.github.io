@@ -167,6 +167,22 @@ l_strt l_strt_l(const void* s, l_integer len) {
   return a;
 }
 
+int l_strt_contain(l_strt s, int ch) {
+  while (s.start < s.end) {
+    if (*s.start++ == ch) return true;
+  }
+  return false;
+}
+
+int l_strt_equal_l(l_strt s, const void* p, l_integer len) {
+  const l_byte* str = l_str(p);
+  if (s.end - s.start != len) return false;
+  while (s.start < s.end) {
+    if (*s.start++ != *str++) return false;
+  }
+  return true;
+}
+
 void l_zero_l(void* start, l_integer len) {
   if (!start || len <= 0 || len > l_max_rdwr_size) {
     l_loge_1("invalid %d", ld(len));

@@ -121,14 +121,14 @@ static void l_log_format_char(l_logger* log, l_uinteger a, l_umedit flags) {
 
 static void l_log_format_true(l_logger* log, l_uinteger a, l_umedit flags) {
   if (a) {
-    l_log_lstring(log, (flags & L_FORMAT_UPPER) ? "TRUE" : "true" , 4, flags);
+    l_log_lstring(log, l_str((flags & L_FORMAT_UPPER) ? "TRUE" : "true"), 4, flags);
   } else {
-    l_log_lstring(log, (flags & L_FORMAT_UPPER) ? "FALSE" : "false", 5, flags);
+    l_log_lstring(log, l_str((flags & L_FORMAT_UPPER) ? "FALSE" : "false"), 5, flags);
   }
 }
 
 static const l_rune* l_hex_runes[] = {
-  "0123456789abcdef", "0123456789ABCDEF"
+  l_str("0123456789abcdef"), l_str("0123456789ABCDEF")
 };
 
 static void l_log_format_uinteger(l_logger* log, l_uinteger n, l_umedit flags) {
@@ -236,18 +236,19 @@ static void l_log_print_uinteger(l_uinteger n, l_rune* p) {
 static void l_log_print_fraction(l_uinteger n, l_uinteger intmasks, l_rune* p) {
   (void)n;
   (void)p;
+  (void)intmasks;
 } 
 
 static void l_log_format_float(l_logger* log, l_value v, l_umedit flags) {
   l_rune a[127];
   l_rune* p = a;
-  l_rune* point = 0;
   l_uinteger fraction = 0;
   l_uinteger mantissa = 0;
   l_uinteger intmasks = 0;
   int exponent = 0;
   int negative = 0;
-  int len = 0;
+  (void)log;
+  (void)flags;
 
   /**
    * Floating Point Components

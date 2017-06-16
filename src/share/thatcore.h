@@ -34,7 +34,7 @@
 #endif
 
 #define l_cast(type, a) ((type)(a))
-#define l_str(s) l_cast(l_rune*, (s))
+#define l_str(s) ((l_rune*)(s))
 
 #define l_max_rdwr_size (0x7fff0000) /* 2147418112 */
 #define l_max_ubyte     l_cast(l_byte, 0xff) /* 255 */
@@ -68,21 +68,6 @@
 #define L_DEBUG_HERE(...) { ((void)0); }
 #endif
 
-typedef struct {
-  void* stream;
-} l_filestream;
-
-typedef struct {
-  void* stream;
-} l_dirstream;
-
-typedef struct {
-  l_filestream f;
-  l_rune* a;
-  int capacity;
-  int size;
-} l_logger;
-
 typedef union {
   l_integer d;
   l_uinteger u;
@@ -90,19 +75,9 @@ typedef union {
   const void* p;
 } l_value;
 
-l_extern l_logger* l_thread_get_logger();
-l_thread_local(l_logger* l_thread_local_logger);
-
-l_inline l_logger* l_thread_logger() {
-#if defined(l_thread_local_supported)
-  return l_thread_local_logger;
-#else
-  return l_thread_get_logger();
-#endif
-}
-
 #define ls(s) lp(s)
 #define lserror(n) lp(strerror(n))
+#define lstring(s) lp(l_string_cstr(s))
 
 l_inline l_value lp(const void* p) {
   l_value a;
@@ -185,11 +160,15 @@ typedef struct {
   const l_byte* end;
 } l_strt;
 
-#define l_strt_empty() l_cast(l_strt, {0,0})
-#define l_strt_literal(s) l_strt_l("" s, (sizeof(s)/sizeof(char))-1)
+#define l_empty_strt() ((l_strt){0,0})
+#define l_literal_strt(s) l_strt_l("" s, (sizeof(s)/sizeof(char))-1)
 #define l_strt_c(s) l_strt_l((s), strlen(l_cast(char*, (s))))
 #define l_strt_e(s, e) l_strt_l((s), l_str(e) - l_str(s))
 l_extern l_strt l_strt_l(const void* s, l_integer len);
+l_extern int l_strt_contain(l_strt s, int ch);
+
+#define l_strt_equal_c(s, str) l_strt_equal_l((s), (str), strlen((char*)(str)))
+l_extern int l_strt_equal_l(l_strt s, const void* str, l_integer len);
 
 #define l_zero_e(start, end) l_zero_l(start, l_str(end) - l_str(start))
 l_extern void l_zero_l(void* start, l_integer len);
@@ -334,24 +313,22 @@ typedef struct {
   l_byte sec;    /* 0~61, 60 and 61 are the leap seconds */
 } l_date;
 
-typedef struct {
-  l_integer fsize;
-  l_integer ctm; /* creation, utc */
-  l_integer atm; /* last access, utc */
-  l_integer mtm; /* last modify, utc */
-  l_integer gid;
-  l_integer uid;
-  l_integer mode;
-  l_byte isfile;
-  l_byte isdir;
-  l_byte islink;
-} l_fileattr;
-
 l_extern l_time l_system_time();
 l_extern l_time l_monotonic_time();
 l_extern l_date l_system_date();
 l_extern l_date l_date_from_secs(l_integer utcsecs);
 l_extern l_date l_date_from_time(l_time utc);
+
+typedef struct {
+  void* stream;
+} l_filestream;
+
+typedef struct {
+  l_filestream f;
+  l_rune* a;
+  int capacity;
+  int size;
+} l_logger;
 
 l_extern l_filestream l_open_read(const void* name);
 l_extern l_filestream l_open_write(const void* name);
@@ -373,6 +350,23 @@ l_extern void l_rewind_file(l_filestream* self);
 l_extern void l_seek_from_begin(l_filestream* self, long offset);
 l_extern void l_seek_from_curpos(l_filestream* self, long offset);
 l_extern void l_clear_file_error(l_filestream* self);
+
+typedef struct {
+  l_integer fsize;
+  l_integer ctm; /* creation, utc */
+  l_integer atm; /* last access, utc */
+  l_integer mtm; /* last modify, utc */
+  l_integer gid;
+  l_integer uid;
+  l_integer mode;
+  l_byte isfile;
+  l_byte isdir;
+  l_byte islink;
+} l_fileattr;
+
+typedef struct {
+  void* stream;
+} l_dirstream;
 
 l_extern l_integer l_file_size(const void* name);
 l_extern l_fileattr l_file_attr(const void* name);
@@ -429,9 +423,121 @@ l_extern void l_condv_broadcast(l_condv* self);
 l_extern l_thrid l_raw_self_thread();
 l_extern int l_raw_create_thread(l_thrid* thrid, void* (*start)(void*), void* para);
 l_extern int l_raw_thread_join(l_thrid* thrid);
-l_extern void l_raw_thread_sleep(l_integer us);
 l_extern void l_raw_thread_exit();
+l_extern void l_thread_sleep(l_integer us);
 
+typedef struct lua_State lua_State;
+typedef struct l_service l_service;
+
+typedef struct l_thread {
+  /* access by master only */
+  l_linknode node;
+  l_umedit weight;
+  /* shared with master */
+  l_byte missionassigned;
+  l_dqueue workrxq;
+  l_mutex elock;
+  l_mutex mutex;
+  l_condv condv;
+  /* free access */
+  l_umedit index;
+  l_thrid id;
+  /* thread own use */
+  lua_State* L;
+  int (*start)();
+  l_dqueue workq;
+  l_squeue msgq;
+  l_squeue freeco;
+  l_umedit freecosz;
+  l_umedit totalco;
+  /* buffer queue */
+  l_squeue freebufq;
+  l_integer freememsize;
+  l_integer maxfreemem;
+  /* logger */
+  l_logger* log;
+} l_thread;
+
+typedef struct l_state {
+  l_smplnode node;
+  l_thread* belong;
+  lua_State* co;
+  int coref;
+  int (*func)(struct l_state*);
+  int (*kfunc)(struct l_state*);
+  l_service* srvc;
+} l_state;
+
+l_extern l_thrkey llg_thread_key;
+l_extern l_thrkey llg_logger_key;
+
+l_thread_local(l_thread* llg_thread_ptr);
+l_thread_local(l_logger* llg_logger_ptr);
+
+l_inline l_thread* l_thread_self() {
+#if defined(l_thread_local_supported)
+  return llg_thread_ptr;
+#else
+  return (l_thread*)l_thrkey_get_data(&llg_thread_key);
+#endif
+}
+
+l_inline l_thread* l_state_thread(l_state* s) {
+  return s->belong;
+}
+
+l_inline l_logger* l_thread_logger() {
+#if defined(l_thread_local_supported)
+  return llg_logger_ptr;
+#else
+  return (l_thread*)l_thrkey_get_data(&llg_logger_key);
+#endif
+}
+
+l_inline l_logger* l_state_logger(l_state* s) {
+  return s->belong->log;
+}
+
+typedef struct {
+  l_smplnode node;
+  l_integer maxlimit;
+  l_integer capacity;
+  l_integer size;
+} l_buffer;
+
+l_inline l_byte* l_buffer_start(l_buffer* self) {
+  return (l_byte*)(self + 1);
+}
+
+l_extern l_buffer* l_buffer_new(l_thread* thread, l_integer maxlimit);
+l_extern void l_buffer_free(l_thread* thread, l_buffer* buffer);
+l_extern void l_buffer_ensure_capacity(l_buffer** self, l_integer size);
+l_extern void l_buffer_ensure_size_remain(l_buffer** self, l_integer remainsize);
+
+typedef struct {
+  l_buffer* b;
+} l_string;
+
+l_extern l_string l_string_new(l_strt from);
+l_extern l_string l_thread_string_new(l_thread* thread, l_strt from);
+l_extern void l_string_free(l_string* self);
+l_extern void l_thread_string_free(l_thread* thread, l_string* self);
+l_extern void l_string_clear(l_string* self);
+l_extern void l_string_setstrt(l_string* self, l_strt s);
+l_extern void l_string_setcstr(l_string* self, const void* s);
+l_extern void l_string_setlstr(l_string* self, const void* s, l_integer len);
+l_extern int l_string_is_empty(l_string* self);
+l_extern int l_string_equal_c(l_string* self, const void* s);
+l_extern int l_string_equal_l(l_string* self, const void* s, l_integer len);
+
+l_inline const l_rune* l_string_cstr(l_string* self) {
+  return l_buffer_start(self->b);
+}
+
+l_inline l_strt l_string_strt(l_string* self) {
+  const l_rune* s = l_buffer_start(self->b);
+  return (l_strt){s, s + self->b->size};
+}
 
 l_extern void l_core_test();
 l_extern void l_plat_test();

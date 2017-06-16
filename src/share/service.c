@@ -1,7 +1,7 @@
 #include <stddef.h>
 #include "service.h"
 #include "luacapi.h"
-#include "ionotify.h"
+#include "ionfmgr.h"
 #include "socket.h"
 
 #define L_SERVICE_START_SVID 0x2001
@@ -19,7 +19,7 @@
 #define L_SERVICE_YIELDABLE  0x08
 #define L_SERVICE_FREE_DATA  0x10
 
-struct ccservice {
+struct l_service {
   /* shared with master */
   l_linknode node;
   l_smplnode tlink;
@@ -33,10 +33,10 @@ struct ccservice {
   l_state* co;
   int (*entry)(l_service*, l_message*);
   void* udata;
-};
+} l_service;
 
 static void l_service_init(l_service* self) {
-  l_zeron(self, sizeof(l_service));
+  l_zero_l(self, sizeof(l_service));
   l_linknode_init(&self->node);
   l_smplnode_init(&self->tlink);
   l_squeue_init(&self->rxmq);
@@ -65,34 +65,6 @@ l_message* service_get_message(l_state* state) {
 cchandle_int l_service_eventfd(ccservice* self) {
   return self->event->fd;
 }
-
-struct ccthread {
-  /* access by master only */
-  l_linknode node;
-  l_umedit weight;
-  /* shared with master */
-  nauty_bool missionassigned;
-  l_dqueue workrxq;
-  l_mutex elock;
-  l_mutex mutex;
-  l_condv condv;
-  /* free access */
-  l_umedit index;
-  l_thrid id;
-  /* thread own use */
-  struct lua_State* L;
-  int (*start)();
-  l_dqueue workq;
-  l_squeue msgq;
-  l_squeue freeco;
-  l_umedit freecosz;
-  l_umedit totalco;
-  l_string defstr;
-  /* buffer queue */
-  l_squeue freebufq;
-  l_integer freememsize;
-  l_integer maxfreemem;
-};
 
 #define L_THREAD_MAX_MEMORY (1024 * 1024 * 2) /* 2MB */
 
@@ -180,7 +152,7 @@ static l_umedit ll_new_thread_index();
 static void ll_free_msgs(l_squeue* msgq);
 
 void l_thread_init(l_thread* self) {
-  l_zeron(self, sizeof(l_thread));
+  l_zero_l(self, sizeof(l_thread));
   l_linknode_init(&self->node);
   l_dqueue_init(&self->workrxq);
   l_dqueue_init(&self->workq);
@@ -416,7 +388,7 @@ l_ioevent* ll_new_event() {
     self->total += 1;
   }
 
-  l_zeron(event, sizeof(l_ioevent));
+  l_zero_l(event, sizeof(l_ioevent));
   event->fd = -1;
   return event;
 }
@@ -607,7 +579,7 @@ static nauty_bool ll_set_thread_data(l_thread* thread) {
 }
 
 static void l_global_init(l_global* self) {
-  l_zeron(self, sizeof(l_global));
+  l_zero_l(self, sizeof(l_global));
   llthreads_init(&self->threads);
   llservices_init(&self->services, L_SERVICE_INITSIZEBITS);
   llevents_init(&self->events);
