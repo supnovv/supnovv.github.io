@@ -27,7 +27,6 @@ typedef struct l_message {
   l_msgdata data;
 } l_message;
 
-typedef struct l_thread l_thread;
 l_extern void l_thread_init(l_thread* self);
 l_extern void l_thread_free(l_thread* self);
 l_extern int l_thread_join(l_thread* self);

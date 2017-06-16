@@ -19,7 +19,7 @@
 #define L_SERVICE_YIELDABLE  0x08
 #define L_SERVICE_FREE_DATA  0x10
 
-struct l_service {
+typedef struct l_service {
   /* shared with master */
   l_linknode node;
   l_smplnode tlink;

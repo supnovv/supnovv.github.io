@@ -133,7 +133,7 @@ static int llsetnonblock(l_handle fd) {
   return true;
 }
 
-static int llsocket_create(int domain, int type, int protocol, l_handle* out) {
+static int llsocketcreate(int domain, int type, int protocol, l_handle* out) {
   /** socket - create an endpoint for communication **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -308,7 +308,7 @@ l_sockaddr l_socket_getlocaladdr(l_handle sock) {
   return addr;
 }
 
-static int llsocket_bind(l_handle sock, const l_sockaddr* addr) {
+static int llsocketbind(l_handle sock, const l_sockaddr* addr) {
   /** bind - bind a address to a socket **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -362,7 +362,7 @@ static int llsocket_bind(l_handle sock, const l_sockaddr* addr) {
   return true;
 }
 
-static int llsocket_listen(l_handle sock, int backlog) {
+static int llsocketlisten(l_handle sock, int backlog) {
   /** listen - listen for connections on a socket **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -434,16 +434,16 @@ l_handle l_socket_listen(const l_sockaddr* addr, int backlog) {
     l_loge_s("invalid address family");
     return sock;
   }
-  if (!llsocket_create(domain, SOCK_STREAM, IPPROTO_TCP, &sock)) {
+  if (!llsocketcreate(domain, SOCK_STREAM, IPPROTO_TCP, &sock)) {
     return sock;
   }
   /* 如果一个TCP客户或服务器未曾调用bind绑定一个端口，当使用connect或
   listen 时，内核会为相应的套接字选择一个临时端口 */
-  if (addr && !llsocket_bind(sock, addr)) {
+  if (addr && !llsocketbind(sock, addr)) {
     l_socket_close(sock);
     return sock;
   }
-  if (!llsocket_listen(sock, (backlog <= 0 ? L_SOCKET_BACKLOG : backlog))) {
+  if (!llsocketlisten(sock, (backlog <= 0 ? L_SOCKET_BACKLOG : backlog))) {
     l_socket_close(sock);
   }
   return sock;
@@ -767,7 +767,7 @@ SIGKILL信号（该信号不能被捕获）。这么做留给所有运行进程�
 如5.12节所讨论的一样，我们必须在客户中使用select或poll函数，以防TCP断连时客户阻塞在
 其他的函数中而不能快速知道TCP已经断连了。*/
 
-static int llsocket_connect(l_handle sock, const l_sockaddr* addr) {
+static int llsocketconnect(l_handle sock, const l_sockaddr* addr) {
   /** connect - initiate a conneciton on a socket **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -903,13 +903,13 @@ int l_socket_connect(l_sockconn* conn) {
       l_loge_s("connect invalid address");
       return false;
     }
-    if (!llsocket_create(domain, SOCK_STREAM, IPPROTO_TCP, &sock)) {
+    if (!llsocketcreate(domain, SOCK_STREAM, IPPROTO_TCP, &sock)) {
       return false;
     }
   } else {
     /* socket already opened, it should be called 2nd time after EINPROGRESS */
   }
-  if (llsocket_connect(sock, addr)) {
+  if (llsocketconnect(sock, addr)) {
     return true;
   }
   if (errno != EINPROGRESS) {

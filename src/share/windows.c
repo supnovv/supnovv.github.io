@@ -1,18 +1,6 @@
-#define UNICODE
-#define _UNICODE
-#define WIN32_LEAN_AND_MEAN
-#define _CRT_SECURE_NO_WARNINGS
-/* WINVER: windows version - can used to enable features on specific versions
-           such as 0x0501 for Windows XP and 0x0600 for Windows Vista
-   _WIN16/_WIN32/_WIN64: 16/32/64-bit windows platform
-   _WIN32 is also defined on 64-bit platform for backward compatibility
-   _M_IX86/_M_X64/_M_IA64: for x86/x64/(intel itanium) architecture */
-#include <windows.h>
-#define CCLIB_CORE_WINOS
+#include "winpref.h"
+#define L_WINDOWS_IMPL
 #include "thatcore.h"
-#if !defined(_WIN32) && !defined(_WIN64)
-#error "_WIN32/_WIN64 should be defined"
-#endif
 static void printlasterror() {
   #define ERRSTRSZ 1024
   TCHAR bf[ERRSTRSZ+1] = {0};
