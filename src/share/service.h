@@ -27,6 +27,22 @@ typedef struct l_message {
   l_msgdata data;
 } l_message;
 
+typedef struct l_service {
+  /* shared with master */
+  l_linknode node;
+  l_smplnode tlink;
+  l_squeue rxmq;
+  l_ioevent* event;
+  l_ushort outflag;
+  /* thread own use */
+  l_ushort flag;
+  l_umedit svid;
+  l_thread* belong; /* set once when init */
+  l_state* co;
+  int (*entry)(l_service*, l_message*);
+  void* udata;
+} l_service;
+
 l_extern void l_thread_init(l_thread* self);
 l_extern void l_thread_free(l_thread* self);
 l_extern int l_thread_join(l_thread* self);
@@ -40,7 +56,6 @@ l_extern l_thread* l_thread_self();
 l_extern l_thread* l_thread_master();
 l_extern l_string* l_thread_defstr();
 
-typedef struct l_service l_service;
 l_extern l_service* l_service_new(int (*entry)(l_service*, l_message*));
 l_extern void* l_service_set_data(l_service* self, void* udata);
 l_extern void* l_service_alloc_data(l_service* self, int bytes);

@@ -19,210 +19,120 @@
 #define L_SERVICE_YIELDABLE  0x08
 #define L_SERVICE_FREE_DATA  0x10
 
-typedef struct l_service {
-  /* shared with master */
-  l_linknode node;
-  l_smplnode tlink;
-  l_squeue rxmq;
-  l_ioevent* event;
-  l_ushort outflag;
-  /* thread own use */
-  l_ushort flag;
-  l_umedit svid;
-  l_thread* belong; /* set once when init */
-  l_state* co;
-  int (*entry)(l_service*, l_message*);
-  void* udata;
-} l_service;
+static l_priorq llg_thread_prq;
 
-static void l_service_init(l_service* self) {
-  l_zero_l(self, sizeof(l_service));
-  l_linknode_init(&self->node);
-  l_smplnode_init(&self->tlink);
-  l_squeue_init(&self->rxmq);
-}
-
-static int ll_service_tlink_offset() {
-  return offsetof(l_service, tlink);
-}
-
-l_state* l_service_getstate(l_service* self) {
-  return self->co;
-}
-
-l_umedit service_get_id(l_service* service) {
-  return service->svid;
-}
-
-void* l_service_getdata(ccservice* self) {
-  return self->udata;
-}
-
-l_message* service_get_message(l_state* state) {
-  return state->msg;
-}
-
-cchandle_int l_service_eventfd(ccservice* self) {
-  return self->event->fd;
-}
-
-#define L_THREAD_MAX_MEMORY (1024 * 1024 * 2) /* 2MB */
-
-static void ll_thread_initbufferq(l_thread* thread) {
-  l_squeue_init(&thread->freebufq);
-  thread->freememsize = 0;
-  thread->maxfreemem = L_THREAD_MAX_MEMORY;
-}
-
-static void ll_thread_freebufferq(l_thread* thread) {
-  l_buffer* p = 0;
-  while ((p = (l_buffer*)ccsqueue_pop(&thread->freebufq))) {
-    l_rawfree(p);
+static void llallocthreads(int numofthread) {
+  l_thread* t = 0;
+  while (numofthread-- > 0) {
+    t = (l_thread*)l_raw_calloc(sizeof(l_thread));
+    t->tb = (l_thrblk*)l_raw_malloc(sizeof(l_thrblk));
+    t->index = (l_ushort)numofthread;
+    l_priorq_push(&llg_thread_prq, &t->node);
   }
 }
 
-static l_buffer* ll_thread_getfreebuffer(l_thread* thread) {
-  l_buffer* p = 0;
-  if ((p = (l_buffer*)ccsqueue_pop(&thread->freebufq))) {
-    if (thread->freememsize > p->capacity) {
-      thread->freememsize -= p->capacity;
-    }
-  }
-  return p;
-}
-
-void l_buffer_ensurecapacity(l_buffer** self, l_integer size) {
-  l_integer newcap = (*self)->capacity;
-  if (newcap >= size) return;
-  while ((newcap *= 2) < size) {
-    if (newcap > L_THREAD_MAX_MEMORY) {
-      l_loge("buffer too large");
-      return;
-    }
-  }
-  *self = (l_buffer*)ccrawrelloc(*self, sizeof(l_buffer) + (*self)->capacity, sizeof(l_buffer) + newcap);
-  (*self)->capacity = newcap;
-}
-
-void l_buffer_ensuresizeremain(l_buffer** self, l_integer remainsize) {
-  l_buffer_ensurecapacity(self, (*self)->size + remainsize);
-}
-
-#define L_BUFFER_INIT_SIZE (64)
-
-l_buffer* l_newbuffer(l_thread* thread, l_umedit maxlimit) {
-  l_buffer* p = 0;
-  if ((p = ll_thread_getfreebuffer(thread))) {
-    l_buffer_ensurecapacity(&p, L_BUFFER_INIT_SIZE);
-  } else {
-    p = (l_buffer*)ccrawalloc(sizeof(l_buffer) + L_BUFFER_INIT_SIZE);
-    p->capacity = L_BUFFER_INIT_SIZE;
-  }
-  p->maxlimit = maxlimit;
-  p->size = 0;
-  return p;
-}
-
-void l_freebuffer(l_thread* thread, l_buffer* p) {
-  l_squeue_push(&thread->freebufq, &p->node);
-  thread->freememsize += p->capacity;
-  while (thread->freememsize > thread->maxfreemem) {
-    if (!(p = ll_thread_getfreebuffer(thread))) {
-      break;
-    }
-    l_rawfree(p);
+static void llfreethreads() {
+  l_thread* t = 0;
+  while ((t = (l_thread*)l_priorq_pop(&llg_thread_prq))) {
+    l_raw_free(t->tb);
+    l_raw_free(t);
   }
 }
 
-static nauty_bool ll_thread_less(void* elem, void* elem2) {
-  l_thread* thread = (l_thread*)elem;
-  l_thread* thread2 = (l_thread*)elem2;
-  return thread->weight < thread2->weight;
+static int llthreadless(void* elem, void* elem2) {
+  return ((l_thread*)thread)->weight < ((l_thread*)elem2)->weight;
 }
-
-static void ll_lock_thread(l_thread* self) {
-  l_mutex_lock(&self->mutex);
-}
-
-static void ll_unlock_thread(l_thread* self) {
-  l_mutex_unlock(&self->mutex);
-}
-
-static l_umedit ll_new_thread_index();
-static void ll_free_msgs(l_squeue* msgq);
 
 void l_thread_init(l_thread* self) {
-  l_zero_l(self, sizeof(l_thread));
-  l_linknode_init(&self->node);
+  self->elock = &b->ma;
+  self->mutext = &b->mb;
+  self->condv = &b->ca;
+  self->log = &b->l;
+  self->frco = &b->co;
+  self->frbf = &b->bf;
+
+  l_mutex_init(self->elock);
+  l_mutex_init(self->mutex);
+  l_condv_init(self->condv);
+
   l_dqueue_init(&self->workrxq);
   l_dqueue_init(&self->workq);
   l_squeue_init(&self->msgq);
-  l_squeue_init(&self->freeco);
-  self->freecosz = self->totalco = 0;
-
-  l_mutex_init(&self->elock);
-  l_mutex_init(&self->mutex);
-  l_condv_init(&self->condv);
 
   self->L = l_lua_newstate();
-  self->defstr = l_emptystr();
-  self->index = ll_new_thread_index();
-  ll_thread_initbufferq(self);
+  l_logger_init(self->log);
+  l_freeq_init(self->frco);
+  l_freeq_init(self->frbf);
 }
 
 void l_thread_free(l_thread* self) {
-  l_state* co = 0;
+  if (self->elock) {
+    l_mutex_free(self->elock);
+    self->elock = 0;
+  }
 
-  self->start = 0;
+  if (self->mutex) {
+    l_mutex_free(self->mutex);
+    self->mutex = 0;
+  }
+
+  if (self->condv) {
+    l_condv_free(self->condv);
+    self->condv = 0;
+  }
+
   if (self->L) {
-   l_lua_close(self->L);
+   l_close_luastate(self->L);
    self->L = 0;
   }
 
-  /* free all un-handled msgs */
-  ll_free_msgs(&self->msgq);
-
-  /* un-complete services are all in the hash table,
-  it is no need to free them here */
-
-  /* free all coroutines */
-  while ((co = (l_state*)ccsqueue_pop(&self->freeco))) {
-    l_state_free(co);
-    l_rawfree(co);
+  if (self->log) {
+    l_logger_free(self->log);
+    self->log = 0;
   }
 
-  l_mutex_free(&self->elock);
-  l_mutex_free(&self->mutex);
-  l_condv_free(&self->condv);
-  l_string_free(&self->defstr);
-  ll_thread_freebufferq(self);
+  if (self->frco) {
+    l_freeq_free(self->frco);
+    self->frco = 0;
+  }
+
+  if (self->frbf) {
+    l_freeq_free(self->frbf, 0);
+    self->frbf = 0;
+  }
+
+  /* TODO: free elems in workrxq/workq/msgq */
 }
 
-
-/**
- * threads container
- */
-
-typedef struct {
-  l_priorq priq;
-  l_umedit seed;
-} llthreads;
-
-static llthreads* ll_ccg_threads();
-
-static void llthreads_init(llthreads* self) {
-  l_priorq_init(&self->priq, ll_thread_less);
-  self->seed = 0;
+static void lllockthread(l_thread* self) {
+  l_mutex_lock(self->mutex);
 }
 
-static void llthreads_free(llthreads* self) {
-  (void)self;
+static void llunlockthread(l_thread* self) {
+  l_mutex_unlock(self->mutex);
 }
 
-/* no protacted, can only be called by master */
-static l_umedit ll_new_thread_index() {
-  llthreads* self = ll_ccg_threads();
-  return self->seed++;
+static void* llthreadfunc(void* para) {
+  int n = 0;
+  l_thread* self = (l_thread*)para;
+  l_thrkey_set_data(&llg_thread_key, self);
+  n = self->start();
+  l_thread_free(self);
+  return (void*)(l_intptr)n;
+}
+
+int l_thread_start(l_thread* self, int (*start)()) {
+  self->start = start;
+  return l_raw_create_thread(&self->id, llthreadfunc, self);
+}
+
+void l_thread_exit() {
+  l_thread_free(l_thread_self());
+  l_raw_thread_exit();
+}
+
+int l_thread_join(l_thread* self) {
+  return l_raw_thread_join(&self->id);
 }
 
 /* no protacted, can only be called by master */
@@ -243,11 +153,6 @@ static void ll_thread_finish_a_service(l_thread* thread) {
     l_priorq_push(&self->priq, &thread->node);
   }
 }
-
-
-/**
- * services container
- */
 
 typedef struct {
   l_backhash table;
@@ -329,11 +234,6 @@ static void ll_service_is_finished(l_service* service) {
   self->freesize += 1;
   l_mutex_unlock(&self->mutex);
 }
-
-
-/**
- * events container
- */
 
 typedef struct {
   l_squeue freeq;
@@ -428,10 +328,6 @@ void l_service_attach_event(l_service* self, handle_int fd, l_ushort masks, l_us
   l_ionfmgr_add(ll_get_ionfmgr(), self->event);
   self->event->flags |= L_EVENT_FLAG_ADDED;
 }
-
-/**
- * messages container
- */
 
 typedef struct {
   l_squeue rxq;
@@ -541,18 +437,12 @@ static void ll_free_msgs(l_squeue* msgq) {
   }
 }
 
-
-/**
- * global
- */
-
 struct ccglobal {
   llthreads threads;
   llservices services;
   llevents events;
   llmessages messages;
   l_ionfmgr ionf;
-  l_thrkey thrkey;
   l_thread* mainthread;
 };
 
@@ -572,10 +462,6 @@ static llevents* ll_ccg_events() {
 
 static llmessages* ll_ccg_messages() {
   return &ccG->messages;
-}
-
-static nauty_bool ll_set_thread_data(l_thread* thread) {
-  return l_thrkey_setdata(&ccG->thrkey, thread);
 }
 
 static void l_global_init(l_global* self) {
@@ -610,11 +496,6 @@ static l_ionfmgr* ll_get_ionfmgr() {
   return &(ccG->ionf);
 }
 
-
-/**
- * thread
- */
-
 static l_state* ll_new_state(l_service* srvc, int (*func)(l_state*)) {
   l_state* co;
   l_thread* thr = srvc->belong;
@@ -633,49 +514,20 @@ static void ll_free_coroutine(l_thread* thread, l_state* co) {
   thread->freecosz += 1;
 }
 
-l_thread* l_thread_getself() {
-  return (l_thread*)ccthrkey_getdata(&ccG->thrkey);
-}
-
-l_thread* l_thread_getmaster() {
-  return ccG->mainthread;
-}
-
-l_string* l_thread_getdefstr() {
-  return &(ccthread_getself()->defstr);
-}
-
-void l_thread_sleep(uright_int us) {
-  l_plat_threadsleep(us);
-}
-
-void l_thread_exit() {
-  l_thread_free(ccthread_getself());
-  l_plat_threadexit();
-}
-
-int l_thread_join(l_thread* self) {
-  return l_plat_threadjoin(&self->id);
-}
-
-static void* ll_thread_func(void* para) {
-  l_thread* self = (l_thread*)para;
-  int n = 0;
-  ll_set_thread_data(self);
-  n = self->start();
-  l_thread_free(self);
-  return (void*)(signed_ptr)n;
-}
-
-nauty_bool l_thread_start(l_thread* self, int (*start)()) {
-  self->start = start;
-  return l_plat_createthread(&self->id, ll_thread_func, self);
-}
-
-
 /**
  * service
  */
+
+static void l_service_init(l_service* self) {
+  l_zero_l(self, sizeof(l_service));
+  l_linknode_init(&self->node);
+  l_smplnode_init(&self->tlink);
+  l_squeue_init(&self->rxmq);
+}
+
+static int llservicetlinkoffset() {
+  return offsetof(l_service, tlink);
+}
 
 static l_service* ll_new_service(l_umedit svid) {
   llservices* self = ll_ccg_services();

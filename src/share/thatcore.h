@@ -21,6 +21,9 @@
   #define l_extern extern
 #endif
 
+#undef l_specif
+#define l_specif l_extern
+
 #undef l_thread_local
 #undef l_thread_local_supported
 #if defined(L_CLER_GCC)
@@ -247,44 +250,6 @@ l_extern void l_mmheap_free(l_mmheap* self);
 l_extern void l_mmheap_add(l_mmheap* self, void* elem);
 l_extern void* l_mmheap_del(l_mmheap* self, l_umedit i);
 
-typedef struct {
-  void* next;
-} l_hashslot;
-
-/* hash table - add/remove/search quick, need re-hash when enlarge size */
-typedef struct {
-  l_byte slotbits;
-  l_ushort offsetofnext;
-  l_umedit nslot; /* prime number size not near 2^n */
-  l_umedit nelem;
-  l_umedit (*getkey)(void*);
-  l_hashslot* slot;
-} l_hashtable;
-
-l_extern int l_is_prime(l_umedit n);
-l_extern l_umedit l_middle_prime(l_byte bits);
-
-l_extern void l_hashtable_init(l_hashtable* self, l_byte sizebits, int offsetofnext, l_umedit (*getkey)(void*));
-l_extern void l_hashtable_free(l_hashtable* self);
-l_extern void l_hashtable_foreach(l_hashtable* self, void (*cb)(void*));
-l_extern void l_hashtable_add(l_hashtable* self, void* elem);
-l_extern void* l_hashtable_find(l_hashtable* self, l_umedit key);
-l_extern void* l_hashtable_del(l_hashtable* self, l_umedit key);
-
-/* table size is enlarged auto */
-typedef struct {
-  l_hashtable* cur;
-  l_hashtable* old;
-  l_hashtable a;
-  l_hashtable b;
-} l_backhash;
-
-l_extern void l_backhash_init(l_backhash* self, l_byte initsizebits, int offsetofnext, l_umedit (*getkey)(void*));
-l_extern void l_backhash_free(l_backhash* self);
-l_extern void l_backhash_add(l_backhash* self, void* elem);
-l_extern void* l_backhash_find(l_backhash* self, l_umedit key);
-l_extern void* l_backhash_del(l_backhash* self, l_umedit key);
-
 /**
  * The 64-bit signed integer's biggest value is 9223372036854775807.
  * For seconds/milliseconds/microseconds/nanoseconds, it can
@@ -313,11 +278,11 @@ typedef struct {
   l_byte sec;    /* 0~61, 60 and 61 are the leap seconds */
 } l_date;
 
-l_extern l_time l_system_time();
-l_extern l_time l_monotonic_time();
-l_extern l_date l_system_date();
-l_extern l_date l_date_from_secs(l_integer utcsecs);
-l_extern l_date l_date_from_time(l_time utc);
+l_specif l_time l_system_time();
+l_specif l_time l_monotonic_time();
+l_specif l_date l_system_date();
+l_specif l_date l_date_from_secs(l_integer utcsecs);
+l_specif l_date l_date_from_time(l_time utc);
 
 typedef struct {
   void* stream;
@@ -368,11 +333,11 @@ typedef struct {
   void* stream;
 } l_dirstream;
 
-l_extern l_integer l_file_size(const void* name);
-l_extern l_fileattr l_file_attr(const void* name);
-l_extern l_dirstream l_open_dir(const void* name);
-l_extern void l_close_dir(l_dirstream* d);
-l_extern const l_rune* l_read_dir(l_dirstream* d);
+l_specif l_integer l_file_size(const void* name);
+l_specif l_fileattr l_file_attr(const void* name);
+l_specif l_dirstream l_open_dir(const void* name);
+l_specif void l_close_dir(l_dirstream* d);
+l_specif const l_rune* l_read_dir(l_dirstream* d);
 
 typedef struct {
   L_PLAT_IMPL_SIZE(L_MUTEX_SIZE);
@@ -394,68 +359,116 @@ typedef struct {
   L_PLAT_IMPL_SIZE(L_THKEY_SIZE);
 } l_thrkey;
 
-l_extern void l_thrkey_init(l_thrkey* self);
-l_extern void l_thrkey_free(l_thrkey* self);
-l_extern void l_thrkey_set_data(l_thrkey* self, const void* data);
-l_extern void* l_thrkey_get_data(l_thrkey* self);
+l_specif void l_thrkey_init(l_thrkey* self);
+l_specif void l_thrkey_free(l_thrkey* self);
+l_specif void l_thrkey_set_data(l_thrkey* self, const void* data);
+l_specif void* l_thrkey_get_data(l_thrkey* self);
 
-l_extern void l_mutex_init(l_mutex* self);
-l_extern void l_mutex_free(l_mutex* self);
-l_extern void l_mutex_lock(l_mutex* self);
-l_extern void l_mutex_unlock(l_mutex* self);
-l_extern int l_mutex_trylock(l_mutex* self);
+l_specif void l_mutex_init(l_mutex* self);
+l_specif void l_mutex_free(l_mutex* self);
+l_specif void l_mutex_lock(l_mutex* self);
+l_specif void l_mutex_unlock(l_mutex* self);
+l_specif int l_mutex_trylock(l_mutex* self);
 
-l_extern void l_rwlock_init(l_rwlock* self);
-l_extern void l_rwlock_free(l_rwlock* self);
-l_extern void l_rwlock_read(l_rwlock* self);
-l_extern void l_rwlock_write(l_rwlock* self);
-l_extern int l_rwlock_tryread(l_rwlock* self);
-l_extern int l_rwlock_trywrite(l_rwlock* self);
-l_extern void l_rwlock_unlock(l_rwlock* self);
+l_specif void l_rwlock_init(l_rwlock* self);
+l_specif void l_rwlock_free(l_rwlock* self);
+l_specif void l_rwlock_read(l_rwlock* self);
+l_specif void l_rwlock_write(l_rwlock* self);
+l_specif int l_rwlock_tryread(l_rwlock* self);
+l_specif int l_rwlock_trywrite(l_rwlock* self);
+l_specif void l_rwlock_unlock(l_rwlock* self);
 
-l_extern void l_condv_init(l_condv* self);
-l_extern void l_condv_free(l_condv* self);
-l_extern void l_condv_wait(l_condv* self, l_mutex* mutex);
-l_extern int l_condv_timedwait(l_condv* self, l_mutex* mutex, l_integer ns);
-l_extern void l_condv_signal(l_condv* self);
-l_extern void l_condv_broadcast(l_condv* self);
+l_specif void l_condv_init(l_condv* self);
+l_specif void l_condv_free(l_condv* self);
+l_specif void l_condv_wait(l_condv* self, l_mutex* mutex);
+l_specif int l_condv_timedwait(l_condv* self, l_mutex* mutex, l_integer ns);
+l_specif void l_condv_signal(l_condv* self);
+l_specif void l_condv_broadcast(l_condv* self);
 
-l_extern l_thrid l_raw_self_thread();
-l_extern int l_raw_create_thread(l_thrid* thrid, void* (*start)(void*), void* para);
-l_extern int l_raw_thread_join(l_thrid* thrid);
-l_extern void l_raw_thread_exit();
-l_extern void l_thread_sleep(l_integer us);
+l_specif l_thrid l_raw_self_thread();
+l_specif int l_raw_create_thread(l_thrid* thrid, void* (*start)(void*), void* para);
+l_specif int l_raw_thread_join(l_thrid* thrid);
+l_specif void l_raw_thread_exit();
+l_specif void l_thread_sleep(l_integer us);
+
+typedef struct {
+  l_squeue queue;
+  l_integer size;  /* size of queue */
+  l_integer total; /* total newed elems */
+} l_freeq;
+
+void l_freeq_init(l_freeq* self) {
+  *self = (l_freeq){{{0},0}, 0};
+  l_squeue_init(&self->queue);
+}
+
+void l_freeq_free(l_freeq* self, void (*elemfree)(void*)) {
+  l_smplnode* node = 0;
+  while ((node = l_squeue_pop(&self->queue))) {
+    if (elemfree) elemfree(node);
+    l_raw_free(node);
+  }
+}
+
+void* l_freeq_alloc_elem(l_freeq* self, l_integer sizeofelem) {
+  l_smplnode* node = 0;
+  if ((node = l_squeue_pop(&self->queue))) {
+    self->size -= 1;
+    return node;
+  }
+  node = (l_smplnode*)l_raw_malloc(sizeofelem);
+  self->total += 1;
+  return node;
+}
+
+void l_freeq_free_elem(l_freeq* self, void* elem, void (*elemfree)(void*)) {
+  l_smplnode* node = 0;
+  l_integer max = self->total * 2;
+  l_squeue_push(&self->queue, (l_smplnode*)elem);
+  self->size += 1;
+  if (self->size <= max * 2) return;
+  while (self->size > max) {
+    if (!(node = l_squeue_pop(&self->queue))) {
+      break;
+    }
+    if (elemfree) elemfree(node);
+    l_raw_free(node);
+    self->size -= 1;
+  }
+}
+
+typedef struct {
+  l_mutex ma;
+  l_mutex mb;
+  l_condv ca;
+  l_logger l;
+  l_freeq co;
+  l_freeq bf;
+} l_thrblock;
 
 typedef struct lua_State lua_State;
 typedef struct l_service l_service;
 
 typedef struct l_thread {
-  /* access by master only */
   l_linknode node;
   l_umedit weight;
+  l_ushort index;
+  l_ushort flags;
   /* shared with master */
-  l_byte missionassigned;
+  l_mutex* elock;
+  l_mutex* mutex;
+  l_condv* condv;
   l_dqueue workrxq;
-  l_mutex elock;
-  l_mutex mutex;
-  l_condv condv;
-  /* free access */
-  l_umedit index;
-  l_thrid id;
   /* thread own use */
   lua_State* L;
-  int (*start)();
   l_dqueue workq;
   l_squeue msgq;
-  l_squeue freeco;
-  l_umedit freecosz;
-  l_umedit totalco;
-  /* buffer queue */
-  l_squeue freebufq;
-  l_integer freememsize;
-  l_integer maxfreemem;
-  /* logger */
   l_logger* log;
+  l_freeq* frco;
+  l_freeq* frbf;
+  int (*start)();
+  l_thrid id;
+  l_thrblock* tb;
 } l_thread;
 
 typedef struct l_state {
@@ -498,6 +511,10 @@ l_inline l_logger* l_state_logger(l_state* s) {
   return s->belong->log;
 }
 
+l_extern void l_thread_exit();
+l_extern int l_thread_join(l_thread* self);
+l_extern int l_thread_start(l_thread* self, int (*start)());
+
 typedef struct {
   l_smplnode node;
   l_integer maxlimit;
@@ -518,6 +535,15 @@ typedef struct {
   l_buffer* b;
 } l_string;
 
+l_inline const l_rune* l_string_cstr(l_string* self) {
+  return l_buffer_start(self->b);
+}
+
+l_inline l_strt l_string_strt(l_string* self) {
+  const l_rune* s = l_buffer_start(self->b);
+  return (l_strt){s, s + self->b->size};
+}
+
 l_extern l_string l_string_new(l_strt from);
 l_extern l_string l_thread_string_new(l_thread* thread, l_strt from);
 l_extern void l_string_free(l_string* self);
@@ -530,14 +556,6 @@ l_extern int l_string_is_empty(l_string* self);
 l_extern int l_string_equal_c(l_string* self, const void* s);
 l_extern int l_string_equal_l(l_string* self, const void* s, l_integer len);
 
-l_inline const l_rune* l_string_cstr(l_string* self) {
-  return l_buffer_start(self->b);
-}
-
-l_inline l_strt l_string_strt(l_string* self) {
-  const l_rune* s = l_buffer_start(self->b);
-  return (l_strt){s, s + self->b->size};
-}
 
 l_extern void l_core_test();
 l_extern void l_plat_test();
