@@ -18,7 +18,7 @@ typedef union {
 } l_msgdata;
 
 typedef struct l_message {
-  l_smplnode node;
+  L_COMMON_BUFHEAD
   void* extra; /* dont move this field */
   l_umedit srcid;
   l_umedit dstid;

@@ -220,8 +220,7 @@ static void* l_out_of_memory(l_integer size, int init) {
 }
 
 static l_integer l_check_alloc_size(l_integer size) {
-  if (size > l_max_rdwr_size) return 0;
-  if (size <= 0) size = 1;
+  if (size <= 0 || size > l_max_rdwr_size) return 0;
   return (((size - 1) >> 3) + 1) << 3; /* times of eight */
 }
 
@@ -538,62 +537,6 @@ void* l_mmheap_del(l_mmheap* self, l_umedit i) {
   return elem;
 }
 
-l_thrkey llg_thread_key;
-l_thrkey llg_logger_key;
-l_thread* llg_thread_ptr;
-l_logger* llg_logger_ptr;
-
-void l_buffer_ensure_capacity(l_buffer** self, l_integer size) {
-  l_integer newcap = (*self)->capacity;
-  if (newcap >= size) return;
-  while ((newcap *= 2) < size) {
-    if (newcap > L_THREAD_MAX_MEMORY) {
-      l_loge("buffer too large");
-      return;
-    }
-  }
-  *self = (l_buffer*)ccrawrelloc(*self, sizeof(l_buffer) + (*self)->capacity, sizeof(l_buffer) + newcap);
-  (*self)->capacity = newcap;
-}
-
-void l_buffer_ensure_size_remain(l_buffer** self, l_integer remainsize) {
-  l_buffer_ensure_capacity(self, (*self)->size + remainsize);
-}
-
-#define L_BUFFER_INIT_SIZE (64)
-
-l_buffer* l_newbuffer(l_thread* thread, l_umedit maxlimit) {
-  l_buffer* p = 0;
-  if ((p = ll_thread_getfreebuffer(thread))) {
-    l_buffer_ensurecapacity(&p, L_BUFFER_INIT_SIZE);
-  } else {
-    p = (l_buffer*)ccrawalloc(sizeof(l_buffer) + L_BUFFER_INIT_SIZE);
-    p->capacity = L_BUFFER_INIT_SIZE;
-  }
-  p->maxlimit = maxlimit;
-  p->size = 0;
-  return p;
-}
-
-void l_freebuffer(l_thread* thread, l_buffer* p) {
-  l_squeue_push(&thread->freebufq, &p->node);
-  thread->freememsize += p->capacity;
-  while (thread->freememsize > thread->maxfreemem) {
-    if (!(p = ll_thread_getfreebuffer(thread))) {
-      break;
-    }
-    l_rawfree(p);
-  }
-}
-
-
-
-
-
-
-
-
-
 
 void l_core_test() {
   char buffer[] = "012345678";
@@ -624,16 +567,16 @@ void l_core_test() {
   l_assert(sizeof(l_ushort) == 2);
   l_assert(sizeof(l_medit) == 4);
   l_assert(sizeof(l_umedit) == 4);
-  l_assert(sizeof(l_integer) == 8);
-  l_assert(sizeof(l_uinteger) == 8);
-  l_assert(sizeof(size_t) >= sizeof(void*));
-  l_assert(sizeof(l_uinteger) >= sizeof(size_t));
-  l_assert(sizeof(l_uintptr) == sizeof(void*));
-  l_assert(sizeof(l_intptr) == sizeof(void*));
+  l_assert(sizeof(l_) == 8);
+  l_assert(sizeof(l_ularge) == 8);
+  l_assert(sizeof(l_uinteger) == sizeof(void*));
+  l_assert(sizeof(l_integer) == sizeof(void*));
   l_assert(sizeof(int) >= 4);
   l_assert(sizeof(char) == 1);
   l_assert(sizeof(float) == 4);
   l_assert(sizeof(double) == 8);
+  l_assert(sizeof(size_t) >= 4);
+  l_assert(sizeof(void*) >= 4);
   l_assert(sizeof(l_float) == 4 || sizeof(l_float) == 8);
   l_assert(sizeof(l_eight) == 8);
   l_assert(sizeof(l_mutex) >= L_MUTEX_SIZE);

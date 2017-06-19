@@ -410,7 +410,10 @@ static int l_http_read_line(l_service* srvc, l_buffer** buffer, int maxlimit) {
   }
 
 ReadSocket:
-  l_buffer_ensure_size_remain(buffer, 128);
+  if (!l_buffer_ensure_size_remain(buffer, 128)) {
+    return L_STATUS_ELIMIT;
+  }
+
   rxbuf = *buffer;
 
   count = rxbuf->capacity - rxbuf->size;

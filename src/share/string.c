@@ -2,6 +2,103 @@
 #include <stdarg.h>
 #include "string.h"
 
+int l_buffer_ensure_capacity(l_buffer** self, l_int size) {
+  l_buffer* temp = 0;
+  l_int limit = (*self)->limit;
+  if (limit && size > limit) return false;
+  temp = (l_buffer*)l_thread_ensure_bfsize((*self)->belong, &(*self)->node, sizeof(l_buffer) + size);
+  if (!temp) return false;
+  *self = temp;
+  return true;
+}
+
+int l_buffer_ensure_remain(l_buffer** self, l_int remainsize) {
+  return l_buffer_ensure_capacity(self, (*self)->size + remainsize);
+}
+
+l_buffer* l_buffer_new(l_thread* thread, l_int initsize, l_int maxlimit) {
+  l_buffer* p = 0;
+  if (!thread) thread = l_thread_self();
+  if (initsize < 32) initsize = 32;
+  p = (l_buffer*)l_thread_alloc_buffer(thread, initsize);
+  *(l_buffer_start(p)) = 0; /* zero terminated */
+  p->belong = thread;
+  p->size = 0;
+  p->limit = (maxlimit <= 0) ? 0 : maxlimit;
+  return p;
+}
+
+void l_buffer_free(l_buffer* p) {
+  l_thread_free_buffer((*p)->belong, p, 0);
+}
+
+l_string l_string_new(l_strt from) {
+  return l_thread_string_new(0, from);
+}
+
+l_string l_thread_string_new(l_thread* thread, l_strt from) {
+  l_int size = from.end - from.start;
+  l_buffer* p = l_buffer_new(thread, size+1, 0);
+  l_copy_l(from.start, size, l_buffer_gets(p));
+  p->size = size;
+  *(l_buffer_gets(p) + size) = 0; /* zero terminated */
+  return (l_string){p};
+}
+
+void l_string_free(l_string* self) {
+  if (self->b) {
+    l_buffer_free(self->b);
+    self->b = 0;
+  }
+}
+
+void l_string_clear(l_string* self) {
+  l_buffer* p = self->b;
+  p->size = 0;
+  *l_buffer_gets(p) = 0;
+}
+
+void l_string_setstrt(l_string* self, l_strt s) {
+  l_string_setlstr(self, s.start, s.end - s.start);
+}
+
+void l_string_setcstr(l_string* self, const void* s) {
+  l_string_setlstr(self, s, strlen((const char*)s));
+}
+
+void l_string_setlstr(l_string* self, const void* s, l_int len) {
+  l_buffer_ensure_capacity(&self->b, len+1);
+  l_copy_l(s, len, l_buffer_gets(p));
+  p->size = size;
+  *(l_buffer_gets(p) + size) = 0;
+}
+
+int l_string_is_empty(l_string* self) {
+  return (self->b->size == 0);
+}
+
+l_int l_string_size(l_string* self) {
+  return (self->b->size);
+}
+
+const l_rune* l_string_cstr(l_string* self) {
+  return l_buffer_gets(self->d);
+}
+
+int l_string_equal_c(l_string* self, const void* s) {
+  return l_string_equal_l(self, s, strlen((const char*)s));
+}
+
+int l_string_equal_l(l_string* self, const void* s, l_int len) {
+  const l_rune* a = l_string_cstr();
+  const l_rune* b = l_str(s);
+  if (l_string_size(self) != len) return false;
+  while (len-- > 0) {
+    if (a[len] != b[len]) return false;
+  }
+  return true;
+}
+
 #define L_FORMAT_HEX     0x01000000
 #define L_FORMAT_OCT     0x02000000
 #define L_FORMAT_BIN     0x04000000

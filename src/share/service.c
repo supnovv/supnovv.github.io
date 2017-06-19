@@ -19,13 +19,131 @@
 #define L_SERVICE_YIELDABLE  0x08
 #define L_SERVICE_FREE_DATA  0x10
 
+l_thrkey llg_thread_key;
+l_thrkey llg_logger_key;
+
+l_thread* llg_thread_ptr;
+l_logger* llg_logger_ptr;
+
 static l_priorq llg_thread_prq;
+
+static llglobalinit() {
+  l_thrkey_init(&llg_thread_key);
+  l_thrkey_init(&llg_logger_key);
+  l_prioriq_init(&llg_thread_prq);
+}
+
+typedef struct {
+  L_COMMON_BUFHEAD
+} l_bufhead;
+
+typedef struct {
+  l_squeue queue;
+  l_int size;  /* size of queue */
+  l_int total; /* total newed elems */
+  l_int ttmem; /* total memory size */
+  l_int limit; /* memory size limit */
+} l_freeq;
+
+static void llfreeqinit(l_freeq* self) {
+  *self = (l_freeq){{{0},0}, 0};
+  l_squeue_init(&self->queue);
+}
+
+static void llfreeqfree(l_freeq* self, void (*elemfree)(void*)) {
+  l_smplnode* node = 0;
+  while ((node = l_squeue_pop(&self->queue))) {
+    if (elemfree) elemfree(node);
+    l_raw_free(node);
+  }
+}
+
+void* l_thread_ensure_bfsize(l_thread* thread, l_smplnode* elem, l_int newsz) {
+  l_int bufsz = ((l_bufhead*)elem)->bsize;
+  l_freeq* q = thread->frbf;
+
+  if (bufsz >= newsz) {
+    return elem;
+  }
+
+  if (newsz > l_max_rdwr_size) {
+    l_loge_1("large %d", ld(sizeofelem));
+    return 0;
+  }
+
+  while (bufsz < newsz) {
+    if (bufsz <= l_max_rdwr_size / 2) sz *= 2;
+    else bufsz = l_max_rdwr_size;
+  }
+
+  q->ttmem += bufsz - ((l_bufhead*)elem)->bsize;
+  elem = l_raw_realloc(elem, ((l_bufhead*)elem)->bsize, bufsz);
+  ((l_bufhead*)elem)->bsize = bufsz;
+  return elem;
+}
+
+void* l_thread_alloc_buffer(l_thread* thread, l_int sizeofelem) {
+  l_smplnode* elem = 0;
+  l_freeq* q = thread->frbf;
+  void* temp = 0;
+
+  if ((elem = l_squeue_pop(&q->queue))) {
+    temp = l_freeq_ensure_size(q, elem, sizeofelem);
+
+    if (!temp) {
+      l_squeue_push(&q->queue, elem);
+      return 0;
+    }
+
+    q->size -= 1;
+    return temp;
+  }
+
+  q->total += 1;
+  q->ttmem += sizeofelem;
+  elem = (l_bufhead*)l_raw_malloc(sizeofelem);
+  elem->bsize = sizeofelem;
+  return elem;
+}
+
+void l_freeq_free_buffer(l_thread* thread, l_smplnode* elem, void (*elemfree)(void*)) {
+  l_freeq* q = thread->frbf;
+
+  l_squeue_push(&q->queue, elem);
+  q->size += 1;
+
+  if (q->size / 4 <= q->total) {
+    return;
+  }
+
+  while (q->size / 2 > max) {
+    if (!(elem = l_squeue_pop(&q->queue))) {
+      break;
+    }
+
+    q->size -= 1;
+    q->total -= 1;
+    q->ttmem -= ((l_bufhead*)elem)->bsize;
+
+    if (elemfree) elemfree(elem);
+    l_raw_free(elem);
+  }
+}
+
+typedef struct {
+  l_mutex ma;
+  l_mutex mb;
+  l_condv ca;
+  l_logger l;
+  l_freeq co;
+  l_freeq bf;
+} l_thrblock;
 
 static void llallocthreads(int numofthread) {
   l_thread* t = 0;
   while (numofthread-- > 0) {
     t = (l_thread*)l_raw_calloc(sizeof(l_thread));
-    t->tb = (l_thrblk*)l_raw_malloc(sizeof(l_thrblk));
+    t->thrblock = l_raw_malloc(sizeof(l_thrblk));
     t->index = (l_ushort)numofthread;
     l_priorq_push(&llg_thread_prq, &t->node);
   }
@@ -44,6 +162,7 @@ static int llthreadless(void* elem, void* elem2) {
 }
 
 void l_thread_init(l_thread* self) {
+  l_thrblock* b = self->thrblock;
   self->elock = &b->ma;
   self->mutext = &b->mb;
   self->condv = &b->ca;
@@ -988,6 +1107,11 @@ void l_worker_start() {
       }
 #endif
 
+      /* SERVICE要么保存在hashtable中，要么保存在free队列中，
+　　　　　 一个SERVICE只分配给一个线程处理，当某个SERVICE的消息到来
+      时, 从消息可以获取SERVICE号，由SERVICE号从hashtable中
+      取得service对象，这个service对象会保存到消息extra中，然
+      后将消息插入线程的消息队列中等待线程处理，
       service->entry(service, msg);
 
       /* service run completed */

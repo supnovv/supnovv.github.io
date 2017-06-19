@@ -152,38 +152,38 @@ int main(void) {
     l_write_line(file, "#error \"no 32-bit integer type found\"");
   }
 
-  l_write_line(file, "%s/* l_integer l_uinteger - 64-bit */", L_NEWLINE);
-  l_write_line(file, "#undef l_integer");
-  l_write_line(file, "#undef l_uinteger");
+  l_write_line(file, "%s/* l_long l_ulong - 64-bit */", L_NEWLINE);
+  l_write_line(file, "#undef l_long");
+  l_write_line(file, "#undef l_ulong");
   if (sizeof(unsigned int) == 8 && sizeof(int) == 8) {
-    l_write_line(file, "#define l_integer int");
-    l_write_line(file, "#define l_uinteger unsigned int");
+    l_write_line(file, "#define l_long int");
+    l_write_line(file, "#define l_ulong unsigned int");
   } else if (sizeof(unsigned long) == 8 && sizeof(long) == 8) {
-    l_write_line(file, "#define l_integer long");
-    l_write_line(file, "#define l_uinteger unsigned long");
+    l_write_line(file, "#define l_long long");
+    l_write_line(file, "#define l_ulong unsigned long");
   } else if (sizeof(unsigned long long) == 8 && sizeof(long long) == 8) {
-    l_write_line(file, "#define l_integer long long");
-    l_write_line(file, "#define l_uinteger unsigned long long");
+    l_write_line(file, "#define l_long long long");
+    l_write_line(file, "#define l_ulong unsigned long long");
   } else {
     l_log_e("no 64-bit integer type found");
     l_write_line(file, "#error \"no 64-bit integer type found\"");
   }
 
-  l_write_line(file, "%s/* l_intptr l_uintptr - pointer-size integer */", L_NEWLINE);
-  l_write_line(file, "#undef l_intptr");
-  l_write_line(file, "#undef l_uintptr");
+  l_write_line(file, "%s/* l_int l_uint - pointer-size integer */", L_NEWLINE);
+  l_write_line(file, "#undef l_int");
+  l_write_line(file, "#undef l_uint");
   if (sizeof(short) == sizeof(void*)) {
-    l_write_line(file, "#define l_intptr short");
-    l_write_line(file, "#define l_uintptr unsigned short");
+    l_write_line(file, "#define l_int short");
+    l_write_line(file, "#define l_uint unsigned short");
   } else if (sizeof(int) == sizeof(void*)) {
-    l_write_line(file, "#define l_intptr int");
-    l_write_line(file, "#define l_uintptr unsigned int");
+    l_write_line(file, "#define l_int int");
+    l_write_line(file, "#define l_uint unsigned int");
   } else if (sizeof(long) == sizeof(void*)) {
-    l_write_line(file, "#define l_intptr long");
-    l_write_line(file, "#define l_uintptr unsigned long");
+    l_write_line(file, "#define l_int long");
+    l_write_line(file, "#define l_uint unsigned long");
   } else if (sizeof(long long) == sizeof(void*)) {
-    l_write_line(file, "#define l_intptr long long");
-    l_write_line(file, "#define l_uintptr unsigned long long");
+    l_write_line(file, "#define l_int long long");
+    l_write_line(file, "#define l_uint unsigned long long");
   } else {
     l_log_e("no pointer-size integer type found");
     l_write_line(file, "#error \"no pointer-size integer type found\"");
@@ -203,8 +203,6 @@ int main(void) {
     l_log_e("no handle-size integer type found");
     l_write_line(file, "#error \"no handle-size integer type found\"");
   }
-
-  l_write_line(file, "%s/* l_large l_ularge - 128-bit */", L_NEWLINE);
 
   l_write_line(file, "%s/* float point */", L_NEWLINE);
   l_write_line(file, "#undef l_float");
