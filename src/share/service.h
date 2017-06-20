@@ -8,31 +8,9 @@
 #define L_MESSAGE_IOEVENT 0x12
 #define L_SERVICE_MASTERID (0)
 
-typedef union {
-  l_medit s32;
-  l_integer s64;
-  l_umedit u32;
-  l_uinteger u64;
-  l_handle fd;
-  void* ptr;
-} l_msgdata;
-
-typedef struct l_message {
-  L_COMMON_BUFHEAD
-  void* extra; /* dont move this field */
-  l_umedit srcid;
-  l_umedit dstid;
-  l_umedit type;
-  l_umedit flag;
-  l_msgdata data;
-} l_message;
-
 typedef struct l_service {
   /* shared with master */
-  l_linknode node;
-  l_smplnode tlink;
-  l_squeue rxmq;
-  l_ioevent* event;
+  l_smplnode node;
   l_ushort outflag;
   /* thread own use */
   l_ushort flag;
@@ -40,21 +18,11 @@ typedef struct l_service {
   l_thread* belong; /* set once when init */
   l_state* co;
   int (*entry)(l_service*, l_message*);
-  void* udata;
+  l_ioevent io;
 } l_service;
 
-l_extern void l_thread_init(l_thread* self);
-l_extern void l_thread_free(l_thread* self);
-l_extern int l_thread_join(l_thread* self);
-l_extern void l_thread_sleep(l_integer us);
-l_extern void l_thread_exit();
 l_extern int startmainthread(int (*start)());
 l_extern int startmainthreadcv(int (*start)(), int argc, char** argv);
-l_extern int l_thread_start(l_thread* self, int (*start)());
-l_extern l_logger* l_thread_get_logger();
-l_extern l_thread* l_thread_self();
-l_extern l_thread* l_thread_master();
-l_extern l_string* l_thread_defstr();
 
 l_extern l_service* l_service_new(int (*entry)(l_service*, l_message*));
 l_extern void* l_service_set_data(l_service* self, void* udata);

@@ -2280,3 +2280,304 @@ void* cctlskeyget(struct cctlskey* self) {
   return pthread_getspecific((pthread_key_t*)self);
 }
 
+
+static void llacceptconnection(void* ud, l_sockconn* conn) {
+  l_service* sv = (l_service*)ud;
+  ll_master_send_message(l_master_thread(), sv->svid, L_MESSAGE_CONNID, conn->sock);
+}
+
+static void ll_master_dispatch_ioevent(l_ioevent* event) {
+  l_umedit svid = event->udata;
+  l_thread* master = l_master_thread();
+  l_service* sv = 0;
+  l_umedit type = 0;
+
+  sv = ll_find_service(svid);
+  if (sv == 0) {
+    l_loge_s("service not found");
+    return;
+  }
+
+  if (event->fd != sv->event->fd) {
+    l_loge_s("event mismatch");
+    return;
+  }
+
+  ll_lock_event(sv);
+  if (sv->event->flags & L_EVENT_FLAG_LISTEN) {
+    if (event->masks & L_EVENT_READ) {
+      type = L_MESSAGE_CONNIND;
+    }
+  } else if (sv->event->flags & L_EVENT_FLAG_CONNECT) {
+    if (event->masks & L_EVENT_WRITE) {
+      sv->event->flags &= (~((l_ushort)L_EVENT_FLAG_CONNECT));
+      type = L_MESSAGE_CONNRSP;
+    }
+  } else {
+    if (sv->event->masks == 0) {
+      type = L_MESSAGE_IOEVENT;
+    }
+    sv->event->masks |= event->masks;
+  }
+  ll_unlock_event(sv);
+
+  switch (type) {
+  case L_MESSAGE_CONNIND:
+    l_socket_accept(sv->event->fd, llacceptconnection, sv);
+    break;
+  case L_MESSAGE_CONNRSP:
+    ll_master_send_message(master, sv->svid, L_MESSAGE_CONNRSP, 0);
+    break;
+  case L_MESSAGE_IOEVENT:
+    ll_master_send_message(master, sv->svid, L_MESSAGE_IOEVENT, 0);
+    break;
+  }
+}
+
+void l_master_start() {
+  l_squeue queue, svmsgs, frmq;
+  l_message* msg = 0;
+  l_service* sv = 0;
+  l_thread* thread = 0;
+  l_thread* master = l_master_thread();
+
+  /* read parameters from config file and start worker threads */
+
+  for (; ;) {
+    l_ionfmgr_wait(ll_get_ionfmgr(), l_master_dispatch_event);
+
+    /* get all received messages */
+    queue = ll_get_current_msgs();
+    l_squeue_push_queue(&queue, &master->txmq);
+
+    /* prepare master's messages */
+    l_squeue_init(&svmsgs);
+    while ((msg = (l_message*)l_squeue_pop(&queue))) {
+      if (msg->dstid == L_SERVICE_MASTERID) {
+        l_squeue_push(&master->msgq, &msg->node);
+      } else {
+        l_squeue_push(&svmsgs, &msg->node);
+      }
+    }
+
+    /* handle master's messages */
+    l_squeue_init(&freeq);
+    while ((msg = (l_message*)ccsqueue_pop(&master->msgq))) {
+      switch (msg->type) {
+      case L_MESSAGE_RUNSERVICE:
+        sv = (l_service*)msg->data.ptr;
+        if (sv->event) {
+          l_ionfmgr_add(ll_get_ionfmgr(), sv->event);
+        }
+        ll_add_service_to_table(sv);
+        break;
+      case L_MESSAGE_ADDEVENT:
+        if (msg->data.ptr) {
+          l_ioevent* event = (l_ioevent*)msg->data.ptr;
+          l_ionfmgr_add(ll_get_ionfmgr(), event);
+        }
+        break;
+      case L_MESSAGE_DELEVENT:
+        if (msg->data.ptr) {
+          l_ioevent* event = (l_ioevent*)msg->data.ptr;
+          l_ionfmgr_del(ll_get_ionfmgr(), event);
+          /* need free the event after it is deleted */
+          ll_free_event(event);
+        }
+        break;
+      case L_MESSAGE_DELSERVICE:
+        sv = (l_service*)msg->data.ptr;
+        /* service's received msgs (if any) */
+        l_squeue_pushqueue(&freeq, &sv->rxmq);
+        /* detach and free event if any */
+        if (sv->event) {
+          l_ionfmgr_del(ll_get_ionfmgr(), sv->event);
+          ll_free_event(sv->event);
+          sv->event = 0;
+        }
+        /* remove service out from hash table and insert to free queue */
+        ll_service_is_finished(sv);
+        /* reset the service */
+        sv->belong = 0;
+        break;
+      default:
+        l_loge("unknow message id");
+        break;
+      }
+      l_squeue_push(&freeq, &msg->node);
+    }
+
+    /* dispatch service's messages */
+    while ((msg = (l_message*)ccsqueue_pop(&svmsgs))) {
+      nauty_bool newattach = false;
+
+      /* get message's dest service */
+      sv = ll_find_service(msg->dstid);
+      if (sv == 0) {
+        l_logw("service not found");
+        l_squeue_push(&freeq, &msg->node);
+        continue;
+      }
+
+      if (sv->belong) {
+        nauty_bool done = false;
+
+        ll_lock_thread(sv->belong);
+        done = (sv->outflag & L_SERVICE_COMPLETED) != 0;
+        ll_unlock_thread(sv->belong);
+
+        if (done) {
+          /* free current msg and service's received msgs (if any) */
+          l_squeue_push(&freeq, &msg->node);
+          l_squeue_pushqueue(&freeq, &sv->rxmq);
+
+          /* when service is done, the service is already removed out from thread's service queue.
+          here delete service from the hash table and insert into service's free queue */
+          ll_service_is_finished(sv);
+
+          /* reset the service */
+          sv->belong = 0;
+          continue;
+        }
+      } else {
+        /* attach a thread to handle the service */
+        sv->belong = ll_get_thread_for_new_service();
+        newattach = true;
+      }
+
+      /* queue the service to its belong thread */
+      /*ll_lock_thread(sv->belong);
+      if (newattach) {
+        sv->outflag = sv->flag = 0;
+        l_dqueue_push(&sv->belong->workrxq, &sv->node);
+      }
+      msg->extra = sv;
+      l_squeue_push(&sv->rxmq, &msg->node);
+      sv->belong->missionassigned = true;
+      ll_unlock_thread(sv->belong); */
+
+      thread = sv->belong;
+      msg->extra = sv;
+      l_thread_lock(thread);
+      if (sv->
+      l_squeue_push(&thread->rxmq, &msg->node);
+      l_thread_unlock(thread);
+
+      /* signal the thread to handle */
+      l_condv_signal(&sv->belong->condv);
+    }
+
+    l_free_messages(master, &frmq);
+  }
+}
+
+void l_worker_start() {
+  l_dqueue doneq;
+  l_squeue msgq;
+  l_squeue freemq;
+  l_service* service = 0;
+  l_linknode* head = 0;
+  l_linknode* elem = 0;
+  l_message* msg = 0;
+  l_thread* thread = l_thread_self();
+
+  l_squeue_init(&msgq);
+
+  for (; ;) {
+
+    l_thread_lock(thread);
+    while (l_squeue_is_empty(&thread->rxmq)) {
+      l_condv_wait(&thread->condv, &thread->mutex);
+    }
+    l_squeue_push_queue(&msgq, &thread->rxmq);
+    l_thread_unlock(thread);
+
+    head = &(thread->workq.head);
+    for (elem = head->next; elem != head; elem = elem->next) {
+      service = (l_service*)elem;
+      if (!ccsqueue_isempty(&service->rxmq)) {
+        ll_lock_thread(thread);
+        l_squeue_pushqueue(&thread->msgq, &service->rxmq);
+        ll_unlock_thread(thread);
+      }
+    }
+
+    if (ccsqueue_isempty(&thread->msgq)) {
+      /* there are no messages received */
+      continue;
+    }
+
+    l_dqueue_init(&doneq);
+    l_squeue_init(&freemq);
+    while ((msg = (l_message*)ccsqueue_pop(&thread->msgq))) {
+      service = (l_service*)msg->extra;
+      if (service->flag & L_SERVICE_COMPLETED) {
+        l_squeue_push(&freemq, &msg->node);
+        continue;
+      }
+
+      if (msg->type == L_MESSAGE_IOEVENT) {
+        ll_lock_thread(thread);
+        msg->data.u32 = service->event->masks;
+        service->event->masks = 0;
+        ll_unlock_thread(thread);
+        if (msg->data.u32 == 0) {
+          l_squeue_push(&freemq, &msg->node);
+          continue;
+        }
+      }
+
+#if 0
+      if (service->flag & L_SERVICE_YIELDABLE) {
+        if (service->co == 0) {
+          service->co = ll_new_coroutine(thread, service);
+        }
+        if (service->co->L != thread->L) {
+          l_loge("wrong lua state");
+          l_squeue_push(&freemq, &msg->node);
+          continue;
+        }
+        service->co->srvc = service;
+        service->co->msg = msg;
+        l_state_resume(service->co);
+      } else {
+
+      }
+#endif
+
+      /* SERVICE要么保存在hashtable中，要么保存在free队列中，
+　　　　　 一个SERVICE只分配给一个线程处理，当某个SERVICE的消息到来
+      时, 从消息可以获取SERVICE号，由SERVICE号从hashtable中
+      取得service对象，这个service对象会保存到消息extra中，然
+      后将消息插入线程的消息队列中等待线程处理 */
+
+      service->entry(service, msg);
+
+      /* service run completed */
+      if (service->flag & L_SERVICE_COMPLETED) {
+        l_dqueue_push(&doneq, l_linknode_remove(&service->node));
+        if (service->co) {
+          ll_free_coroutine(thread, service->co);
+          service->co = 0;
+        }
+      }
+
+      /* free handled message */
+      l_squeue_push(&freemq, &msg->node);
+    }
+
+    while ((service = (l_service*)ccdqueue_pop(&doneq))) {
+      ll_lock_thread(thread);
+      service->outflag |= L_SERVICE_COMPLETED;
+      ll_unlock_thread(thread);
+
+      /* currently the finished service is removed out from thread's
+      service queue, but the service still pointer to this thread.
+      send SVDONE message to master to reset and free this service. */
+      ll_service_send_message_sp(service, L_SERVICE_MASTERID, L_MESSAGE_DELSERVICE, service);
+    }
+
+    ll_free_msgs(&freemq);
+  }
+}
+

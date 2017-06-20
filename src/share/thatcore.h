@@ -27,17 +27,17 @@
 #undef l_thread_local
 #undef l_thread_local_supported
 #if defined(L_CLER_GCC)
-#define l_thread_local(a) __thread a
-#define l_thread_local_supported
+  #define l_thread_local(a) __thread a
+  #define l_thread_local_supported
 #elif defined(L_CLER_MSC)
-#define l_thread_local(a) __declspec(thread) a
-#define l_thread_local_supported
+  #define l_thread_local(a) __declspec(thread) a
+  #define l_thread_local_supported
 #else
-#define l_thread_local(a)
+  #define l_thread_local(a)
 #endif
 
 #define l_cast(type, a) ((type)(a))
-#define l_str(s) ((l_rune*)(s))
+#define l_rstr(s) ((l_rune*)(s))
 
 #define l_max_rdwr_size (0x7fff0000) /* 2147418112 */
 #define l_max_ubyte     l_cast(l_byte, 0xff) /* 255 */
@@ -72,8 +72,8 @@
 #endif
 
 typedef union {
-  l_integer d;
-  l_uinteger u;
+  l_long d;
+  l_ulong u;
   double f;
   const void* p;
 } l_value;
@@ -83,27 +83,19 @@ typedef union {
 #define lstring(s) lp(l_string_cstr(s))
 
 l_inline l_value lp(const void* p) {
-  l_value a;
-  a.p = p;
-  return a;
+  l_value a; a.p = p; return a;
 }
 
-l_inline l_value ld(l_integer d) {
-  l_value a;
-  a.d = d;
-  return a;
+l_inline l_value ld(l_long d) {
+  l_value a; a.d = d; return a;
 }
 
-l_inline l_value lu(l_uinteger u) {
-  l_value a;
-  a.u = u;
-  return a;
+l_inline l_value lu(l_ulong u) {
+  l_value a; a.u = u; return a;
 }
 
 l_inline l_value lf(double f) {
-  l_value a;
-  a.f = f;
-  return a;
+  l_value a; a.f = f; return a;
 }
 
 #define L_MKSTR(a) #a
@@ -132,12 +124,6 @@ l_inline l_value lf(double f) {
 #define l_logd_3(fmt, a, b, c)    l_logger_func_3("43[D] " L_MKFLSTR, (fmt), a, b, c);
 #define l_logd_4(fmt, a, b, c, d) l_logger_func_4("44[D] " L_MKFLSTR, (fmt), a, b, c, d);
 
-l_extern void l_assert_func_impl(int pass, const void* expr, const void* fileline);
-l_extern void l_logger_func_impl(const void* tag, const void* fmt, ...);
-l_extern void l_set_log_level(int level);
-l_extern int l_get_log_level();
-l_extern void l_process_exit();
-
 l_inline void l_logger_func_s(const void* tag, const void* s) {
   l_logger_func_impl(tag, s, 0);
 }
@@ -158,21 +144,6 @@ l_inline void l_logger_func_4(const void* tag, const void* s, l_value a, l_value
   l_logger_func_impl(tag, s, a, b, c, d);
 }
 
-typedef struct {
-  const l_byte* start;
-  const l_byte* end;
-} l_strt;
-
-#define l_empty_strt() ((l_strt){0,0})
-#define l_literal_strt(s) l_strt_l("" s, (sizeof(s)/sizeof(char))-1)
-#define l_strt_c(s) l_strt_l((s), strlen(l_cast(char*, (s))))
-#define l_strt_e(s, e) l_strt_l((s), l_str(e) - l_str(s))
-l_extern l_strt l_strt_l(const void* s, l_integer len);
-l_extern int l_strt_contain(l_strt s, int ch);
-
-#define l_strt_equal_c(s, str) l_strt_equal_l((s), (str), strlen((char*)(str)))
-l_extern int l_strt_equal_l(l_strt s, const void* str, l_integer len);
-
 #define l_zero_e(start, end) l_zero_l(start, l_str(end) - l_str(start))
 l_extern void l_zero_l(void* start, l_integer len);
 
@@ -183,6 +154,43 @@ l_extern void* l_raw_malloc(l_int size);
 l_extern void* l_raw_calloc(l_int size);
 l_extern void* l_raw_realloc(void* buffer, l_int oldsize, l_int newsize);
 l_extern void l_raw_free(void* buffer);
+
+typedef struct {
+  void* stream;
+} l_filestream;
+
+l_extern l_filestream l_open_read(const void* name);
+l_extern l_filestream l_open_write(const void* name);
+l_extern l_filestream l_open_append(const void* name);
+l_extern l_filestream l_open_read_write(const void* name);
+l_extern l_filestream l_open_write_unbuffered(const void* name);
+l_extern l_filestream l_open_append_unbuffered(const void* name);
+l_extern l_integer l_write_file(l_filestream* self, const void* s, l_integer len);
+l_extern l_integer l_read_file(l_filestream* self, void* out, l_integer len);
+
+l_extern int l_remove_file(const void* name);
+l_extern int l_rename_file(const void* from, const void* to);
+l_extern void l_redirect_stdout(const void* name);
+l_extern void l_redirect_stderr(const void* name);
+l_extern void l_reditect_stdin(const void* name);
+l_extern void l_close_file(l_filestream* self);
+l_extern void l_flush_file(l_filestream* self);
+l_extern void l_rewind_file(l_filestream* self);
+l_extern void l_seek_from_begin(l_filestream* self, long offset);
+l_extern void l_seek_from_curpos(l_filestream* self, long offset);
+l_extern void l_clear_file_error(l_filestream* self);
+
+typedef struct {
+  l_filestream f;
+  l_rune* a;
+  int capacity;
+  int size;
+} l_logger;
+
+l_extern void l_assert_func_impl(int pass, const void* expr, const void* fileline);
+l_extern void l_logger_func_impl(const void* tag, const void* fmt, ...);
+l_extern void l_set_log_level(int level);
+l_extern int l_get_log_level();
 
 typedef struct l_linknode {
   struct l_linknode* next;
@@ -250,6 +258,8 @@ l_extern void l_mmheap_free(l_mmheap* self);
 l_extern void l_mmheap_add(l_mmheap* self, void* elem);
 l_extern void* l_mmheap_del(l_mmheap* self, l_umedit i);
 
+/* l_nuxcore.c */
+
 /**
  * The 64-bit signed integer's biggest value is 9223372036854775807.
  * For seconds/milliseconds/microseconds/nanoseconds, it can
@@ -283,38 +293,6 @@ l_specif l_time l_monotonic_time();
 l_specif l_date l_system_date();
 l_specif l_date l_date_from_secs(l_integer utcsecs);
 l_specif l_date l_date_from_time(l_time utc);
-
-typedef struct {
-  void* stream;
-} l_filestream;
-
-typedef struct {
-  l_filestream f;
-  l_rune* a;
-  int capacity;
-  int size;
-} l_logger;
-
-l_extern l_filestream l_open_read(const void* name);
-l_extern l_filestream l_open_write(const void* name);
-l_extern l_filestream l_open_append(const void* name);
-l_extern l_filestream l_open_read_write(const void* name);
-l_extern l_filestream l_open_write_unbuffered(const void* name);
-l_extern l_filestream l_open_append_unbuffered(const void* name);
-l_extern l_integer l_write_file(l_filestream* self, const void* s, l_integer len);
-l_extern l_integer l_read_file(l_filestream* self, void* out, l_integer len);
-
-l_extern int l_remove_file(const void* name);
-l_extern int l_rename_file(const void* from, const void* to);
-l_extern void l_redirect_stdout(const void* name);
-l_extern void l_redirect_stderr(const void* name);
-l_extern void l_reditect_stdin(const void* name);
-l_extern void l_close_file(l_filestream* self);
-l_extern void l_flush_file(l_filestream* self);
-l_extern void l_rewind_file(l_filestream* self);
-l_extern void l_seek_from_begin(l_filestream* self, long offset);
-l_extern void l_seek_from_curpos(l_filestream* self, long offset);
-l_extern void l_clear_file_error(l_filestream* self);
 
 typedef struct {
   l_integer fsize;
@@ -391,39 +369,92 @@ l_specif int l_raw_thread_join(l_thrid* thrid);
 l_specif void l_raw_thread_exit();
 l_specif void l_thread_sleep(l_integer us);
 
+/* l_thread.c */
+
+typedef struct lua_State lua_State;
+typedef struct l_service l_service;
+
 #define L_COMMON_BUFHEAD \
   l_squeue node; \
   l_int bsize;
 
-l_extern void* l_thread_alloc_buffer(l_thread* thread, l_int sizeofelem);
-l_extern void* l_thread_ensure_bfsize(l_thread* thread, l_smplnode* elem, l_int newsz);
-l_extern void l_thread_free_buffer(l_thread* thread, l_smplnode* elem, void (*elemfree)(void*));
-
-typedef struct lua_State lua_State;
-typedef struct l_service l_service;
+typedef struct {
+  l_squeue queue; /* free buffer q */
+  l_int size;  /* size of the queue */
+  l_int total; /* total newed elems */
+  l_int ttmem; /* total memory size */
+  l_int limit; /* memory size limit */
+} l_freeq;
 
 typedef struct l_thread {
   l_linknode node;
   l_umedit weight;
   l_ushort index;
-  l_ushort flags;
+  l_byte msgwait;
+  l_byte iowait;
   /* shared with master */
-  l_mutex* elock;
+  l_mutex* svmtx; /* guard srvc fields except svrc.io.node */
   l_mutex* mutex;
   l_condv* condv;
-  l_dqueue _workrxq;
-  l_squeue msgrxq;
+  l_squeue rxmq;
+  l_squeue rxio;
   /* thread own use */
   lua_State* L;
-  l_dqueue _workq;
-  l_squeue msgq;
+  l_squeue txmq;
+  l_squeue txms;
   l_logger* log;
   l_freeq* frco;
   l_freeq* frbf;
-  int (*start)();
   l_thrid id;
+  int (*start)();
   void* block;
 } l_thread;
+
+l_extern l_thrkey llg_thread_key;
+l_thread_local(l_thread* llg_thread_ptr);
+
+l_inline l_thread* l_thread_self() {
+#if defined(l_thread_local_supported)
+  return llg_thread_ptr;
+#else
+  return (l_thread*)l_thrkey_get_data(&llg_thread_key);
+#endif
+}
+
+l_extern l_thrkey llg_logger_key;
+l_thread_local(l_logger* llg_logger_ptr);
+
+l_inline l_logger* l_thread_logger() {
+#if defined(l_thread_local_supported)
+  return llg_logger_ptr;
+#else
+  return (l_thread*)l_thrkey_get_data(&llg_logger_key);
+#endif
+}
+
+l_inline void l_thread_lock(l_thread* self) {
+  l_mutex_lock(self->mutex);
+}
+
+l_inline void l_thread_unlock(l_thread* self) {
+  l_mutex_unlock(self->mutex);
+}
+
+l_extern void l_threadpool_create(int numofthread);
+l_extern void l_threadpool_destroy();
+l_extern l_thread* l_threadpool_acquire();
+l_extern void l_threadpool_release(l_thread* t);
+
+l_extern void* l_thread_alloc_buffer(l_thread* thread, l_int sizeofbuffer);
+l_extern void* l_thread_ensure_bfsize(l_thread* thread, void* buffer, l_int newsz);
+l_extern void l_thread_free_buffer(l_thread* thread, void* buffer, void (*extrafree)(void*));
+
+l_extern int l_thread_start(l_thread* self, int (*start)());
+l_extern int l_thread_join(l_thread* self);
+l_extern void l_thread_exit();
+l_extern void l_process_exit();
+
+/* l_state.c */
 
 typedef struct l_state {
   l_smplnode node;
@@ -435,39 +466,34 @@ typedef struct l_state {
   l_service* srvc;
 } l_state;
 
-l_extern l_thrkey llg_thread_key;
-l_extern l_thrkey llg_logger_key;
-
-l_thread_local(l_thread* llg_thread_ptr);
-l_thread_local(l_logger* llg_logger_ptr);
-
-l_inline l_thread* l_thread_self() {
-#if defined(l_thread_local_supported)
-  return llg_thread_ptr;
-#else
-  return (l_thread*)l_thrkey_get_data(&llg_thread_key);
-#endif
-}
-
-l_inline l_thread* l_state_thread(l_state* s) {
+l_inline l_thread* l_state_belong(l_state* s) {
   return s->belong;
 }
 
-l_inline l_logger* l_thread_logger() {
-#if defined(l_thread_local_supported)
-  return llg_logger_ptr;
-#else
-  return (l_thread*)l_thrkey_get_data(&llg_logger_key);
-#endif
-}
+l_extern lua_State* l_new_luastate();
+l_extern void l_close_luastate(lua_State* L);
+l_extern int l_state_init(l_state* co, l_thread* belong, l_service* srvc, int (*func)(l_state*));
+l_extern void l_state_free(l_state* co);
+l_extern int l_state_resume(l_state* co);
+l_extern int l_state_yield(l_state* co, int (*kfunc)(l_state*));
+l_extern int l_state_yield_with_code(l_state* co, int (*kfunc)(l_state*), int code);
 
-l_inline l_logger* l_state_logger(l_state* s) {
-  return s->belong->log;
-}
+/* l_string.c */
 
-l_extern void l_thread_exit();
-l_extern int l_thread_join(l_thread* self);
-l_extern int l_thread_start(l_thread* self, int (*start)());
+typedef struct {
+  const l_byte* start;
+  const l_byte* end;
+} l_strt;
+
+#define l_empty_strt() ((l_strt){0,0})
+#define l_literal_strt(s) l_strt_l("" s, (sizeof(s)/sizeof(char))-1)
+#define l_strt_c(s) l_strt_l((s), strlen(l_cast(char*, (s))))
+#define l_strt_e(s, e) l_strt_l((s), l_str(e) - l_str(s))
+l_extern l_strt l_strt_l(const void* s, l_integer len);
+l_extern int l_strt_contain(l_strt s, int ch);
+
+#define l_strt_equal_c(s, str) l_strt_equal_l((s), (str), strlen((char*)(str)))
+l_extern int l_strt_equal_l(l_strt s, const void* str, l_integer len);
 
 typedef struct {
   L_COMMON_BUFHEAD
@@ -476,8 +502,12 @@ typedef struct {
   l_int size;
 } l_buffer;
 
-l_inline l_byte* l_buffer_gets(l_buffer* self) {
+l_inline l_byte* l_buffer_s(l_buffer* self) {
   return (l_byte*)(self + 1);
+}
+
+l_inline l_int l_buffer_capacity(l_buffer* self) {
+  return self->bsize - sizeof(l_buffer);
 }
 
 l_extern l_buffer* l_buffer_new(l_thread* thread, l_int initsize, l_int maxlimit);
@@ -490,11 +520,11 @@ typedef struct {
 } l_string;
 
 l_inline const l_rune* l_string_cstr(l_string* self) {
-  return l_buffer_gets(self->b);
+  return l_buffer_s(self->b);
 }
 
 l_inline l_strt l_string_strt(l_string* self) {
-  const l_rune* s = l_buffer_gets(self->b);
+  const l_rune* s = l_buffer_s(self->b);
   return (l_strt){s, s + self->b->size};
 }
 
@@ -540,9 +570,46 @@ l_extern const l_rune* l_string_match_until(const l_stringmap* map, const void* 
 l_extern const l_rune* l_string_skip_space_and_match_until(const l_stringmap* map, const void* s, int len, int* n);
 l_extern const l_rune* l_string_skip_space_and_match(const l_stringmap* map, const void* s, int len, int* strid, int* mlen);
 
+/* l_message.c */
+
+#define L_MESSAGE_HEADER \
+  L_COMMON_BUFHEAD \
+  void* extra; \
+  l_umedit dstid; \
+  l_umedit type;
+
+typedef struct l_message {
+  L_MESSAGE_HEADER
+} l_message;
+
+typedef struct {
+  L_MESSAGE_HEADER
+  l_handle sock;
+  l_sockaddr remote;
+} l_connind_message;
+
+typedef struct {
+  L_MESSAGE_HEADER;
+  l_handle sock;
+  l_umedit masks;
+} l_ioevent_message;
+
+l_extern l_message* l_create_message(l_thread* thread, l_umedit type, l_int extrasize);
+l_extern void l_free_message(l_thread* thread, l_message* msg);
+l_extern void l_free_messages(l_thread* thread, l_squeue* mq);
+l_extern void l_send_message(l_service* service, l_umedit destid, l_message* msg);
+l_extern void l_send_message_fd(l_service* service, l_umedit destid, l_umedit type, l_handle fd);
+l_extern void l_send_message_ptr(l_service* service, l_umedit destid, l_umedit type, void* data_ptr);
+l_extern void l_send_message_s32(l_service* service, l_umedit destid, l_umedit type, l_medit s32);
+l_extern void l_send_message_u32(l_service* service, l_umedit destid, l_umedit type, l_umedit u32);
+l_extern void l_send_message_s64(l_service* service, l_umedit destid, l_umedit type, l_long s64);
+l_extern void l_send_message_u64(l_service* service, l_umedit destid, l_umedit type, l_ulong u64);
+
+/* test cases */
 
 l_extern void l_core_test();
 l_extern void l_plat_test();
 l_extern void l_string_test();
+l_extern void l_luac_test();
 
 #endif /* l_core_lib_h */

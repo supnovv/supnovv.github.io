@@ -21,6 +21,7 @@ typedef struct {
   l_umedit udata;
   l_ushort masks;
   l_ushort flags;
+  l_service* chained;
 } l_ioevent;
 
 typedef struct {
