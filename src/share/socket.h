@@ -5,15 +5,6 @@
 #define L_SOCKET_BACKLOG  (32)
 #define L_SOCKET_IPSTRLEN (48)
 
-typedef struct {
-  L_PLAT_IMPL_SIZE(L_SOCKADDR_SIZE);
-} l_sockaddr;
-
-typedef struct {
-  l_handle sock;
-  l_sockaddr remote;
-} l_sockconn;
-
 l_extern int l_sockaddr_init(l_sockaddr* self, l_strt ip, l_ushort port);
 l_extern l_ushort l_sockaddr_port(l_sockaddr* self);
 l_extern int l_sockaddr_ipstring(l_sockaddr* self, l_string* out);

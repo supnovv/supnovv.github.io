@@ -107,14 +107,14 @@ static void ll_event_fd_close(l_handle fd) {
   }
 }
 
-l_integer ll_read(l_handle fd, void* out, l_integer count);
-l_integer ll_write(l_handle fd, const void* buf, l_integer count);
+l_int ll_read(l_handle fd, void* out, l_int count);
+l_int ll_write(l_handle fd, const void* buf, l_int count);
 
 /* return > 0 success, -1 block, -2 error */
 static int ll_event_fd_write(int fd) {
-  l_uinteger count = 1;
-  int n = ll_write(fd, &count, sizeof(l_uinteger));
-  if (n == sizeof(l_uinteger)) {
+  l_ulong count = 1;
+  int n = ll_write(fd, &count, sizeof(l_ulong));
+  if (n == sizeof(l_ulong)) {
     return n;
   }
   if (n == -1) return n;
@@ -123,9 +123,9 @@ static int ll_event_fd_write(int fd) {
 
 /* return > 0 success, -1 block, -2 error */
 static int ll_event_fd_read(int fd) {
-  l_uinteger count = 0;
-  int n = ll_read(fd, &count, sizeof(l_uinteger));
-  if (n == sizeof(l_uinteger)) {
+  l_ulong count = 0;
+  int n = ll_read(fd, &count, sizeof(l_ulong));
+  if (n == sizeof(l_ulong)) {
     return (int)count;
   }
   if (n == -1) return n;

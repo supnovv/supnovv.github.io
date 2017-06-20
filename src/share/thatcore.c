@@ -6,7 +6,7 @@
 #define L_CORELIB_IMPL
 #include "thatcore.h"
 
-void l_zero_l(void* start, l_integer len) {
+void l_zero_l(void* start, l_int len) {
   if (!start || len <= 0 || len > l_max_rdwr_size) {
     l_loge_1("invalid %d", ld(len));
     return;
@@ -15,12 +15,12 @@ void l_zero_l(void* start, l_integer len) {
   memset(start, 0, (size_t)len);
 }
 
-void l_copy_l(const void* from, l_integer len, void* to) {
+void l_copy_l(const void* from, l_int len, void* to) {
   if (!from || len <= 0 || len > l_max_rdwr_size) {
     l_loge_1("invalid %d", ld(len));
     return;
   }
-  if (l_str(to) + len <= l_str(from) || l_str(to) >= l_str(from) + len) {
+  if (l_rstr(to) + len <= l_rstr(from) || l_rstr(to) >= l_rstr(from) + len) {
     /* void* memcpy(void* destination, const void* source, size_t num);
     To avoid overflows, the size of the arrays pointed to by both the
     destination and source parameters, shall be at least num bytes,
@@ -35,30 +35,30 @@ void l_copy_l(const void* from, l_integer len, void* to) {
   }
 }
 
-static void* l_out_of_memory(l_integer size, int init) {
+static void* l_out_of_memory(l_int size, int init) {
   l_process_exit();
   (void)size;
   (void)init;
   return 0;
 }
 
-static l_integer l_check_alloc_size(l_integer size) {
+static l_int l_check_alloc_size(l_int size) {
   if (size <= 0 || size > l_max_rdwr_size) return 0;
   return (((size - 1) >> 3) + 1) << 3; /* times of eight */
 }
 
-void* l_raw_malloc(l_integer size) {
+void* l_raw_malloc(l_int size) {
   void* p = 0;
-  l_integer n = l_check_alloc_size(size);
+  l_int n = l_check_alloc_size(size);
   if (!n) { l_loge_1("large %d", ld(size)); return 0; }
   p = malloc(l_cast(size_t, n));
   if (p) return p; /* not init */
   return l_out_of_memory(n, 0);
 }
 
-void* l_raw_calloc(l_integer size) {
+void* l_raw_calloc(l_int size) {
   void* p = 0;
-  l_integer n = l_check_alloc_size(size);
+  l_int n = l_check_alloc_size(size);
   if (!n) { l_loge_1("large %d", ld(size)); return 0; }
   /* void* calloc(size_t num, size_t size); */
   p = calloc(l_cast(size_t, n) >> 3, 8);
@@ -66,9 +66,9 @@ void* l_raw_calloc(l_integer size) {
   return l_out_of_memory(n, 1);
 }
 
-void* l_raw_realloc(void* p, l_integer old, l_integer newsz) {
+void* l_raw_realloc(void* p, l_int old, l_int newsz) {
   void* temp = 0;
-  l_integer n = l_check_alloc_size(newsz);
+  l_int n = l_check_alloc_size(newsz);
   if (!p || old <= 0 || n == 0) { l_loge_1("invalid %d", ld(newsz)); return 0; }
 
   /** void* realloc(void* buffer, size_t size); **
@@ -237,26 +237,26 @@ void l_clear_file_error(l_filestream* self) {
   clearerr((FILE*)self->stream);
 }
 
-l_integer l_write_file(l_filestream* self, const void* s, l_integer len) {
-  l_integer n = 0;
+l_int l_write_file(l_filestream* self, const void* s, l_int len) {
+  l_int n = 0;
   if (!s || len <= 0 || len > l_max_rdwr_size) {
     l_loge_1("invalid %d", ld(len));
     return 0;
   }
-  if ((n = (l_integer)fwrite(s, 1, (size_t)len, (FILE*)self->stream)) != len) {
+  if ((n = (l_int)fwrite(s, 1, (size_t)len, (FILE*)self->stream)) != len) {
     l_loge_1("fwrite %s", lserror(errno));
     if (n <= 0) return 0;
   }
   return n;
 }
 
-l_integer l_read_file(l_filestream* self, void* out, l_integer len) {
-  l_integer n = 0;
+l_int l_read_file(l_filestream* self, void* out, l_int len) {
+  l_int n = 0;
   if (!out || len <= 0 || len > l_max_rdwr_size) {
     l_loge_1("invalid %d", ld(len));
     return 0;
   }
-  if ((n = (l_integer)fread(out, 1, (size_t)len, (FILE*)self->stream)) != len) {
+  if ((n = (l_int)fread(out, 1, (size_t)len, (FILE*)self->stream)) != len) {
     if (!feof((FILE*)self->stream)) {
       l_loge_1("fread %s", lserror(errno));
     }
@@ -289,29 +289,26 @@ static void l_log_write_to_file(l_logger* l) {
   l->size = 0;
 }
 
-static void l_log_print(l_logger* l, const l_rune* s, const l_rune* e) {
-  if (l->capacity - l->size <= e - s) {
+static void l_log_print(l_logger* l, l_strt s) {
+  l_byte* p = 0;
+  if (!s.start || s.len <= 0) return;
+  if (l->capacity - l->size <= s.len) {
     l_log_write_to_file(l);
   }
-  while (s < e) {
-    l->a[l->size++] = *s++;
+  p = l->a + l->size;
+  l->size += s.len;
+  while (s.len-- > 0) {
+    p[s.len] = s.start[s.len];
   }
 }
 
-static void l_log_printlstr(l_logger* self, const l_rune* s, int len) {
-  l_log_print(self, s, s + len);
-}
-
-static void l_log_printcstr(l_logger* self, const l_rune* s) {
-  l_log_printlstr(self, s, strlen(l_cast(char*, s)));
-}
-
-static void l_log_print_reverse(l_logger* l, const l_rune* s, const l_rune* e) {
-  if (l->capacity - l->size <= e - s) {
+static void l_log_print_reverse(l_logger* l, l_strt s) {
+  if (!s.start || s.len <= 0) return;
+  if (l->capacity - l->size <= s.len) {
     l_log_write_to_file(l);
   }
-  while (e > s) {
-    l->a[l->size++] = *(--e);
+  while (s.len-- > 0) {
+    l->a[l->size++] = s.start[s.len];
   }
 }
 
@@ -343,58 +340,52 @@ static void l_log_string_fill_and_print(l_logger* log, l_rune* a, l_rune* p, l_u
   }
 
   if (reverse) {
-    l_log_print_reverse(log, a, p);
+    l_log_print_reverse(log, l_strt_e(a, p));
   } else {
-    l_log_print(log, a, p);
+    l_log_print(log, l_strt_e(a, p));
   }
 }
 
-static void l_log_string(l_logger* log, const l_rune* s, const l_rune* e, l_umedit flags) {
+static void l_log_string(l_logger* log, l_strt s, l_umedit flags) {
   int width = ((flags & 0x7f00) >> 8);
-  int len = e - s;
-  if (len >= width) {
-    l_log_print(log, s, e);
+  if (s.len >= width) {
+    l_log_print(log, s);
   } else {
     l_rune a[128];
-    l_copy_l(s, len, a);
-    l_log_string_fill_and_print(log, a, a + len, flags);
+    l_copy_l(s.start, s.len, a);
+    l_log_string_fill_and_print(log, a, a + s.len, flags);
   }
-}
-
-static void l_log_lstring(l_logger* log, const l_rune* s, int len, l_umedit flags) {
-  l_log_string(log, s, s + len, flags);
 }
 
 static void l_log_format_string(l_logger* log, const void* a, l_umedit flags) {
-  l_log_lstring(log, l_str(a), strlen((char*)a), flags);
+  l_log_string(log, l_strt_c(a), flags);
 }
 
 static void l_log_format_strfrom(l_logger* log, const void* a, l_umedit flags) {
-  const l_strt* s = l_cast(const l_strt*, a);
-  l_log_string(log, s->start, s->end, flags);
+  l_log_string(log, *((const l_strt*)a), flags);
 }
 
-static void l_log_format_char(l_logger* log, l_uinteger a, l_umedit flags) {
+static void l_log_format_char(l_logger* log, l_ulong a, l_umedit flags) {
   l_rune ch = l_cast(l_rune, a&0xff);
   if ((flags & L_FORMAT_UPPER) && ch >= 'a' && ch <= 'z') {
     ch -= 32;
   }
-  l_log_lstring(log, &ch, 1, flags);
+  l_log_string(log, l_strt_l(&ch, 1), flags);
 }
 
-static void l_log_format_true(l_logger* log, l_uinteger a, l_umedit flags) {
+static void l_log_format_true(l_logger* log, l_ulong a, l_umedit flags) {
   if (a) {
-    l_log_lstring(log, l_str((flags & L_FORMAT_UPPER) ? "TRUE" : "true"), 4, flags);
+    l_log_string(log, (flags & L_FORMAT_UPPER) ? l_literal_strt("TRUE") : l_literal_strt("true"), flags);
   } else {
-    l_log_lstring(log, l_str((flags & L_FORMAT_UPPER) ? "FALSE" : "false"), 5, flags);
+    l_log_string(log, (flags & L_FORMAT_UPPER) ? l_literal_strt("FALSE") : l_literal_strt("false"), flags);
   }
 }
 
 static const l_rune* l_hex_runes[] = {
-  l_str("0123456789abcdef"), l_str("0123456789ABCDEF")
+  l_rstr("0123456789abcdef"), l_rstr("0123456789ABCDEF")
 };
 
-static void l_log_format_uinteger(l_logger* log, l_uinteger n, l_umedit flags) {
+static void l_log_format_ulong(l_logger* log, l_ulong n, l_umedit flags) {
   /* 64-bit unsigned int max value 18446744073709552046 (20 runes) */
   l_rune a[127];
   l_rune basechar = 0;
@@ -482,21 +473,21 @@ static void l_log_format_uinteger(l_logger* log, l_uinteger n, l_umedit flags) {
   l_log_string_fill_and_print(log, a, p, flags | L_FORMAT_REVERSE);
 }
 
-static void l_log_format_integer(l_logger* log, l_integer a, l_umedit flags) {
-  l_uinteger n = a;
+static void l_log_format_long(l_logger* log, l_int a, l_umedit flags) {
+  l_ulong n = a;
   if (a < 0) {
     n = (-a);
     flags |= L_FORMAT_NEGSIGN;
   }
-  l_log_format_uinteger(log, n, flags);
+  l_log_format_ulong(log, n, flags);
 }
 
-static void l_log_print_uinteger(l_uinteger n, l_rune* p) {
+static void l_log_print_ulong(l_ulong n, l_rune* p) {
   (void)n;
   (void)p;
 }
 
-static void l_log_print_fraction(l_uinteger n, l_uinteger intmasks, l_rune* p) {
+static void l_log_print_fraction(l_ulong n, l_ulong intmasks, l_rune* p) {
   (void)n;
   (void)p;
   (void)intmasks;
@@ -505,9 +496,9 @@ static void l_log_print_fraction(l_uinteger n, l_uinteger intmasks, l_rune* p) {
 static void l_log_format_float(l_logger* log, l_value v, l_umedit flags) {
   l_rune a[127];
   l_rune* p = a;
-  l_uinteger fraction = 0;
-  l_uinteger mantissa = 0;
-  l_uinteger intmasks = 0;
+  l_ulong fraction = 0;
+  l_ulong mantissa = 0;
+  l_ulong intmasks = 0;
   int exponent = 0;
   int negative = 0;
   (void)log;
@@ -565,21 +556,21 @@ static void l_log_format_float(l_logger* log, l_value v, l_umedit flags) {
         /* only have integer part */
         if (exponent <= 63) { /* 52 + 11 */
           mantissa <<= (exponent - 52);
-          l_log_print_uinteger(mantissa, p);
+          l_log_print_ulong(mantissa, p);
           *p++ = '.';
           *p++ = '0';
         } else {
           exponent -= 52;
-          l_log_print_uinteger(mantissa, p);
+          l_log_print_ulong(mantissa, p);
           *p++ = '*';
           *p++ = '2';
           *p++ = '^';
-          l_log_print_uinteger(exponent, p);
+          l_log_print_ulong(exponent, p);
         }
       } else {
         /* have integer part and fraction part */
         intmasks >>= exponent;
-        l_log_print_uinteger((mantissa & intmasks) >> (52 - exponent), p);
+        l_log_print_ulong((mantissa & intmasks) >> (52 - exponent), p);
         *p++ = '.';
         l_log_print_fraction(mantissa & (~intmasks), intmasks, p);
       }
@@ -617,21 +608,21 @@ void l_logger_func_impl(const void* tag, const void* fmt, ...) {
   l_logger* log = 0;
   va_list vl;
 
-  level = l_str(tag)[0] - '0';
-  numofargs = l_str(tag)[1] - '0';
+  level = l_rstr(tag)[0] - '0';
+  numofargs = l_rstr(tag)[1] - '0';
 
   if (level < 0 || level > l_log_level) {
     return;
   }
 
   log = l_thread_logger();
-  l_log_printcstr(log, l_str(tag) + 2);
+  l_log_print(log, l_strt_c(l_rstr(tag) + 2));
   if (numofargs <= 0) {
-    l_log_printcstr(log, fmt);
+    l_log_print(log, l_strt_c(fmt));
     return;
   }
 
-  start = l_str(fmt);
+  start = l_rstr(fmt);
   cur = start;
 
   va_start(vl, fmt);
@@ -642,7 +633,7 @@ void l_logger_func_impl(const void* tag, const void* fmt, ...) {
       continue;
     }
 
-    l_log_print(log, start, cur);
+    l_log_print(log, l_strt_e(start, cur));
     start = cur;
     if (fmtcnt >= numofargs) {
       break;
@@ -651,8 +642,8 @@ void l_logger_func_impl(const void* tag, const void* fmt, ...) {
     /**
      * s - const void*  // ?x print as hex, ?w treat as l_strt*
      * f - double
-     * u - l_uinteger
-     * d - l_integer
+     * u - l_ulong
+     * d - l_long
      * w - l_strt*
      * c - print as char
      * t - print 1 or 0
@@ -738,12 +729,12 @@ ParseFormat:
 
     case 'u': case 'U':
       ++fmtcnt;
-      l_log_format_uinteger(log, va_arg(vl, l_value).u, flags);
+      l_log_format_ulong(log, va_arg(vl, l_value).u, flags);
       break;
 
     case 'd': case 'D':
       ++fmtcnt;
-      l_log_format_integer(log, va_arg(vl, l_value).d, flags);
+      l_log_format_long(log, va_arg(vl, l_value).d, flags);
       break;
 
     case 'w': case 'W':
@@ -773,7 +764,7 @@ ParseFormat:
     case 'b':
       flags |= L_FORMAT_BIN;
       ++fmtcnt;
-      l_log_format_uinteger(log, va_arg(vl, l_value).u, flags);
+      l_log_format_ulong(log, va_arg(vl, l_value).u, flags);
       break;
 
     case 'O':
@@ -782,7 +773,7 @@ ParseFormat:
     case 'o':
       flags |= L_FORMAT_OCT;
       ++fmtcnt;
-      l_log_format_uinteger(log, va_arg(vl, l_value).u, flags);
+      l_log_format_ulong(log, va_arg(vl, l_value).u, flags);
       break;
 
     case 'X': case 'P':
@@ -791,7 +782,7 @@ ParseFormat:
     case 'x': case 'p':
       flags |= L_FORMAT_HEX;
       ++fmtcnt;
-      l_log_format_uinteger(log, va_arg(vl, l_value).u, flags);
+      l_log_format_ulong(log, va_arg(vl, l_value).u, flags);
       break;
 
     case 0:
@@ -829,7 +820,7 @@ ParseFormat:
   va_end(vl);
 
   if (start < cur) {
-    l_log_print(log, start, cur);
+    l_log_print(log, l_strt_e(start, cur));
   }
 }
 
@@ -1033,7 +1024,7 @@ static void ll_add_tail_elem(l_mmheap* self) {
   while (i != 0) {
     l_umedit pa = ll_parent(i);
     if (ll_less_than(self, i, pa)) {
-      l_uintptr temp = self->a[i];
+      l_uint temp = self->a[i];
       self->a[i] = self->a[pa];
       self->a[pa] = temp;
       i = pa;
@@ -1052,7 +1043,7 @@ void l_mmheap_add(l_mmheap* self, void* elem) {
     self->a = l_raw_realloc(self->a, self->capacity, self->capacity*2);
     self->capacity *= 2;
   }
-  self->a[self->size++] = (l_uintptr)elem;
+  self->a[self->size++] = (l_uint)elem;
   ll_add_tail_elem(self);
 }
 
@@ -1067,7 +1058,7 @@ void* l_mmheap_del(l_mmheap* self, l_umedit i) {
 
   while (ll_has_child(self, i)) {
     l_umedit child = ll_min_child(self, i);
-    l_uintptr temp = self->a[i];
+    l_uint temp = self->a[i];
     self->a[i] = self->a[child];
     self->a[child] = temp;
     i = child;
@@ -1089,8 +1080,8 @@ void l_core_test() {
 #endif
   /* struct/array init */
   l_assert(strt.start == 0);
-  l_assert(strt.end == 0);
-  pstr->start = l_str(buffer);
+  l_assert(strt.len == 0);
+  pstr->start = l_rstr(buffer);
   l_assert(*pstr->start == '0');
   l_assert(*pstr->start == *(pstr->start));
   l_assert(&pstr->start == &(pstr->start));
@@ -1105,10 +1096,10 @@ void l_core_test() {
   l_assert(sizeof(l_ushort) == 2);
   l_assert(sizeof(l_medit) == 4);
   l_assert(sizeof(l_umedit) == 4);
-  l_assert(sizeof(l_) == 8);
-  l_assert(sizeof(l_ularge) == 8);
-  l_assert(sizeof(l_uinteger) == sizeof(void*));
-  l_assert(sizeof(l_integer) == sizeof(void*));
+  l_assert(sizeof(l_long) == 8);
+  l_assert(sizeof(l_ulong) == 8);
+  l_assert(sizeof(l_uint) == sizeof(void*));
+  l_assert(sizeof(l_int) == sizeof(void*));
   l_assert(sizeof(int) >= 4);
   l_assert(sizeof(char) == 1);
   l_assert(sizeof(float) == 4);
@@ -1138,11 +1129,11 @@ void l_core_test() {
   l_assert(l_min_medit == -2147483647-1);
   l_assert(l_cast(l_umedit, l_min_medit) == 2147483648);
   l_assert(l_cast(l_umedit, l_min_medit) == 0x80000000);
-  l_assert(l_max_uinteger == 18446744073709551615ull);
-  l_assert(l_max_integer == 9223372036854775807ull);
-  l_assert(l_min_integer == -9223372036854775807-1);
-  l_assert(l_cast(l_uinteger, l_min_integer) == 9223372036854775808ull);
-  l_assert(l_cast(l_uinteger, l_min_integer) == 0x8000000000000000ull);
+  l_assert(l_max_ulong == 18446744073709551615ull);
+  l_assert(l_max_long == 9223372036854775807ull);
+  l_assert(l_min_long == -9223372036854775807-1);
+  l_assert(l_cast(l_ulong, l_min_long) == 9223372036854775808ull);
+  l_assert(l_cast(l_ulong, l_min_long) == 0x8000000000000000ull);
   /* copy test */
   l_copy_l(a, 1, a+1);
   l_assert(a[1] == '0'); a[1] = '1';

@@ -114,7 +114,7 @@ static l_time llsystemtime() {
     return time;
   }
 
-  time.sec = l_cast(l_integer, tv.tv_sec);
+  time.sec = l_cast(l_long, tv.tv_sec);
   time.nsec = l_cast(l_umedit, tv.tv_usec * 1000);
   return time;
 }
@@ -130,7 +130,7 @@ static l_time llgettime(clockid_t id) {
     return time;
   }
 
-  time.sec = l_cast(l_integer, spec.tv_sec);
+  time.sec = l_cast(l_long, spec.tv_sec);
   time.nsec = l_cast(l_umedit, spec.tv_nsec);
   return time;
 }
@@ -143,20 +143,20 @@ l_time l_process_time() {
   return llgettime(CLOCK_PROCESS_CPUTIME_ID);
 }
 
-static l_integer llgetres(clockid_t id) {
+static l_long llgetres(clockid_t id) {
   struct timespec spec = {0};
   if (clock_getres(id, &spec) != 0) {
     l_loge_1("clock_getres %s", lserror(errno));
     return 0;
   }
-  return ((l_integer)spec.tv_sec)*1000000000LL + (l_integer)spec.tv_nsec;
+  return ((l_long)spec.tv_sec)*1000000000LL + (l_long)spec.tv_nsec;
 }
 
-l_integer l_system_time_res() {
+l_long l_system_time_res() {
   return llgetres(CLOCK_REALTIME);
 }
 
-l_integer l_monotonic_time_res() {
+l_long l_monotonic_time_res() {
   clockid_t id = CLOCK_MONOTONIC;
 #ifdef L_PLAT_LINUX
   id = CLOCK_BOOTTIME;
@@ -164,11 +164,11 @@ l_integer l_monotonic_time_res() {
   return llgetres(id);
 }
 
-l_integer l_thread_time_res() {
+l_long l_thread_time_res() {
   return llgetres(CLOCK_THREAD_CPUTIME_ID);
 }
 
-l_integer l_process_time_res() {
+l_long l_process_time_res() {
   return llgetres(CLOCK_PROCESS_CPUTIME_ID);
 }
 #endif
@@ -215,7 +215,7 @@ l_time l_monotonic_time() {
 #endif
 }
 
-static void llsetyear(l_date* date, l_integer year) {
+static void llsetyear(l_date* date, l_long year) {
   if (year > l_max_umedit) {
     date->year = l_cast(l_umedit, year & 0xffffffff);
     date->high = l_cast(l_byte, (year & 0xff00000000) >> 32);
@@ -263,7 +263,7 @@ static l_date llgetdate(time_t secs) {
   return date;
 }
 
-l_date l_date_from_secs(l_integer utcsecs) {
+l_date l_date_from_secs(l_long utcsecs) {
   return llgetdate(utcsecs);
 }
 
@@ -279,7 +279,7 @@ l_date l_system_date() {
 
 /** File and attribute */
 
-l_integer l_file_size(const void* name) {
+l_long l_file_size(const void* name) {
   /** lstat **
   #include <sys/types.h>
   #include <sys/stat.h>
@@ -339,7 +339,7 @@ l_integer l_file_size(const void* name) {
     l_loge_2("lstat %s %s", lserror(errno), ls(name));
     return 0;
   }
-  return (l_integer)st.st_size;
+  return (l_long)st.st_size;
 }
 
 l_fileattr l_file_attr(const void* name) {
@@ -351,13 +351,13 @@ l_fileattr l_file_attr(const void* name) {
     l_loge_2("lstat %s %s", lserror(errno), ls(name));
     return fa;
   } /* the time stored in stat is measured in seconds since 00:00:00 UTC, January 1, 1970 */
-  fa.fsize = (l_integer)st.st_size;
-  fa.ctm = (l_integer)st.st_ctime;
-  fa.atm = (l_integer)st.st_atime;
-  fa.mtm = (l_integer)st.st_mtime;
-  fa.gid = (l_integer)st.st_gid;
-  fa.uid = (l_integer)st.st_uid;
-  fa.mode = (l_integer)st.st_mode;
+  fa.fsize = (l_long)st.st_size;
+  fa.ctm = (l_long)st.st_ctime;
+  fa.atm = (l_long)st.st_atime;
+  fa.mtm = (l_long)st.st_mtime;
+  fa.gid = (l_long)st.st_gid;
+  fa.uid = (l_long)st.st_uid;
+  fa.mode = (l_long)st.st_mode;
   fa.isfile = (l_byte)(S_ISREG(st.st_mode) != 0);
   fa.isdir = (l_byte)(S_ISDIR(st.st_mode) != 0);
   fa.islink = (l_byte)(S_ISLNK(st.st_mode) != 0);
@@ -434,7 +434,7 @@ const l_rune* l_read_dir(l_dirstream* d) {
     if (errno != 0) { l_loge_1("readdir %s", lserror(errno)); }
     return 0;
   }
-  return l_str(entry->d_name);
+  return l_rstr(entry->d_name);
 }
 
 void l_thrkey_init(l_thrkey* self) {
@@ -610,7 +610,7 @@ void l_condv_wait(l_condv* self, l_mutex* mutex) {
   }
 }
 
-int l_condv_timedwait(l_condv* self, l_mutex* mutex, l_integer ns) {
+int l_condv_timedwait(l_condv* self, l_mutex* mutex, l_long ns) {
   pthread_cond_t* c = (pthread_cond_t*)self;
   pthread_mutex_t* m = (pthread_mutex_t*)mutex;
   l_time curtime = l_system_time();
@@ -679,7 +679,7 @@ int l_raw_create_thread(l_thrid* thrid, void* (*start)(void*), void* para) {
   return true;
 }
 
-void l_raw_thread_sleep(l_integer us) {
+void l_raw_thread_sleep(l_long us) {
   struct timespec req;
   req.tv_sec = (time_t)(us/1000000);
   req.tv_nsec = (long)(us%1000000*1000);
@@ -704,7 +704,7 @@ int l_raw_thread_join(l_thrid* thrid) {
   if ((n = pthread_join(*thread, &exitcode)) != 0) {
     l_loge_1("pthread_join %s", lserror(n));
   }
-  return (int)(l_intptr)exitcode;
+  return (int)(l_int)exitcode;
 }
 
 void l_plat_test() {

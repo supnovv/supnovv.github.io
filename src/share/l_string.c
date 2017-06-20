@@ -1,28 +1,20 @@
 #include <string.h>
 #include <stdarg.h>
-#include "string.h"
-
-l_strt l_strt_l(const void* s, l_integer len) {
-  l_strt a = {0, 0};
-  if (s && len > 0) {
-    a.start = l_str(s);
-    a.end = a.start + len;
-  }
-  return a;
-}
+#include "thatcore.h"
 
 int l_strt_contain(l_strt s, int ch) {
-  while (s.start < s.end) {
-    if (*s.start++ == ch) return true;
+  while (s.len-- > 0) {
+    if (s.start[s.len] == ch) return true;
   }
   return false;
 }
 
-int l_strt_equal_l(l_strt s, const void* p, l_integer len) {
-  const l_byte* str = l_str(p);
-  if (s.end - s.start != len) return false;
-  while (s.start < s.end) {
-    if (*s.start++ != *str++) return false;
+int l_strt_equal(l_strt lhs, l_strt rhs) {
+  if (lhs.len != rhs.len) return false;
+  while (lhs.len-- > 0) {
+    if (lhs.start[lhs.len] != rhs.start[lhs.len]) {
+      return false;
+    }
   }
   return true;
 }
@@ -46,7 +38,7 @@ l_buffer* l_buffer_new(l_thread* thread, l_int initsize, l_int maxlimit) {
   if (!thread) thread = l_thread_self();
   if (initsize < 32) initsize = 32;
   p = (l_buffer*)l_thread_alloc_buffer(thread, initsize);
-  *(l_buffer_start(p)) = 0; /* zero terminated */
+  *(l_buffer_s(p)) = 0; /* zero terminated */
   p->belong = thread;
   p->size = 0;
   p->limit = (maxlimit <= 0) ? 0 : maxlimit;
@@ -54,7 +46,7 @@ l_buffer* l_buffer_new(l_thread* thread, l_int initsize, l_int maxlimit) {
 }
 
 void l_buffer_free(l_buffer* p) {
-  l_thread_free_buffer((*p)->belong, p, 0);
+  l_thread_free_buffer(p->belong, p, 0);
 }
 
 l_string l_string_new(l_strt from) {
@@ -62,11 +54,10 @@ l_string l_string_new(l_strt from) {
 }
 
 l_string l_thread_string_new(l_thread* thread, l_strt from) {
-  l_int size = from.end - from.start;
-  l_buffer* p = l_buffer_new(thread, size+1, 0);
-  l_copy_l(from.start, size, l_buffer_gets(p));
-  p->size = size;
-  *(l_buffer_gets(p) + size) = 0; /* zero terminated */
+  l_buffer* p = l_buffer_new(thread, from.len+1, 0);
+  l_copy_l(from.start, from.len, l_buffer_s(p));
+  p->size = from.len;
+  *(l_buffer_s(p) + from.len) = 0; /* zero terminated */
   return (l_string){p};
 }
 
@@ -80,22 +71,14 @@ void l_string_free(l_string* self) {
 void l_string_clear(l_string* self) {
   l_buffer* p = self->b;
   p->size = 0;
-  *l_buffer_gets(p) = 0;
+  *l_buffer_s(p) = 0;
 }
 
-void l_string_setstrt(l_string* self, l_strt s) {
-  l_string_setlstr(self, s.start, s.end - s.start);
-}
-
-void l_string_setcstr(l_string* self, const void* s) {
-  l_string_setlstr(self, s, strlen((const char*)s));
-}
-
-void l_string_setlstr(l_string* self, const void* s, l_int len) {
-  l_buffer_ensure_capacity(&self->b, len+1);
-  l_copy_l(s, len, l_buffer_gets(p));
-  p->size = size;
-  *(l_buffer_gets(p) + size) = 0;
+void l_string_set(l_string* self, l_strt s) {
+  l_buffer_ensure_capacity(&self->b, s.len+1);
+  l_copy_l(s.start, s.len, l_buffer_s(self->b));
+  self->b->size = s.len;
+  *(l_buffer_s(self->b) + s.len) = 0;
 }
 
 int l_string_is_empty(l_string* self) {
@@ -106,22 +89,8 @@ l_int l_string_size(l_string* self) {
   return (self->b->size);
 }
 
-const l_rune* l_string_cstr(l_string* self) {
-  return l_buffer_gets(self->d);
-}
-
-int l_string_equal_c(l_string* self, const void* s) {
-  return l_string_equal_l(self, s, strlen((const char*)s));
-}
-
-int l_string_equal_l(l_string* self, const void* s, l_int len) {
-  const l_rune* a = l_string_cstr();
-  const l_rune* b = l_str(s);
-  if (l_string_size(self) != len) return false;
-  while (len-- > 0) {
-    if (a[len] != b[len]) return false;
-  }
-  return true;
+int l_string_equal(l_string* self, l_strt s) {
+  return l_strt_equal(l_string_strt(self), s);
 }
 
 #define L_BLANK_MAX_LEN (3)
@@ -130,38 +99,38 @@ int l_string_equal_l(l_string* self, const void* s, l_int len) {
 #define L_NUM_OF_BLANKS (29)
 
 static const l_rune* l_blanks[] = {
-  l_str("\x09"), /* \t */
-  l_str("\x0b"), /* \v */
-  l_str("\x0c"), /* \f */
+  l_rstr("\x09"), /* \t */
+  l_rstr("\x0b"), /* \v */
+  l_rstr("\x0c"), /* \f */
   /* Zs 'Separator, Space' Category - www.fileformat.info/info/unicode/category/Zs/list.htm */
-  l_str("\x20"), /* 0x20 space */
-  l_str("\xc2\xa0"), /* 0xA0 no-break space */
-  l_str("\xe1\x9a\x80"), /* 0x1680 ogham space mark */
-  l_str("\xe2\x80\xaf"), /* 0x202F narrow no-break space */
-  l_str("\xe2\x81\x9f"), /* 0x205F medium mathematical space */
-  l_str("\xe3\x80\x80"), /* 0x3000 ideographic space (chinese blank character) */
-  l_str("\xe2\x80\x80"), /* 0x2000 en quad */
-  l_str("\xe2\x80\x81"), /* 0x2001 em quad */
-  l_str("\xe2\x80\x82"), /* 0x2002 en space */
-  l_str("\xe2\x80\x83"), /* 0x2003 em space */
-  l_str("\xe2\x80\x84"), /* 0x2004 three-per-em space */
-  l_str("\xe2\x80\x85"), /* 0x2005 four-per-em space */
-  l_str("\xe2\x80\x86"), /* 0x2006 six-per-em space */
-  l_str("\xe2\x80\x87"), /* 0x2007 figure space */
-  l_str("\xe2\x80\x88"), /* 0x2008 punctuation space */
-  l_str("\xe2\x80\x89"), /* 0x2009 thin space */
-  l_str("\xe2\x80\x8a"), /* 0x200A hair space */
+  l_rstr("\x20"), /* 0x20 space */
+  l_rstr("\xc2\xa0"), /* 0xA0 no-break space */
+  l_rstr("\xe1\x9a\x80"), /* 0x1680 ogham space mark */
+  l_rstr("\xe2\x80\xaf"), /* 0x202F narrow no-break space */
+  l_rstr("\xe2\x81\x9f"), /* 0x205F medium mathematical space */
+  l_rstr("\xe3\x80\x80"), /* 0x3000 ideographic space (chinese blank character) */
+  l_rstr("\xe2\x80\x80"), /* 0x2000 en quad */
+  l_rstr("\xe2\x80\x81"), /* 0x2001 em quad */
+  l_rstr("\xe2\x80\x82"), /* 0x2002 en space */
+  l_rstr("\xe2\x80\x83"), /* 0x2003 em space */
+  l_rstr("\xe2\x80\x84"), /* 0x2004 three-per-em space */
+  l_rstr("\xe2\x80\x85"), /* 0x2005 four-per-em space */
+  l_rstr("\xe2\x80\x86"), /* 0x2006 six-per-em space */
+  l_rstr("\xe2\x80\x87"), /* 0x2007 figure space */
+  l_rstr("\xe2\x80\x88"), /* 0x2008 punctuation space */
+  l_rstr("\xe2\x80\x89"), /* 0x2009 thin space */
+  l_rstr("\xe2\x80\x8a"), /* 0x200A hair space */
   /* byte order marks */
-  l_str("\xfe\xff"),
-  l_str("\xff\xfe"),
-  l_str("\xef\xbb\xbf"),
+  l_rstr("\xfe\xff"),
+  l_rstr("\xff\xfe"),
+  l_rstr("\xef\xbb\xbf"),
   /* new lines */
-  l_str("\x0a\x0d"), /* \n\r */
-  l_str("\x0d\x0a"), /* \r\n */
-  l_str("\x0a"), /* \r */
-  l_str("\x0d"), /* \n */
-  l_str("\xe2\x80\xa8"), /* line separator 0x2028 00100000_00101000 -> 1110'0010_10'000000_10'101000 (0xE280A8) */
-  l_str("\xe2\x80\xa9")  /* paragraph separator 0x2029 00100000_00101001 */
+  l_rstr("\x0a\x0d"), /* \n\r */
+  l_rstr("\x0d\x0a"), /* \r\n */
+  l_rstr("\x0a"), /* \r */
+  l_rstr("\x0d"), /* \n */
+  l_rstr("\xe2\x80\xa8"), /* line separator 0x2028 00100000_00101000 -> 1110'0010_10'000000_10'101000 (0xE280A8) */
+  l_rstr("\xe2\x80\xa9")  /* paragraph separator 0x2029 00100000_00101001 */
 };
 
 static l_umedit l_right_most_bit(l_umedit n) {
@@ -272,7 +241,7 @@ void l_string_free_map(l_stringmap* self) {
   self->size = 0;
 }
 
-static const l_rune* const l_string_too_short = (const l_rune* const)(l_intptr)(-1);
+static const l_rune* const l_string_too_short = (const l_rune* const)(l_int)(-1);
 
 static int l_power_of_two_bit_pos(l_umedit n) {
   switch (n) {
@@ -342,7 +311,7 @@ const l_rune* l_string_match_ex(const l_stringmap* map, const void* s, int len, 
 
   while (i < end) {
     t = map->t + i;
-    ch = l_str(s)[i];
+    ch = l_rstr(s)[i];
 
     curmatch = prevmatch & t->a[ch].m;
     if (!curmatch) {
@@ -354,7 +323,7 @@ const l_rune* l_string_match_ex(const l_stringmap* map, const void* s, int len, 
     }
 
     if (t->a[ch].e & curmatch) {
-      p = l_str(s) + i + 1;
+      p = l_rstr(s) + i + 1;
       matches = t->a[ch].e & curmatch;
       headmatch = l_right_most_bit(curmatch);
       if (matches & headmatch) {
@@ -375,7 +344,7 @@ const l_rune* l_string_match_ex(const l_stringmap* map, const void* s, int len, 
 
 MatchSuccess:
   if (strid) *strid = l_power_of_two_bit_pos(headmatch);
-  if (mlen) *mlen = p - l_str(s);
+  if (mlen) *mlen = p - l_rstr(s);
   return p;
 }
 
@@ -385,19 +354,19 @@ const l_rune* l_string_match(const l_stringmap* map, const void* s, int len) {
 
 /* match exactly n times, return >=s or ccstringtooshort */
 const l_rune* l_string_match_ntimes(const l_stringmap* map, int n, const void* s, int len) {
-  const l_rune* e = l_str(s);
+  const l_rune* e = l_rstr(s);
   int i = 0;
 
   while (i++ < n) {
     e = l_string_match(map, s, len);
     if (e == 0) {
-      return l_str(s);
+      return l_rstr(s);
     }
     if (e == l_string_too_short) {
       return e;
     }
     s = e;
-    len -= e - l_str(s);
+    len -= e - l_rstr(s);
   }
 
   return e;
@@ -406,12 +375,12 @@ const l_rune* l_string_match_ntimes(const l_stringmap* map, int n, const void* s
 /* return >=s */
 const l_rune* l_string_match_repeat(const l_stringmap* map, const void* s, int len, int* lastmatchfailed) {
   const l_rune* e = 0;
-  const l_rune* prev = l_str(s);
+  const l_rune* prev = l_rstr(s);
 
   while ((e = l_string_match(map, s, len)) != 0 && e != l_string_too_short) {
     prev = e;
     s = e;
-    len -= e - l_str(s);
+    len -= e - l_rstr(s);
   }
 
   if (e == 0) {
@@ -426,7 +395,7 @@ const l_rune* l_string_match_repeat(const l_stringmap* map, const void* s, int l
 /* return 0 - too short to match, >=s - match success, n is the length */
 const l_rune* l_string_match_until(const l_stringmap* map, const void* s, int len, int* n) {
   const l_rune* e = 0;
-  const l_rune* cur = l_str(s);
+  const l_rune* cur = l_rstr(s);
 
   while ((e = l_string_match(map, cur, len)) == 0) { /* continue only doesn't match */
     ++cur;
@@ -434,7 +403,7 @@ const l_rune* l_string_match_until(const l_stringmap* map, const void* s, int le
   }
 
   if (e == l_string_too_short) {
-    if (n) *n = cur - l_str(s);
+    if (n) *n = cur - l_rstr(s);
     return 0;
   }
 
@@ -447,7 +416,7 @@ const l_rune* l_string_skip_space_and_match_until(const l_stringmap* map, const 
 
   /* match space and skip */
   while ((e = l_string_match(l_string_space_map(), s, len)) != 0 && e != l_string_too_short) {
-    s = l_str(s) + 1;
+    s = l_rstr(s) + 1;
     --len;
   }
 
@@ -465,7 +434,7 @@ const l_rune* l_string_skip_space_and_match(const l_stringmap* map, const void* 
 
   /* match space and skip */
   while ((e = l_string_match(l_string_space_map(), s, len)) != 0 && e != l_string_too_short) {
-    s = l_str(s) + 1;
+    s = l_rstr(s) + 1;
     --len;
   }
 
@@ -482,9 +451,9 @@ const l_rune* l_string_skip_space_and_match(const l_stringmap* map, const void* 
 }
 
 void l_string_test() {
-  const l_rune* methods[] = {l_str("GET"), l_str("HEAD"), l_str("POST")};
-  const l_rune* orderedchice[] = {l_str("mankind"), l_str("man"), l_str("got"),
-      l_str("gotten"), l_str("pick"), l_str("tick"), l_str("cook")};
+  const l_rune* methods[] = {l_rstr("GET"), l_rstr("HEAD"), l_rstr("POST")};
+  const l_rune* orderedchice[] = {l_rstr("mankind"), l_rstr("man"), l_rstr("got"),
+      l_rstr("gotten"), l_rstr("pick"), l_rstr("tick"), l_rstr("cook")};
   const l_rune subject[] = "gEtoHEAdopOStogeoend";
   const l_rune* s = 0;
   l_stringmap map;
