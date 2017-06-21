@@ -1,6 +1,6 @@
 #include <string.h>
 #include <stdarg.h>
-#include "thatcore.h"
+#include "l_string.h"
 
 int l_strt_contain(l_strt s, int ch) {
   while (s.len-- > 0) {
@@ -23,7 +23,7 @@ int l_buffer_ensure_capacity(l_buffer** self, l_int size) {
   l_buffer* temp = 0;
   l_int limit = (*self)->limit;
   if (limit && size > limit) return false;
-  temp = (l_buffer*)l_thread_ensure_bfsize((*self)->belong, &(*self)->node, sizeof(l_buffer) + size);
+  temp = (l_buffer*)l_thread_ensure_bfsize((*self)->belong->frbf, &(*self)->node, sizeof(l_buffer) + size);
   if (!temp) return false;
   *self = temp;
   return true;
@@ -37,7 +37,7 @@ l_buffer* l_buffer_new(l_thread* thread, l_int initsize, l_int maxlimit) {
   l_buffer* p = 0;
   if (!thread) thread = l_thread_self();
   if (initsize < 32) initsize = 32;
-  p = (l_buffer*)l_thread_alloc_buffer(thread, initsize);
+  p = (l_buffer*)l_thread_alloc_buffer(thread->frbf, initsize);
   *(l_buffer_s(p)) = 0; /* zero terminated */
   p->belong = thread;
   p->size = 0;
@@ -46,7 +46,7 @@ l_buffer* l_buffer_new(l_thread* thread, l_int initsize, l_int maxlimit) {
 }
 
 void l_buffer_free(l_buffer* p) {
-  l_thread_free_buffer(p->belong, p, 0);
+  l_thread_free_buffer(p->belong->frbf, p, 0);
 }
 
 l_string l_string_new(l_strt from) {

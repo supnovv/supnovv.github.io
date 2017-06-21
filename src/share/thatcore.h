@@ -25,12 +25,15 @@
 #define l_specif l_extern
 
 #undef l_thread_local
+#undef l_extern_thread_local
 #undef l_thread_local_supported
 #if defined(L_CLER_GCC)
   #define l_thread_local(a) __thread a
+  #define l_extern_thread_local(a) extern __thread a
   #define l_thread_local_supported
 #elif defined(L_CLER_MSC)
   #define l_thread_local(a) __declspec(thread) a
+  #define l_extern_thread_local(a) extern __declspec(thread) a
   #define l_thread_local_supported
 #else
   #define l_thread_local(a)
@@ -67,8 +70,10 @@
 
 #ifdef L_BUILD_DEBUG
 #define L_DEBUG_HERE(...) { __VA_ARGS__ }
+#define l_debug_assert(e) l_assert(e)
 #else
 #define L_DEBUG_HERE(...) { ((void)0); }
+#define l_debug_assert(e) ((void)0)
 #endif
 
 typedef union {
@@ -258,7 +263,7 @@ l_extern void l_mmheap_free(l_mmheap* self);
 l_extern void l_mmheap_add(l_mmheap* self, void* elem);
 l_extern void* l_mmheap_del(l_mmheap* self, l_umedit i);
 
-/* l_nuxcore.c */
+/* linuxcore.c */
 
 /**
  * The 64-bit signed integer's biggest value is 9223372036854775807.
@@ -369,262 +374,12 @@ l_specif int l_raw_thread_join(l_thrid* thrid);
 l_specif void l_raw_thread_exit();
 l_specif void l_thread_sleep(l_long us);
 
-/* l_thread.c */
-
-typedef struct lua_State lua_State;
-typedef struct l_service l_service;
-
-#define L_COMMON_BUFHEAD \
-  l_squeue node; \
-  l_int bsize;
-
-typedef struct {
-  l_squeue queue; /* free buffer q */
-  l_int size;  /* size of the queue */
-  l_int total; /* total newed elems */
-  l_int ttmem; /* total memory size */
-  l_int limit; /* memory size limit */
-} l_freeq;
-
-typedef struct l_thread {
-  l_linknode node;
-  l_umedit weight;
-  l_ushort index;
-  l_byte msgwait;
-  l_byte iowait;
-  /* shared with master */
-  l_mutex* svmtx; /* guard srvc fields except svrc.io.node */
-  l_mutex* mutex;
-  l_condv* condv;
-  l_squeue rxmq;
-  l_squeue rxio;
-  /* thread own use */
-  lua_State* L;
-  l_squeue txmq;
-  l_squeue txms;
-  l_logger* log;
-  l_freeq* frco;
-  l_freeq* frbf;
-  l_thrid id;
-  int (*start)();
-  void* block;
-} l_thread;
-
-l_extern l_thrkey llg_thread_key;
-l_thread_local(l_thread* llg_thread_ptr);
-
-l_inline l_thread* l_thread_self() {
-#if defined(l_thread_local_supported)
-  return llg_thread_ptr;
-#else
-  return (l_thread*)l_thrkey_get_data(&llg_thread_key);
-#endif
-}
-
-l_extern l_thrkey llg_logger_key;
-l_thread_local(l_logger* llg_logger_ptr);
-
-l_inline l_logger* l_thread_logger() {
-#if defined(l_thread_local_supported)
-  return llg_logger_ptr;
-#else
-  return (l_thread*)l_thrkey_get_data(&llg_logger_key);
-#endif
-}
-
-l_inline void l_thread_lock(l_thread* self) {
-  l_mutex_lock(self->mutex);
-}
-
-l_inline void l_thread_unlock(l_thread* self) {
-  l_mutex_unlock(self->mutex);
-}
-
-l_extern void l_threadpool_create(int numofthread);
-l_extern void l_threadpool_destroy();
-l_extern l_thread* l_threadpool_acquire();
-l_extern void l_threadpool_release(l_thread* t);
-
-l_extern void* l_thread_alloc_buffer(l_thread* thread, l_int sizeofbuffer);
-l_extern void* l_thread_ensure_bfsize(l_thread* thread, void* buffer, l_int newsz);
-l_extern void l_thread_free_buffer(l_thread* thread, void* buffer, void (*extrafree)(void*));
-
-l_extern int l_thread_start(l_thread* self, int (*start)());
-l_extern int l_thread_join(l_thread* self);
-l_extern void l_thread_exit();
-l_extern void l_process_exit();
-
-/* l_state.c */
-
-typedef struct l_state {
-  l_smplnode node;
-  l_thread* belong;
-  lua_State* co;
-  int coref;
-  int (*func)(struct l_state*);
-  int (*kfunc)(struct l_state*);
-  l_service* srvc;
-} l_state;
-
-l_inline l_thread* l_state_belong(l_state* s) {
-  return s->belong;
-}
-
-l_extern lua_State* l_new_luastate();
-l_extern void l_close_luastate(lua_State* L);
-l_extern int l_state_init(l_state* co, l_thread* belong, l_service* srvc, int (*func)(l_state*));
-l_extern void l_state_free(l_state* co);
-l_extern int l_state_resume(l_state* co);
-l_extern int l_state_yield(l_state* co, int (*kfunc)(l_state*));
-l_extern int l_state_yield_with_code(l_state* co, int (*kfunc)(l_state*), int code);
-
-/* l_string.c */
-
-typedef struct {
-  const l_byte* start;
-  l_int len;
-} l_strt;
-
-l_inline l_strt l_strt_l(const void* s, l_int len) {
-  return ((l_strt){l_rstr(s), len});
-}
-
-l_inline l_strt l_strt_c(const void* s) {
-  return l_strt_l(s, strlen((char*)s));
-}
-
-l_inline l_strt l_strt_e(const void* s, const void* e) {
-  return l_strt_l(s, l_rstr(e) - l_rstr(s));
-}
-
-#define l_empty_strt() ((l_strt){0,0})
-#define l_literal_strt(s) l_strt_l("" s, (sizeof(s)/sizeof(char))-1)
-l_extern int l_strt_equal(l_strt lhs, l_strt rhs);
-l_extern int l_strt_contain(l_strt s, int ch);
-
-typedef struct {
-  L_COMMON_BUFHEAD
-  l_thread* belong;
-  l_int limit;
-  l_int size;
-} l_buffer;
-
-l_inline l_byte* l_buffer_s(l_buffer* self) {
-  return (l_byte*)(self + 1);
-}
-
-l_inline l_int l_buffer_capacity(l_buffer* self) {
-  return self->bsize - sizeof(l_buffer);
-}
-
-l_extern l_buffer* l_buffer_new(l_thread* thread, l_int initsize, l_int maxlimit);
-l_extern void l_buffer_free(l_buffer* buffer);
-l_extern int l_buffer_ensure_capacity(l_buffer** self, l_int size);
-l_extern int l_buffer_ensure_remain(l_buffer** self, l_int remainsize);
-
-typedef struct {
-  l_buffer* b;
-} l_string;
-
-l_inline const l_rune* l_string_cstr(l_string* self) {
-  return l_buffer_s(self->b);
-}
-
-l_inline l_strt l_string_strt(l_string* self) {
-  const l_rune* s = l_buffer_s(self->b);
-  return (l_strt){s, self->b->size};
-}
-
-l_extern l_string l_string_new(l_strt from);
-l_extern l_string l_thread_string_new(l_thread* thread, l_strt from);
-l_extern void l_string_free(l_string* self);
-l_extern void l_string_clear(l_string* self);
-l_extern void l_string_set(l_string* self, l_strt s);
-l_extern int l_string_is_empty(l_string* self);
-l_extern int l_string_equal(l_string* self, l_strt s);
-
-typedef struct {
-  l_umedit m; /* string match this rune */
-  l_umedit e; /* string ended with this rune */
-} l_runeinfo;
-
-typedef struct { /* 4 * 256 * 2 = 2048 (2KB) */
-  l_runeinfo a[256];
-} l_runetable;
-
-typedef struct {
-  l_runetable* t; /* table array, 1 table contains 1 rune, the array size is up to the length of the string */
-  int size; /* a string map can store strings up to 'maxnumofstr', the size is the length of the longest string */
-  int maxnumofstr;
-} l_stringmap;
-
-l_extern const l_stringmap* l_string_space_map();
-l_extern const l_stringmap* l_string_newline_map();
-l_extern const l_stringmap* l_string_blank_map();
-
-l_extern l_stringmap l_string_new_map(int maxstrlen, const l_rune** str, int numofstr, int casesensitive);
-l_extern void l_string_set_map(l_stringmap* self, const l_rune** str, int numofstr, int casesensitive);
-l_extern void l_string_free_map(l_stringmap* self);
-
-l_extern const l_rune* l_string_match(const l_stringmap* map, const void* s, int len);
-l_extern const l_rune* l_string_match_ex(const l_stringmap* map, const void* s, int len, int* strid, int* mlen);
-l_extern const l_rune* l_string_match_ntimes(const l_stringmap* map, int n, const void* s, int len);
-l_extern const l_rune* l_string_match_repeat(const l_stringmap* map, const void* s, int len, int* lastmatchfailed);
-l_extern const l_rune* l_string_match_until(const l_stringmap* map, const void* s, int len, int* n);
-l_extern const l_rune* l_string_skip_space_and_match_until(const l_stringmap* map, const void* s, int len, int* n);
-l_extern const l_rune* l_string_skip_space_and_match(const l_stringmap* map, const void* s, int len, int* strid, int* mlen);
-
-/* l_socket.c */
-
-typedef struct {
-  L_PLAT_IMPL_SIZE(L_SOCKADDR_SIZE);
-} l_sockaddr;
-
-typedef struct {
-  l_handle sock;
-  l_sockaddr remote;
-} l_sockconn;
-
-/* l_message.c */
-
-#define L_MESSAGE_HEADER \
-  L_COMMON_BUFHEAD \
-  void* extra; \
-  l_umedit dstid; \
-  l_umedit type;
-
-typedef struct l_message {
-  L_MESSAGE_HEADER
-} l_message;
-
-typedef struct {
-  L_MESSAGE_HEADER
-  l_handle sock;
-  l_sockaddr remote;
-} l_connind_message;
-
-typedef struct {
-  L_MESSAGE_HEADER;
-  l_handle sock;
-  l_umedit masks;
-} l_ioevent_message;
-
-l_extern l_message* l_create_message(l_thread* thread, l_umedit type, l_int extrasize);
-l_extern void l_free_message(l_thread* thread, l_message* msg);
-l_extern void l_free_messages(l_thread* thread, l_squeue* mq);
-l_extern void l_send_message(l_service* service, l_umedit destid, l_message* msg);
-l_extern void l_send_message_fd(l_service* service, l_umedit destid, l_umedit type, l_handle fd);
-l_extern void l_send_message_ptr(l_service* service, l_umedit destid, l_umedit type, void* data_ptr);
-l_extern void l_send_message_s32(l_service* service, l_umedit destid, l_umedit type, l_medit s32);
-l_extern void l_send_message_u32(l_service* service, l_umedit destid, l_umedit type, l_umedit u32);
-l_extern void l_send_message_s64(l_service* service, l_umedit destid, l_umedit type, l_long s64);
-l_extern void l_send_message_u64(l_service* service, l_umedit destid, l_umedit type, l_ulong u64);
-
 /* test cases */
 
 l_extern void l_core_test();
-l_extern void l_plat_test();
 l_extern void l_string_test();
 l_extern void l_luac_test();
+l_specif void l_plat_test();
+l_specif void l_plat_ionf_test();
 
 #endif /* l_core_lib_h */

@@ -337,6 +337,26 @@ HTTP/1.1规定用户Agent代理应该在接收且检测到无效长度时通知�
 HTTP允许对实体内容进行编码，比如可以使之更安全或进行压缩以节省空间，如果主体进行了编码，Content-Length应该说明编码后的主体字节长度
 不幸的是，HTTP/1.1规范中没有首部可以用来说明原始未编码的主体长度，这就客户端难以验证解码过程的完整性　*/
 
+typedef struct {
+  l_service head;
+
+} l_http_server_service;
+
+typedef struct {
+  l_service head;
+
+} l_http_server_receive_service;
+
+typedef struct {
+  l_service head;
+
+} l_http_client_service;
+
+typedef struct {
+  l_service head;
+
+} l_http_client_receive_service;
+
 #define L_HTTP_BACKLOG (32)
 
 #define L_HTTP_RDREQ_STAGE (1)
@@ -468,7 +488,7 @@ static int l_http_in_read_start_line(l_state* s) {
   if (n == L_STATUS_WAITMORE) {
     return l_state_yield(s, l_http_in_read_start_line);
   }
-  
+
   /* the start line is read */
   rxbuf = conn->rxbuf;
 

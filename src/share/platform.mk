@@ -46,11 +46,11 @@ endif
 
 AUTOOBJ = $(BUILD_DIR)autoconf$(O)
 COREOBJ = $(BUILD_DIR)thatcore$(O) $(BUILD_DIR)linuxcore$(O) $(BUILD_DIR)thattest$(O)
-STRINGO = $(BUILD_DIR)string$(O)
-LUACOBJ = $(BUILD_DIR)luacapi$(O)
-IONFOBJ = $(BUILD_DIR)ionfmgr$(O)
+STRINGO = $(BUILD_DIR)l_string$(O)
+LUACOBJ = $(BUILD_DIR)l_state$(O)
+IONFOBJ = $(BUILD_DIR)l_ionfmgr$(O)
 SOCKOBJ = $(BUILD_DIR)linuxsock$(O)
-SRVCOBJ = $(BUILD_DIR)service$(O)
+SRVCOBJ = $(BUILD_DIR)l_service$(O)
 HTTPOBJ = $(BUILD_DIR)http_service$(O)
 TESTOBJ = $(COREOBJ) $(STRINGO) $(LUACOBJ) $(IONFOBJ) $(SOCKOBJ) $(SRVCOBJ) $(HTTPOBJ)
 ALLOBJS = $(AUTOOBJ) $(TESTOBJ)
@@ -93,17 +93,19 @@ $(CORETEST): $(TESTOBJ)
 	$(LINK) $(TESTOBJ) $(LDLIBS)
 	./$@
 
-luacapi.o: luacapi.c luacapi.h
-	$(CC) $(CMPL_OPTIONS) $<
+# luaconf.h:581:2: #error "Compiler does not support 'long long'. Use option '-DLUA_32BITS' or '-DLUA_C89_NUMBERS'
+# it is caused by LLONG_MAX is not defined in C89 (C99 stuff)
+l_state.o: l_state.c thatcore.h
+	$(CC) -std=c99 $(CMPL_OPTIONS) $<
 
 $(BUILD_DIR)%$(O): %.c
 	$(CMPL) $<
 
 $(AUTOOBJ): autoconf.c
 $(COREOBJ): thatcore.c linuxcore.c thattest.c thatcore.h autoconf.h l_prefix.h
-$(IONFOBJ): ionfmgr.c ionfmgr.h plationf.h
+$(IONFOBJ): l_ionfmgr.c l_ionfmgr.h plationf.h
 $(SOCKOBJ): linuxsock.c socket.h platsock.h
-$(SRVCOBJ): service.c service.h
-$(STRINGO): string.c string.h
+$(SRVCOBJ): l_service.c thatcore.h
+$(STRINGO): l_string.c thatcore.h
 $(HTTPOBJ): http_service.c http_service.h
 

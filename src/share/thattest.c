@@ -1,9 +1,8 @@
 #include "thatcore.h"
-#include "luacapi.h"
-#include "ionfmgr.h"
-#include "socket.h"
-#include "service.h"
-#include "string.h"
+#include "l_socket.h"
+#include "l_service.h"
+#include "l_string.h"
+#include "l_state.h"
 
 int l_test_start() {
   l_set_log_level(4);

@@ -9,16 +9,15 @@
 #define L_IOEVENT_RDH   0x08
 #define L_IOEVENT_HUP   0x10
 #define L_IOEVENT_ERR   0x20
-#define L_IOEVENT_INT   0x40
 
 #define L_IOEVENT_FLAG_ADDED   0x01
 #define L_IOEVENT_FLAG_LISTEN  0x02
 #define L_IOEVENT_FLAG_CONNECT 0x04
 
-typedef struct {
+typedef struct l_ioevent {
   l_smplnode node;
-  l_handle fd;
-  l_umedit udata;
+  l_handle sock;
+  l_umedit svid;
   l_ushort masks;
   l_ushort flags;
   l_service* chained;
@@ -37,8 +36,6 @@ l_extern int l_ionfmgr_wait(l_ionfmgr* self, void (*cb)(l_ioevent*));
 l_extern int l_ionfmgr_trywait(l_ionfmgr* self, void (*cb)(l_ioevent*));
 l_extern int l_ionfmgr_timedwait(l_ionfmgr* self, int ms, void (*cb)(l_ioevent*));
 l_extern int l_ionfmgr_wakeup(l_ionfmgr* self);
-
-l_extern void l_plat_ionf_test();
 
 #endif /* l_ionfmgr_lib_h */
 

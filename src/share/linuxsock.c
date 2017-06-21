@@ -1,6 +1,6 @@
 #include "linuxpref.h"
 #include "platsock.h"
-#include "socket.h"
+#include "l_socket.h"
 
 int l_sockaddr_init(l_sockaddr* self, l_strt ip, l_ushort port) {
   /** inet_pton htons/l ntohs/l **
@@ -86,7 +86,7 @@ int l_sockaddr_ipstring(l_sockaddr* self, l_string* out) {
       l_string_clear(out);
       return false;
     }
-    l_string_setcstr(out, ipstrbuf);
+    l_string_set(out, l_strt_c(ipstrbuf));
     return true;
   }
   if (sa->addr.sa.sa_family == AF_INET6) {
@@ -96,7 +96,7 @@ int l_sockaddr_ipstring(l_sockaddr* self, l_string* out) {
       l_string_clear(out);
       return false;
     }
-    l_string_setcstr(out, ipv6strbuf);
+    l_string_set(out, l_strt_c(ipv6strbuf));
     return true;
   }
   l_loge_s("invalid address family");
@@ -918,7 +918,7 @@ int l_socket_connect(l_sockconn* conn) {
   return false;
 }
 
-l_integer ll_read(l_handle fd, void* out, l_integer count) {
+l_int ll_read(l_handle fd, void* out, l_int count) {
   /** read - read from a file descriptor **
   #include <unistd.h>
   ssize_t read(int fd, void *buf, size_t count);
@@ -968,7 +968,7 @@ l_integer ll_read(l_handle fd, void* out, l_integer count) {
       /* note that one case about read bytes n < count is:
       at least one byte is read and then interrupted by a
       signal, the call is returned success in this case. */
-      return (l_integer)n;
+      return (l_int)n;
     }
 
     n = errno;
@@ -991,7 +991,7 @@ l_integer ll_read(l_handle fd, void* out, l_integer count) {
   return -2;
 }
 
-l_integer ll_write(l_handle fd, const void* buf, l_integer count) {
+l_int ll_write(l_handle fd, const void* buf, l_int count) {
   /** write - write to a file descriptor **
   #include <unistd.h>
   ssize_t write(int fd, const void *buf, size_t count);
@@ -1065,7 +1065,7 @@ l_integer ll_write(l_handle fd, const void* buf, l_integer count) {
       /* note that one case about written bytes n < count is:
       at least one byte is written and then interrupted by a
       signal, the call is returned success in this case. */
-      return (l_integer)n;
+      return (l_int)n;
     }
 
     n = errno;
@@ -1089,9 +1089,9 @@ l_integer ll_write(l_handle fd, const void* buf, l_integer count) {
 }
 
 /* *status >=0 success, <0 L_STATUS_ERROR */
-l_integer l_socket_read(l_handle sock, void* out, l_integer count, l_integer* status) {
+l_int l_socket_read(l_handle sock, void* out, l_int count, l_int* status) {
   l_byte* buf = (l_byte*)out;
-  l_integer n = 0, sum = 0;
+  l_int n = 0, sum = 0;
   while ((n = ll_read(sock, buf, count)) > 0) {
     sum += n;
     buf += n;
@@ -1107,8 +1107,8 @@ l_integer l_socket_read(l_handle sock, void* out, l_integer count, l_integer* st
 }
 
 /* *status >=0 success, <0 L_STATUS_ERROR */
-l_integer l_socket_write(l_handle sock, const void* from, l_integer count, l_integer* status) {
-  l_integer n = 0, sum = 0;
+l_int l_socket_write(l_handle sock, const void* from, l_int count, l_int* status) {
+  l_int n = 0, sum = 0;
   const l_byte* buf = (const l_byte*)from;
   while ((n = ll_write(sock, buf, count)) > 0) {
     sum += n;
@@ -1143,17 +1143,17 @@ void l_plat_sock_test() {
   l_sockaddr_init(&sa, l_literal_strt("127.0.0.1"), 1024);
   l_sockaddr_ipstring(&sa, &ip);
   l_assert(l_sockaddr_port(&sa) == 1024);
-  l_assert(l_string_equal_c(&ip, "127.0.0.1"));
+  l_assert(l_string_equal(&ip, l_literal_strt("127.0.0.1")));
   /* ipv6 string convert */
   l_sockaddr_init(&sa, l_literal_strt("::3742:204.152.189.116"), 2048);
   l_sockaddr_ipstring(&sa, &ip);
   l_assert(l_sockaddr_port(&sa) == 2048);
-  l_assert(l_string_equal_c(&ip, "::3742:cc98:bd74"));
+  l_assert(l_string_equal(&ip, l_literal_strt("::3742:cc98:bd74")));
   l_logd_1("l_sockaddr ip string %s", lstring(&ip));
   l_sockaddr_init(&sa, l_literal_strt("::3742:4723:5525"), 4096);
   l_sockaddr_ipstring(&sa, &ip);
   l_assert(l_sockaddr_port(&sa) == 4096);
-  l_assert(l_string_equal_c(&ip, "::3742:4723:5525"));
+  l_assert(l_string_equal(&ip, l_literal_strt("::3742:4723:5525")));
   l_string_free(&ip);
   /* protocol number */
   l_logd_1("IPPROTO_IP(0) is %d", ld(IPPROTO_IP));

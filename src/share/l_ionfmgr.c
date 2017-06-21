@@ -1,4 +1,4 @@
-#include "ionfmgr.h"
+#include "thatcore.h"
 
 #if defined(L_PLAT_LINUX)
 #include "linuxionf.c"

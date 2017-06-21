@@ -4,14 +4,14 @@
 #include "platsock.h"
 
 #if defined(L_PLAT_WINDOWS)
-#define UNICODE
-#define _UNICODE
-#define WIN32_LEAN_AND_MEAN
-#define _CRT_SECURE_NO_WARNINGS
-#include <windows.h>
+#include "winpref.h"
 #else
-#define _POSIX_C_SOURCE 200809L
-#include <pthread.h>
+#include "linuxpref.h"
+int l_mutex_size = sizeof(pthread_mutex_t);
+int l_rwlock_size = sizeof(pthread_rwlock_t);
+int l_condv_size = sizeof(pthread_cond_t);
+int l_thrkey_size = sizeof(pthread_key_t);
+int l_thrid_size = sizeof(pthread_t);
 #endif
 
 #include <stdio.h>
@@ -21,17 +21,8 @@
 #include <time.h>
 #include <stdlib.h>
 #include <stddef.h>
-#define l_byte unsigned char
 
-#if defined(L_PLAT_WINDOWS)
-/* window platform */
-#else
-int l_mutex_size = sizeof(pthread_mutex_t);
-int l_rwlock_size = sizeof(pthread_rwlock_t);
-int l_condv_size = sizeof(pthread_cond_t);
-int l_thrkey_size = sizeof(pthread_key_t);
-int l_thrid_size = sizeof(pthread_t);
-#endif
+#define l_byte unsigned char
 
 static void l_log_e(const void* fmt, ...) {
   const l_byte* p = (const l_byte*)fmt;

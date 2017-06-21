@@ -2581,3 +2581,255 @@ void l_worker_start() {
   }
 }
 
+
+
+
+
+typedef struct {
+  void* next;
+} l_hashslot;
+
+/* hash table - add/remove/search quick, need re-hash when enlarge size */
+typedef struct {
+  l_byte slotbits;
+  l_ushort offsetofnext;
+  l_umedit nslot; /* prime number size not near 2^n */
+  l_umedit nelem;
+  l_umedit (*getkey)(void*);
+  l_hashslot* slot;
+} l_hashtable;
+
+l_extern int l_is_prime(l_umedit n);
+l_extern l_umedit l_middle_prime(l_byte bits);
+
+l_extern void l_hashtable_init(l_hashtable* self, l_byte sizebits, int offsetofnext, l_umedit (*getkey)(void*));
+l_extern void l_hashtable_free(l_hashtable* self);
+l_extern void l_hashtable_foreach(l_hashtable* self, void (*cb)(void*));
+l_extern void l_hashtable_add(l_hashtable* self, void* elem);
+l_extern void* l_hashtable_find(l_hashtable* self, l_umedit key);
+l_extern void* l_hashtable_del(l_hashtable* self, l_umedit key);
+
+/* table size is enlarged auto */
+typedef struct {
+  l_hashtable* cur;
+  l_hashtable* old;
+  l_hashtable a;
+  l_hashtable b;
+} l_backhash;
+
+l_extern void l_backhash_init(l_backhash* self, l_byte initsizebits, int offsetofnext, l_umedit (*getkey)(void*));
+l_extern void l_backhash_free(l_backhash* self);
+l_extern void l_backhash_add(l_backhash* self, void* elem);
+l_extern void* l_backhash_find(l_backhash* self, l_umedit key);
+l_extern void* l_backhash_del(l_backhash* self, l_umedit key);
+
+
+
+
+
+/**
+ * hash table - add/remove/search quick, need re-hash when enlarge buffer size
+ */
+
+int l_is_prime(l_umedit n) {
+  l_uinteger i = 0;
+  if (n == 2) return true;
+  if (n == 1 || (n % 2) == 0) return false;
+  for (i = 3; i*i <= n; i += 2) {
+    if ((n % i) == 0) return false;
+  }
+  return true;
+}
+
+/* return prime is less than 2^bits and greater then 2^(bits-1) */
+l_umedit l_middle_prime(l_byte bits) {
+  l_umedit i, n, mid, m = (1 << bits);
+  l_umedit dn = 0, dm = 0; /* distance */
+  l_umedit nprime = 0, mprime = 0;
+  if (m == 0) return 0; /* max value of bits is 31 */
+  if (bits < 3) return bits + 1; /* 1(2^0) 2(2^1) 4(2^2) => 1 2 3 */
+  n = (1 << (bits - 1)); /* even number */
+  mid = 3 * (n >> 1); /* middle value between n and m, even number */
+  for (i = mid - 1; i > n; i -= 2) {
+    if (l_is_prime(i)) {
+      dn = i - n;
+      nprime = i;
+      break;
+    }
+  }
+  for (i = mid + 1; i < m; i += 2) {
+    if (l_is_prime(i)) {
+      dm = m - i;
+      mprime = i;
+      break;
+    }
+  }
+  return (dn > dm ? nprime : mprime);
+}
+
+void l_hashtable_init(l_hashtable* self, l_byte sizebits, int offsetofnext, l_umedit (*getkey)(void*)) {
+  if (sizebits > 30) {
+    l_loge_s("size too large");
+    return;
+  }
+  if (sizebits < 3) {
+    sizebits = 3;
+  }
+  self->slotbits = sizebits;
+  self->nslot = l_middle_prime(sizebits);
+  self->slot = (l_hashslot*)l_raw_calloc(sizeof(l_hashslot)*self->nslot);
+  self->nelem = 0;
+  self->offsetofnext = l_cast(l_ushort, offsetofnext);
+  self->getkey = getkey;
+}
+
+void l_hashtable_free(l_hashtable* self) {
+  if (self->slot) {
+    l_raw_free(self->slot);
+    self->slot = 0;
+  }
+  l_zero_l(self, sizeof(l_hashtable));
+}
+
+static l_umedit llgethashval(l_hashtable* self, void* elem) {
+  return (self->getkey(elem) % self->nslot);
+}
+
+static void llsetelemnext(l_hashtable* self, void* elem, void* next) {
+  *((void**)((l_byte*)elem + self->offsetofnext)) = next;
+}
+
+static void* llgetnextelem(l_hashtable* self, void* elem) {
+  return *((void**)((l_byte*)elem + self->offsetofnext));
+}
+
+void l_hashtable_add(l_hashtable* self, void* elem) {
+  l_hashslot* slot = 0;
+  if (elem == 0) return;
+  slot = self->slot + llgethashval(self, elem);
+  llsetelemnext(self, elem, slot->next);
+  slot->next = elem;
+  self->nelem += 1;
+}
+
+void l_hashtable_foreach(l_hashtable* self, void (*cb)(void*)) {
+  l_hashslot* slot = self->slot;
+  l_hashslot* end = slot + self->nslot;
+  l_hashslot* elem = 0;
+  if (self->slot == 0) return;
+  for (; slot < end; ++slot) {
+    elem = slot->next;
+    while (elem) {
+      cb(elem);
+      elem = llgetnextelem(self, elem);
+    }
+  }
+}
+
+void* l_hashtable_find(l_hashtable* self, l_umedit key) {
+  l_hashslot* slot = 0;
+  void* elem = 0;
+  slot = self->slot + (key % self->nslot);
+  elem = slot->next;
+  while (elem != 0) {
+    if (self->getkey(elem) == key) {
+      return elem;
+    }
+    elem = llgetnextelem(self, elem);
+  }
+  return 0;
+}
+
+void* l_hashtable_del(l_hashtable* self, l_umedit key) {
+  l_hashslot* slot = 0;
+  void* prev = 0;
+  void* elem = 0;
+  slot = self->slot + (key % self->nslot);
+  if (slot->next == 0) {
+    return 0;
+  }
+  if (self->getkey(slot->next) == key) {
+    elem = slot->next;
+    slot->next = llgetnextelem(self, elem);
+    self->nelem -= 1;
+    return elem;
+  }
+  prev = slot->next;
+  while ((elem = llgetnextelem(self, prev)) != 0) {
+    if (self->getkey(elem) == key) {
+      llsetelemnext(self, prev, llgetnextelem(self, elem));
+      self->nelem -= 1;
+      return elem;
+    }
+    prev = elem;
+  }
+  return 0;
+}
+
+void l_backhash_init(l_backhash* self, l_byte initsizebits, int offsetofnext, l_umedit (*getkey)(void*)) {
+  l_hashtable_init(&self->a, initsizebits, offsetofnext, getkey);
+  self->cur = &(self->a);
+  self->b.slot = 0;
+  self->old = &(self->b);
+}
+
+void l_backhash_free(l_backhash* self) {
+  l_hashtable_free(&self->a);
+  l_hashtable_free(&self->b);
+  self->cur = self->old = 0;
+}
+
+static int ll_need_to_enlarge(l_backhash* self) {
+  l_hashtable* t = self->cur;
+  return (t->nelem > t->nslot * 2);
+}
+
+void l_backhash_add(l_backhash* self, void* elem) {
+  if (elem == 0) return;
+  if (!ll_need_to_enlarge(self)) {
+    l_hashtable_add(self->cur, elem);
+  } else {
+    l_hashtable oldtable = *(self->old);
+    l_hashtable* temp = 0;
+    l_hashtable_init(self->old, self->cur->slotbits*2, self->cur->offsetofnext, self->cur->getkey);
+    /* switch curtable to new enlarged table */
+    temp = self->cur;
+    self->cur = self->old;
+    self->old = temp;
+    /* re-hash previous old table elements to new table */
+    if (oldtable.slot && oldtable.nelem) {
+      l_hashslot* slot = oldtable.slot;
+      l_hashslot* end = slot + oldtable.nslot;
+      l_hashslot* head = 0;
+      for (; slot < end; ++slot) {
+        head = slot;
+        while (head->next) {
+          void* elem = head->next;
+          head->next = llgetnextelem(&oldtable, elem);
+          l_hashtable_add(self->cur, elem);
+        }
+      }
+    }
+    if (oldtable.slot) {
+      l_hashtable_free(&oldtable);
+    }
+    l_hashtable_add(self->cur, elem);
+  }
+}
+
+void* l_backhash_find(l_backhash* self, l_umedit key) {
+  void* elem = l_hashtable_find(self->cur, key);
+  if (elem == 0 && self->old->slot) {
+    return l_hashtable_find(self->old, key);
+  }
+  return elem;
+}
+
+void* l_backhash_del(l_backhash* self, l_umedit key) {
+  void* elem = l_hashtable_del(self->cur, key);
+  if (elem == 0 && self->old->slot) {
+    return l_hashtable_del(self->old, key);
+  }
+  return elem;
+}
+
