@@ -21,15 +21,12 @@ typedef struct l_thread {
   l_linknode node;
   l_umedit weight;
   l_ushort index;
-  l_byte msgwait;
-  l_byte iowait;
+  int msgwait;
   /* shared with master */
-  l_mutex* svmtx; /* guard srvc fields except svrc.io.node */
+  l_mutex* svmtx; /* guard service->ioev */
   l_mutex* mutex;
   l_condv* condv;
   l_squeue* rxmq;
-  l_squeue* rxio;
-  l_hashtable* evht;
   /* thread own use */
   lua_State* L;
   l_squeue* txmq;
@@ -82,6 +79,7 @@ l_extern void l_thread_free_buffer(l_freeq* q, void* buffer, void (*extrafree)(v
 l_extern void* l_thread_pop_buffer(l_freeq* q, l_int sizeofbuffer);
 l_extern void l_thread_push_buffer(l_freeq* q, void* buffer);
 
+l_extern l_thread* l_master_thread();
 l_extern int l_thread_start(l_thread* self, int (*start)());
 l_extern int l_thread_join(l_thread* self);
 l_extern void l_thread_exit();

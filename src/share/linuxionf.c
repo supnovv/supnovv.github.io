@@ -562,9 +562,9 @@ int l_ionfmgr_mod(l_ionfmgr* self, l_ioevent* event) {
   return llepollmgr_mod(mgr->epfd, event->fd, &e);
 }
 
-int l_ionfmgr_del(l_ionfmgr* self, l_ioevent* event) {
+int l_ionfmgr_del(l_ionfmgr* self, l_handle fd) {
   llepollmgr* mgr = (llepollmgr*)self;
-  return llepollmgr_del(mgr->epfd, event->fd);
+  return llepollmgr_del(mgr->epfd, fd);
 }
 
 /* return > 0 success, -1 block, -2 error, -3 already signaled */

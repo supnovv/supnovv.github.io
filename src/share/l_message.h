@@ -29,13 +29,19 @@ typedef struct {
 
 typedef struct {
   l_message head;
+  l_umedit svid;
+  l_handle sock;
+} l_closesock_message;
+
+typedef struct {
+  l_message head;
   l_handle fd;
 } l_message_fd;
 
 typedef struct {
   l_message head;
-  void* ptr;
-} l_message_ptr;
+  void* uptr; /* user ptr */
+} l_message_up;
 
 typedef struct {
   l_message head;
@@ -63,7 +69,7 @@ l_extern void l_free_message_queue(l_thread* thread, l_squeue* mq);
 l_extern void l_send_message(l_thread* thread, l_umedit destid, l_message* msg);
 l_extern void l_send_message_tp(l_thread* thread, l_umedit destid, l_umedit type);
 l_extern void l_send_message_fd(l_thread* thread, l_umedit destid, l_umedit type, l_handle fd);
-l_extern void l_send_message_ptr(l_thread* thread, l_umedit destid, l_umedit type, void* ptr);
+l_extern void l_send_message_up(l_thread* thread, l_umedit destid, l_umedit type, void* uptr);
 l_extern void l_send_message_u32(l_thread* thread, l_umedit destid, l_umedit type, l_umedit u32);
 l_extern void l_send_message_u64(l_thread* thread, l_umedit destid, l_umedit type, l_ulong u64);
 l_extern void l_send_message_s32(l_thread* thread, l_umedit destid, l_umedit type, l_medit s32);

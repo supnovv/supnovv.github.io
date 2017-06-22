@@ -33,9 +33,9 @@ void l_send_message_fd(l_thread* thread, l_umedit destid, l_umedit type, l_handl
   l_send_message(thread, destid, &msg->head);
 }
 
-void l_send_message_ptr(l_thread* thread, l_umedit destid, l_umedit type, void* ptr) {
-  l_message_ptr* msg = (l_message_ptr*)l_create_message(thread, type, sizeof(l_message_ptr));
-  msg->ptr = ptr;
+void l_send_message_up(l_thread* thread, l_umedit destid, l_umedit type, void* uptr) {
+  l_message_up* msg = (l_message_up*)l_create_message(thread, type, sizeof(l_message_up));
+  msg->uptr = uptr;
   l_send_message(thread, destid, &msg->head);
 }
 

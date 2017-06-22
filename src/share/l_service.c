@@ -7,16 +7,17 @@
 #define L_SERVICE_RUNNING    0x01
 #define L_SERVICE_SAMETHREAD 0x04
 
-extern l_umedit ll_gen_service_id();
+extern l_umedit l_master_gen_service_id();
 
 l_service* l_create_service(l_thread* thread, l_int size, int (*entry)(l_service*, l_message*), int insamethread) {
   l_debug_assert(thread == l_thread_self());
   l_service* srvc = l_thread_pop_buffer(thread, size);
-  srvc->svid = ll_gen_service_id();
+  srvc->svid = l_master_gen_service_id();
   srvc->ioev = 0;
   srvc->belong = thread;
   srvc->co = 0;
   srvc->entry = entry;
+  srvc->flags = srvc->outflags = 0;
   if (insamethread) {
     srvc->flags |= L_SERVICE_SAMETHREAD;
   } else {
@@ -29,7 +30,7 @@ void l_start_service(l_service* srvc) {
   if (!(srvc->flags & L_SERVICE_SAMETHREAD)) {
     srvc->belong = 0;
   }
-  l_send_message_ptr(thread, L_SERVICE_MASTER_ID, L_MESSAGE_START_SERVICE, srvc);
+  l_send_message_up(thread, L_SERVICE_MASTER_ID, L_MESSAGE_START_SERVICE, srvc);
 }
 
 static void ll_start_ioevent_service(l_service* srvc, l_handle sock, l_ushort masks, l_ushort flags) {
@@ -65,6 +66,28 @@ void l_start_receiver_service(l_service* srvc, l_handle sock) {
 
 void l_stop_service(l_service* srvc) {
   srvc->flags &= (~L_SERVICE_RUNNING);
+}
+
+void l_close_socket(l_service* srvc) {
+  l_thread* thread = srvc->belong;
+  l_mutex* svmtx = thread->svmtx;
+  l_ioevent* ioev = 0;
+  l_handle sock = -1;
+
+  l_mutex_lock(svmtx);
+  ioev = srvc->ioev;
+  if (ioev) {
+    sock = ioev->fd;
+    ioev->fd = -1;
+    if (ioev->masks == 0) {
+      srvc->ioev = 0;
+      l_thread_free_buffer(ioev, 0);
+    }
+  }
+  l_mutex_unlock(svmtx);
+
+  if (sock == -1) return;
+  l_send_message_fd(thread, L_SERVICE_MASTER_ID, L_MESSAGE_CLOSE_SOCKET, sock);
 }
 
 int l_service_resume(l_service* self, int (*func)(l_state*)) {
