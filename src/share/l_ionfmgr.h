@@ -15,7 +15,6 @@
 #define L_IOEVENT_FLAG_CONNECT 0x04
 
 typedef struct l_ioevent {
-  L_COMMON_BUFHEAD
   l_handle fd;
   l_umedit udata;
   l_ushort masks;
