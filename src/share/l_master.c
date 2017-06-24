@@ -3,6 +3,91 @@
 #include "l_message.h"
 #include "l_service.h"
 
+l_thrkey llg_thread_key;
+l_thrkey llg_logger_key;
+l_thread_local(l_thread* llg_thread_ptr);
+l_thread_local(l_logger* llg_logger_ptr);
+
+static l_priorq llg_thread_prq;
+static l_thread* llg_threads;
+static int llg_num_threads;
+
+static l_thread* llg_master_thread;
+static l_ionfmgr llg_ionf_mgr;
+
+static l_squeue llg_msg_rxq;
+static l_mutex llg_msg_lock;
+
+static l_mutex llg_srvc_mtx;
+static l_umedit llg_svid_seed;
+static l_srvctable llg_srvc_table;
+static l_squeue llg_srvc_frq;
+
+typedef struct {
+  l_mutex ma;
+  l_mutex mb;
+  l_condv ca;
+  l_logger l;
+  l_freeq co;
+  l_freeq bf;
+  l_squeue qa;
+  l_squeue qb;
+  l_squeue qc;
+  l_squeue qd;
+} l_thrblock;
+
+static int llthreadless(void* lhs, void* rhs) {
+  return ((l_thread*)lhs)->weight < ((l_thread*)rhs)->weight;
+}
+
+void l_threadpool_create(int numofthread) {
+  l_thread* t = 0;
+  l_thrblock* b = 0;
+
+  l_thrkey_init(&llg_thread_key);
+  l_thrkey_init(&llg_logger_key);
+  l_priorq_init(&llg_thread_prq, llthreadless);
+
+  while (numofthread-- > 0) {
+    t = (l_thread*)l_raw_calloc(sizeof(l_thread));
+    t->block = l_raw_malloc(sizeof(l_thrblock));
+    t->index = (l_ushort)numofthread;
+    b = (l_thrblock*)t->block;
+    t->svmtx = &b->ma;
+    t->mutex = &b->mb;
+    t->condv = &b->ca;
+    t->log = &b->l;
+    t->frco = &b->co;
+    t->frbf = &b->bf;
+    t->rxmq = &b->qa;
+    t->rxio = &b->qb;
+    t->txmq = &b->qc;
+    t->txms = &b->qd;
+    l_priorq_push(&llg_thread_prq, &t->node);
+  }
+}
+
+void l_threadpool_destroy() {
+  l_thread* t = 0;
+  while ((t = (l_thread*)l_priorq_pop(&llg_thread_prq))) {
+    l_raw_free(t->block);
+    l_raw_free(t);
+  }
+}
+
+l_thread* l_threadpool_acquire() {
+  l_thread* thread = (l_thread*)l_priorq_pop(&llg_thread_prq);
+  thread->weight += 1;
+  l_priorq_push(&llg_thread_prq, &thread->node);
+  return thread;
+}
+
+void l_threadpool_release(l_thread* thread) {
+  thread->weight -= 1;
+  l_priorq_remove(&llg_thread_prq, &thread->node);
+  l_priorq_push(&llg_thread_prq, &thread->node);
+}
+
 typedef struct {
   l_smplnode node;
 } l_srvcslot;
@@ -106,20 +191,10 @@ static void l_srvctable_free(l_srvctable* self, void (*elemfree)(l_service*)) {
 }
 
 #define L_MESSAGE_START_SERVICE 0x01
-#define L_MESSAGE_STOP_SERVICE 0x02
-#define L_MESSAGE_CLOSE_SOCKET 0x03
+#define L_MESSAGE_CLOSE_SERVICE 0x02
+#define L_MESSAGE_CLOSE_SRVCRSP 0x03
+#define L_MESSAGE_CLOSE_EVENTFD 0x04
 #define L_MIN_SERVICE_ID (1024*1024)
-
-static l_thread* llg_master_thread;
-static l_ionfmgr llg_ionf_mgr;
-
-static l_squeue llg_msg_rxq;
-static l_mutex llg_msg_lock;
-
-static l_mutex llg_srvc_mtx;
-static l_umedit llg_svid_seed;
-static l_srvctable llg_srvc_table;
-static l_squeue llg_srvc_frq;
 
 static l_master_init(l_thread* master, l_byte srvctablesizebits) {
   llg_master_thread = master;
@@ -189,6 +264,10 @@ static l_service* l_master_find_service(l_umedit svid) {
   return l_srvctable_find(&llg_srvc_table, svid);
 }
 
+static l_service* l_master_del_service(l_umedit svid) {
+  return l_srvctable_del(&llg_srvc_table, svid);
+}
+
 static void l_master_get_messages(l_squeue* outq) {
   l_squeue* mq = &llg_msg_rxq;
   l_mutex* mtx = &llg_msg_lock;
@@ -222,67 +301,53 @@ static void l_master_accept_connection(void* ud, l_sockconn* conn) {
   l_send_message(master, sv->svid, msg);
 }
 
-static void l_master_dispatch_event(l_ioevent* event) {
+static void l_master_dispatch_event(l_ioevent* rxev) {
   l_thread* master = l_master_thread();
   l_service* srvc = 0;
-  l_ioevent* svio = 0;
   l_thread* thread = 0;
-  l_mutex* mtx = 0;
-  l_umedit type = 0;
-  int notify = false;
+  l_mutex* svmtx = 0;
+  l_ioevent* srev = 0;
 
-  /* there are no events */
-  if (event->masks == 0) {
+  if (rxev->masks == 0) return;
+  if (!(srvc = l_master_find_service(rxev->svid))) return;
+  if (!(thread = srvc->belong)) return;
+  if (!(srvc->mflgs & L_SERVICE_IO_EVENT)) return;
+
+  svmtx = thread->svmtx;
+
+  l_mutex_lock(svmtx);
+  srev = srvc->ioev;
+  if (!srev || srev->fd != rxev->fd) {
+    l_mutex_unlock(svmtx);
     return;
   }
 
-  /* if event->svid is old released service's id, 0 is returned here */
-  srvc = l_master_find_service(event->svid);
-  if (!srvc) return;
-
-  thread = srvc->belong;
-  if (!thread) return;
-
-  mtx = thread->svmtx;
-
-  l_mutex_lock(mtx);
-
-  svio = &srvc->ioev;
-  if (!svio || svio->fd == -1 || svio->fd != event->fd) {
-    l_mutex_unlock(mtx);
+  if (srev->falgs & L_IOEVENT_FLAG_LISTEN) {
+    l_mutex_unlock(svmtx);
+    l_socket_accept(srev->fd, l_master_accept_connection, srvc);
     return;
   }
 
-  if (svio->falgs & L_IOEVENT_FLAG_LISTEN) {
-      type = L_MESSAGE_CONNIND;
-  } else if (svio->flags & L_IOEVENT_FLAG_CONNECT) {
-      svio->flags &= (~L_EVENT_FLAG_CONNECT);
-      type = L_MESSAGE_CONNRSP;
-  } else {
-    type = L_MESSAGE_IOEVENT;
-    if (svio->masks == 0) {
-      svio->masks = event->masks;
-      notify = true;
-    } else {
-      svio->masks |= event->masks;
-    }
-  }
-
-  l_mutex_unlock(mtx);
-
-  if (notify) {
-    l_send_message_up(master, srvc->svid, L_MESSAGE_IOEVENT, svio);
+  if (srev->flags & L_IOEVENT_FLAG_CONNECT) {
+    srev->flags &= (~L_EVENT_FLAG_CONNECT);
+    l_mutex_unlock(svmtx);
+    l_master_send_connrsp_message(srvc->dstid, srev);
     return;
   }
 
-  if (type == L_MESSAGE_CONNIND) {
-    l_socket_accept(srvc->event->fd, l_master_accept_connection, srvc);
-  } else if (type == L_MESSAGE_CONNRSP) {
-    l_master_send_connrsp_message(srvc->dstid, event);
+  if (srev->masks == 0) {
+    l_handle fd = event->fd;
+    l_umedit masks = event->masks = rxev->masks;
+    l_mutex_unlock(svmtx);
+    l_send_ioevent_message(master, srvc->svid, L_MESSAGE_IOEVENT, fd, masks);
+    return;
   }
+
+  srev->masks |= rxev->masks;
+  l_mutex_unlock(svmtx);
 }
 
-static void l_master_handle_own_messages(l_squeue* frmq) {
+static void l_master_messages_handle(l_squeue* frmq) {
   l_thread* master = l_master_thread();
   l_message* msg = 0;
   l_squeue msgq;
@@ -296,58 +361,51 @@ static void l_master_handle_own_messages(l_squeue* frmq) {
   while ((msg = (l_message*)l_squeue_pop(msgq))) {
     switch (msg->type) {
     case L_MESSAGE_START_SERVICE: {
-        l_service* srvc = (l_service*)((l_message_up*)msg)->uptr;
-
+        l_service* srvc = (l_service*)((l_message_ptr*)msg)->ptr;
         /* attach thread first */
         if (!srvc->belong) {
           srvc->belong = l_threadpool_acquire();
         }
-
         /* then add event */
         if (srvc->ioev) {
           l_ioevent event = *srvc->ioev;
           srvc->ioev->masks = 0; /* clear masks, prepare to receive */
           l_ionfmgr_add(l_master_get_ionfmgr(), &event);
         }
-
         /* add service online to table */
-        srvc->flags |= L_SERVICE_RUNNING;
-        srvc->outflags |= L_SERVICE_RUNNING;
         l_master_add_service(srvc);
       }
       break;
-    case L_MESSAGE_CLOSE_SOCKET: {
-        l_handle fd = ((l_message_fd*)msg)->fd;
+    case L_MESSAGE_CLOSE_EVENTFD: {
+        l_service_message* p = (l_service_message*)msg;
+        l_handle fd = p->fd;
+        l_service* srvc = 0;
+
+        if ((srvc = l_master_find_service(p->svid))) {
+          srvc->mflgs &= (~L_SERVICE_IO_EVENT);
+        }
+
         l_ionfmgr_del(l_master_get_ionfmgr(), fd);
         l_socket_close(fd);
       }
       break;
-    case L_MESSAGE_STOP_SERVICE: {
-        l_umedit svid = ((l_message_u32*)msg)->u32;
-        int remove = false;
-        l_handle fd = msg->fd;
-        l_service* srvc = l_servctable_find(&llg_srvc_table, svid);
-        if (!srvc) break;
+    case L_MESSAGE_CLOSE_SERVICE: {
+        l_service_message* p = (l_service_messgae*)msg;
+        l_service* srvc = l_master_del_service(p->svid);
+        l_handle fd = p->fd;
 
         if (fd != -1) {
           l_ionfmgr_del(l_master_get_ionfmgr(), fd);
           l_socket_close(fd);
         }
 
-        l_mutex_lock(srvc->belong->svmtx);
-        if (!srvc->ioev) remove = true;
-        l_mutex_unlock(srvc->belong->svmtx);
-
-        if (remove) {
-          l_service* temp = l_servctable_del(&llg_srvc_table, srvc->svid);
-          l_assert(temp == srvc);
-          l_threadpool_release(srvc->belong);
-          l_squeue_push(&llg_srvc_frq, &srvc->node);
-        }
+        if (!srvc) break;
+        l_threadpool_release(srvc->belong); /* L_MESSAGE_CLOSE_SRVCRSP is the last msg */
+        l_send_message_ptr(l_master_thread(), srvc->svid, L_MESSAGE_CLOSE_SRVCRSP, srvc);
       }
       break;
     default:
-      l_loge("unknow message id");
+      l_loge_s("unknow message id");
       break;
     }
 
@@ -355,91 +413,74 @@ static void l_master_handle_own_messages(l_squeue* frmq) {
   }
 }
 
-static int l_master_check_service_stopped(l_service* srvc, l_umedit destid) {
-  int stopped = false;
-  l_thread* thread = srvc->belong;
-  l_mutex* svmtx = 0;
-
-  if (!thread) return true;
-
-  svmtx = thread->svmtx;
-  l_mutex_lock(svmtx);
-  stopped = (srvc->outflags & L_SERVICE_RUNNING) == 0;
-  l_mutex_unlock(svmtx);
-
-  if (stopped || srvc->svid != destid) {
-    return true;
-  }
-
-  return false;
-}
-
-/* 优化: 先将要发送的消息和事件按thread分组，再一次发送 */
 void l_master_loop() {
   l_squeue rxmq, frmq;
   l_message* msg = 0;
   l_service* srvc = 0;
   l_thread* thread = 0;
-  l_thread* master = l_master_thread();
-  l_ioevent* ioev = 0;
-  l_mutex* emtx = 0;
+  l_thread** ta = &llg_threads;
+  l_squeue* mq = 0;
+  int n = llg_num_threads;
+  int i = 0;
+
+  mq = (l_squeue)l_raw_calloc(sizeof(l_squeue) * n);
+  for (; i < n; ++i) {
+    l_squeue_init(mq + i);
+  }
 
   l_squeue_init(&rxmq);
   l_squeue_init(&frmq);
 
   for (; ;) {
     l_ionfmgr_wait(l_master_get_ionfmgr(), l_master_dispatch_event);
+    l_master_messages_handle(&frmq); /* handle master's messages */
+    l_master_get_messages(&rxmq); /* messages belong to workers */
+    l_squeue_push_queue(&rxmq, &master->txmq); /* master to workers' messages */
 
-    /* messages to master */
-    l_master_handle_own_messages(&frmq);
-
-    /* messages to workers */
-    l_master_get_messages(&rxmq);
-    l_squeue_push_queue(&rxmq, &master->txmq);
-
-    /* deliver messages to workers */
     while ((msg = (l_message*)l_squeue_pop(&rxmq))) {
       srvc = l_master_find_service(msg->dstid);
-      if (!srvc) {
+      if (!srvc && msg->type != L_MESSAGE_CLOSE_SRVCRSP) {
         l_squeue_push(&frmq, &msg->node);
         continue;
       }
 
-      if ((l_master_check_service_stopped(srvc, msg->dstid)) {
-        l_squeue_push(&frmq, &msg->node);
+      if (msg->type == L_MESSAGE_CLOSE_SRVCRSP) {
+        srvc = (l_service*)((l_message_ptr*)msg)->ptr;
+        thread = srvc->belong;
+      } else {
+        l_mutex* svmtx = 0;
+        thread = srvc->belong;
+        svmtx = thread->svmtx;
+        l_mutex_lock(svmtx);
+        if (srvc->stop_rx_msg) {
+          l_mutex_unlock(svmtx);
+          l_squeue_push(&frmq, &msg->node);
+          continue;
+        }
+        l_mutex_unlock(svmtx);
+      }
+
+      msg->srvc = srvc;
+      l_squeue_push(mq + thread->index, &msg->node);
+    }
+
+    for (i = 0; i < n; ++i) {
+      if (l_squeue_is_empty(mq + i)) continue;
+      thread = ta[i];
+
+      l_thread_lock(thread);
+      l_squeue_push_queue(&thread->rxmq, mq + i);
+      if (thread->msgwait) {
+        l_thread_unlock(thread);
         continue;
       }
-
-      thread = srvc->belong;
-      msg->extra = srvc;
-
-      l_thread_lock(thread);
-      l_squeue_push(&thread->rxmq, &msg->node);
-      if (!thread->msgwait) {
-        thread->msgwait = 1;
-        l_condv_signal(&thread->condv);
-      }
+      thread->msgwait = 1;
       l_thread_unlock(thread);
+
+      l_condv_signal(&thread->condv);
     }
 
-    /* free master handled or un-delivered messages */
-    l_free_message_queue(master, &frmq);
-
-#if 0
-    /* dispatch events to workers */
-    while ((ioev = (l_ioevent*)l_squeue_pop(&master->rxio))) {
-      srvc = ioev->srvc;
-      thread = srvc->belong;
-
-      l_thread_lock(thread);
-      l_squeue_push(&thread->rxio, &ioev->node);
-      if (!thread->iowait) {
-        thread->iowait = 1;
-        l_condv_signal(&thread->condv);
-      }
-      l_thread_unlock(thread);
-    }
-#endif
+    l_free_message_queue(l_master_thread(), &frmq);
   }
 }
 
@@ -503,19 +544,15 @@ static int ll_is_ioevent_message(l_message* msg) {
 }
 
 void l_worker_loop() {
-  l_squeue msgq, frmq, rxio;
-  l_service* service = 0;
+  l_squeue msgq, frmq;
+  l_service* srvc = 0;
   l_message* msg = 0;
-  l_thread* thread = l_thread_self();
-  l_mutex* emtx = 0;
-  l_ioevent* event = 0;
-  l_ioevent_message iomsg;
-  l_handle sock = -1;
-  l_ushort masks = 0;
+  l_thread* thread = 0;
 
   l_squeue_init(&msgq);
-  l_squeue_init(&rxio);
   l_squeue_init(&frmq);
+
+  thread = l_thread_self();
 
   for (; ;) {
     l_thread_lock(thread);
@@ -527,84 +564,52 @@ void l_worker_loop() {
     l_thread_unlock(thread);
 
     while ((msg = (l_message*)l_squeue_pop(&msgq))) {
-      service = (l_service*)msg->extra;
-      svmtx = thread->svmtx;
+      srvc = msg->srvc;
 
-      if (ll_is_ioevent_message(msg)) {
-        event = msg->evptr; /* 不需要通过消息传送evptr，因为从service->ioev就可以得到 */
-
-        l_mutex_lock(svmtx);
-        if (service->ioev == 0) {
-          l_squeue_push(&frmq, &msg->node);
-          l_mutex_unlock(svmtx);
-          continue;
-        }
-
-        sock = event->fd;
-        if (sock == -1) {
-          event = service->ioev;
-          service->ioev = 0;
-          l_mutex_unlock(svmtx);
-
-          l_thread_free_buffer(event, 0);
-          l_squeue_push(&frmq, &msg->node);
-          continue;
-        }
-
-        if (!(service->flag & L_SERVICE_RUNNING) || msg->svid != service->svid) {
-          event = service->ioev;
-          service->ioev = 0;
-          l_mutex_unlock(svmtx);
-
-          l_thread_free_buffer(event, 0);
-          l_squeue_push(&frmq, &msg->node);
-          l_send_message_fd(thread, L_SERVICE_MASTER_ID, L_MESSAGE_STOP_SERVICE, service->svid, -1);
-          continue;
-        }
-
-        masks = event->masks;
-        event->masks = 0;
-        l_mutex_unlock(svmtx);
-
-        /* TODO: deliver at least sock and masks to service */
-      } else {
-        if (!(service->flag & L_SERVICE_RUNNING) || msg->svid != service->svid) {
-            /* completed or the service is released or re-newed (new svid) */
+      switch (msg->type) {
+      case L_MESSAGE_CONNIND: case L_MESSAGE_CONNRSP: case L_MESSAGE_IOEVENT: {
+          l_mutex* svmtx = thread->svmtx;
+          if (!(srvc->wflgs & L_SERVICE_IO_EVENT)) {
             l_squeue_push(&frmq, &msg->node);
             continue;
+          }
+          l_mutex_lock(svmtx);
+          ((l_ioevent_message*)msg)->masks = srvc->ioev->masks;
+          srvc->ioev->masks = 0;
+          l_mutex_unlock(svmtx);
         }
+        break;
+      case L_MESSAGE_CLOSE_SRVCRSP:
+        l_thread_free_buffer(thread, srvc);
+        l_squeue_push(&frmq, &msg->node);
+        continue;
+      default:
+        break;
+      }
+
+      if (srvc->wflgs & L_SERVICE_CLOSING) {
+        l_squeue_push(&frmq, &msg->node);
+        continue;
       }
 
       srvc->entry(srvc, msg);
-      if (!(srvc->flag & L_SERVICE_RUNNING)) {
-        if (srvc->co) {
-          ll_free_coroutine(thread, service->co);
-          service->co = 0;
-        }
+      l_squeue_push(&frmq, &msg->node);
 
-        ll_lock_thread(thread);
-        service->outflag &= (~L_SERVICE_RUNNING);
-        ll_unlock_thread(thread);
-
-        svmtx = thread->svmtx;
-        sock = -1;
-
-        l_mutex_lock(svmtx);
-        event = service->ioev;
-        if (event) {
-          sock = ioev->fd;
-          event->fd = -1;
-          if (ioev->masks == 0) {
-            service->ioev = 0;
-            l_thread_free_buffer(ioev, 0);
-          }
-        }
-        l_mutex_unlock(svmtx);
-
-        l_send_message_fd(thread, L_SERVICE_MASTER_ID, L_MESSAGE_STOP_SERVICE, service->svid, sock);
+      if (!(srvc->flag & L_SERVICE_CLOSING)) {
+        continue;
       }
 
-      l_squeue_push(&freemq, &msg->node);
+      if (srvc->co) {
+        ll_free_coroutine(thread, srvc->co);
+        srvc->co = 0;
+      }
+
+      l_thread_lock(thread);
+      srvc->stop_rx_msg = 1;
+      l_thread_unlock(thread);
+
+      l_close_event(srvc);
+      l_send_service_message(thread, L_SERVICE_MASTER_ID, L_MESSAGE_CLOSE_SERVICE, srvc->svid, -1);
     }
 
     l_free_message_queue(thread, &frmq);

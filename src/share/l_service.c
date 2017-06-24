@@ -1,36 +1,40 @@
 #include "l_service.h"
 
 #define L_MESSAGE_START_SERVICE 0x01
-#define L_MESSAGE_STOP_SERVICE 0x02
-#define L_MESSAGE_REMOVE_EVENT 0x03
+#define L_MESSAGE_CLOSE_SERVICE 0x02
+#define L_MESSAGE_CLOSE_SRVCRSP 0x03
+#define L_MESSAGE_CLOSE_EVENTFD 0x04
 
-#define L_SERVICE_RUNNING    0x01
-#define L_SERVICE_SAMETHREAD 0x04
+#define L_SERVICE_SAMETHRD 0x01
+#define L_SERVICE_IO_EVENT 0x02
+#define L_SERVICE_CLOSING  0x04
 
 extern l_umedit l_master_gen_service_id();
 
 l_service* l_create_service(l_thread* thread, l_int size, int (*entry)(l_service*, l_message*), int insamethread) {
   l_debug_assert(thread == l_thread_self());
-  l_service* srvc = l_thread_pop_buffer(thread, size);
+  l_service* srvc = 0;
+  if (size < sizeof(l_service)) return 0;
+  srvc = l_thread_alloc_buffer(thread, size);
   srvc->svid = l_master_gen_service_id();
   srvc->ioev = 0;
   srvc->belong = thread;
   srvc->co = 0;
   srvc->entry = entry;
-  srvc->flags = srvc->outflags = 0;
+  srvc->stop_rx_msg = 0;
   if (insamethread) {
-    srvc->flags |= L_SERVICE_SAMETHREAD;
+    srvc->mflgs = srvc->wflgs = L_SERVICE_SAMETHRD;
   } else {
-    srvc->flags &= (~L_SERVICE_SAMETHREAD);
+    srvc->mflgs = srvc->wflgs = 0;
   }
 }
 
 void l_start_service(l_service* srvc) {
   l_thread* thread = srvc->belong;
-  if (!(srvc->flags & L_SERVICE_SAMETHREAD)) {
+  if (!(srvc->flags & L_SERVICE_SAMETHRD)) {
     srvc->belong = 0;
   }
-  l_send_message_up(thread, L_SERVICE_MASTER_ID, L_MESSAGE_START_SERVICE, srvc);
+  l_send_message_ptr(thread, L_SERVICE_MASTER_ID, L_MESSAGE_START_SERVICE, srvc);
 }
 
 static void ll_start_ioevent_service(l_service* srvc, l_handle sock, l_ushort masks, l_ushort flags) {
@@ -42,13 +46,15 @@ static void ll_start_ioevent_service(l_service* srvc, l_handle sock, l_ushort ma
     return l_start_service(srvc);
   }
 
-  ioev = (l_ioevent*)l_thread_alloc_buffer(thread, sizeof(l_ioevent));
-  ioev->sock = sock;
-  ioev->svid = srvc->svid;
+  srvc->ioev = &srvc->event;
+  srvc->wflgs |= L_SERVICE_IO_EVENT;
+  srvc->mflgs |= L_SERVICE_IO_EVENT;
+
+  ioev = srvc->ioev;
+  ioev->fd = sock;
+  ioev->udata = srvc->svid;
   ioev->masks = masks;
   ioev->flags = flags;
-  ioev->chained = 0;
-  srvc->ioev = ioev;
   l_start_service(srvc);
 }
 
@@ -64,30 +70,37 @@ void l_start_receiver_service(l_service* srvc, l_handle sock) {
   return ll_start_ioevent_service(srvc, sock, L_IOEVENT_RDWR, 0);
 }
 
-void l_stop_service(l_service* srvc) {
-  srvc->flags &= (~L_SERVICE_RUNNING);
+void l_close_service(l_service* srvc) {
+  srvc->wflgs |= L_SERVICE_CLOSING;
 }
 
-void l_close_socket(l_service* srvc) {
+void l_close_event(l_service* srvc) {
   l_thread* thread = srvc->belong;
-  l_mutex* svmtx = thread->svmtx;
-  l_ioevent* ioev = 0;
-  l_handle sock = -1;
+  l_handle fd = -1;
 
-  l_mutex_lock(svmtx);
-  ioev = srvc->ioev;
-  if (ioev) {
-    sock = ioev->fd;
+  l_debug_assert(thread == l_thread_self());
+
+  if (srvc->wflgs & L_SERVICE_IO_EVENT) {
+    l_ioevent* ioev = 0;
+    l_mutex* svmtx = thread->svmtx;
+
+    l_mutex_lock(svmtx);
+    ioev = srvc->ioev;
+    /* store fd to send to mater to close */
+    fd = ioev->fd;
+    /* reset fd as closed */
     ioev->fd = -1;
-    if (ioev->masks == 0) {
-      srvc->ioev = 0;
-      l_thread_free_buffer(ioev, 0);
-    }
-  }
-  l_mutex_unlock(svmtx);
+    /* if thread still has io message in the pending queue,
+    when to handle it, this message will be ignored due to
+    no event attached to service from now */
+    srvc->ioev = 0;
+    l_mutex_unlock(svmtx);
 
-  if (sock == -1) return;
-  l_send_message_fd(thread, L_SERVICE_MASTER_ID, L_MESSAGE_CLOSE_SOCKET, sock);
+    srvc->wflgs &= (~L_SERVICE_IO_EVENT);
+  }
+
+  if (fd == -1) return;
+  l_send_service_message(thread, L_SERVICE_MASTER_ID, L_MESSAGE_CLOSE_EVENTFD, srvc->svid, fd);
 }
 
 int l_service_resume(l_service* self, int (*func)(l_state*)) {

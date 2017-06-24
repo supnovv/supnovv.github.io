@@ -68,11 +68,6 @@ l_inline void l_thread_unlock(l_thread* self) {
   l_mutex_unlock(self->mutex);
 }
 
-l_extern void l_threadpool_create(int numofthread);
-l_extern void l_threadpool_destroy();
-l_extern l_thread* l_threadpool_acquire();
-l_extern void l_threadpool_release(l_thread* t);
-
 l_extern void* l_thread_alloc_buffer(l_freeq* q, l_int sizeofbuffer);
 l_extern void* l_thread_ensure_bfsize(l_freeq* q, void* buffer, l_int newsz);
 l_extern void l_thread_free_buffer(l_freeq* q, void* buffer, void (*extrafree)(void*));

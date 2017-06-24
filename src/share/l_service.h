@@ -9,6 +9,8 @@
 1. 队列不能直接赋值
 2. frsv只需要master拥有即可
 3. 需要标记service能不能释放，如果srvc->ioev没释放就不释放srvc
+4. state resume 返回错误时释放该co，并重新分配一个全新co
+
 假如现在masks不为0且一个消息已经发送给了线程，然后有来了一个事件：
 1. 如果master在检查masks前，线程还没有处理这个事件消息 - masks != 0, master update masks
 2. 如果master在检查masks前，线程已经处理了这个事件消息 - masks == 0, master update masks, and send a new message
@@ -34,16 +36,16 @@
 
 typedef struct l_service {
   L_COMMON_BUFHEAD
-  l_service* tnext; /* table link */
-  l_ioevent* ioev; /* guard by svmtx except ioev->node */
-  l_byte stop; /* service is stopping */
+  l_ioevent* ioev; /* guard by svmtx */
+  l_ioevent event; /* guard by svmtx */
+  l_byte stop_rx_msg; /* service is closing, guard by svmtx */
+  l_byte mflgs; /* only accessed by master */
   /* thread own use */
-  l_byte flags; /* only accessed by a worker */
+  l_byte wflgs; /* only accessed by a worker */
   l_umedit svid; /* only set once when init, so can freely access it */
   l_thread* belong; /* only set once when init, so can freely access it */
   l_state* co; /* only accessed by a worker */
   int (*entry)(l_service*, l_message*); /* only accessed by a worker */
-  l_ioevent event;
 } l_service;
 
 l_extern l_service* l_create_service(l_thread* thread, l_int size, int (*entry)(l_service*, l_message*), int samethread);
@@ -51,8 +53,8 @@ l_extern void l_start_service(l_service* srvc);
 l_extern void l_start_listener_service(l_service* srvc, l_handle sock);
 l_extern void l_start_initiator_service(l_service* srvc, l_handle sock);
 l_extern void l_start_receiver_service(l_service* srvc, l_handle sock);
-l_extern void l_stop_service(l_service* srvc);
-l_extern void l_close_socket(l_service* srvc);
+l_extern void l_close_service(l_service* srvc);
+l_extern void l_close_event(l_service* srvc);
 l_extern int l_service_resume(l_service* self, int (*func)(l_state*));
 l_extern int l_service_yield(l_service* self, int (*kfunc)(l_state*));
 

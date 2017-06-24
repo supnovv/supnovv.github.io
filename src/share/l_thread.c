@@ -1,67 +1,6 @@
 #include <stdlib.h>
 #include "l_thread.h"
 
-l_thrkey llg_thread_key;
-l_thrkey llg_logger_key;
-
-l_thread_local(l_thread* llg_thread_ptr);
-l_thread_local(l_logger* llg_logger_ptr);
-
-static l_priorq llg_thread_prq;
-
-typedef struct {
-  l_mutex ma;
-  l_mutex mb;
-  l_condv ca;
-  l_logger l;
-  l_freeq co;
-  l_freeq bf;
-  l_squeue qa;
-  l_squeue qb;
-  l_squeue qc;
-  l_squeue qd;
-} l_thrblock;
-
-static int llthreadless(void* lhs, void* rhs) {
-  return ((l_thread*)lhs)->weight < ((l_thread*)rhs)->weight;
-}
-
-void l_threadpool_create(int numofthread) {
-  l_thread* t = 0;
-
-  l_thrkey_init(&llg_thread_key);
-  l_thrkey_init(&llg_logger_key);
-  l_priorq_init(&llg_thread_prq, llthreadless);
-
-  while (numofthread-- > 0) {
-    t = (l_thread*)l_raw_calloc(sizeof(l_thread));
-    t->block = l_raw_malloc(sizeof(l_thrblock));
-    t->index = (l_ushort)numofthread;
-    l_priorq_push(&llg_thread_prq, &t->node);
-  }
-}
-
-void l_threadpool_destroy() {
-  l_thread* t = 0;
-  while ((t = (l_thread*)l_priorq_pop(&llg_thread_prq))) {
-    l_raw_free(t->block);
-    l_raw_free(t);
-  }
-}
-
-l_thread* l_threadpool_acquire() {
-  l_thread* thread = (l_thread*)l_priorq_pop(&llg_thread_prq);
-  thread->weight += 1;
-  l_priorq_push(&llg_thread_prq, &thread->node);
-  return thread;
-}
-
-void l_threadpool_release(l_thread* thread) {
-  thread->weight -= 1;
-  l_priorq_remove(&llg_thread_prq, &thread->node);
-  l_priorq_push(&llg_thread_prq, &thread->node);
-}
-
 static void ll_freeq_init(l_freeq* self) {
   *self = (l_freeq){{{0},0}, 0};
   l_squeue_init(&self->queue);
@@ -164,16 +103,7 @@ void l_freeq_free_buffer(l_freeq* q, void* buffer, void (*extrafree)(void*)) {
 
 static void llthreadinit(l_thread* self) {
   l_thrblock* b = self->block;
-  self->svmtx = &b->ma;
-  self->mutex = &b->mb;
-  self->condv = &b->ca;
-  self->log = &b->l;
-  self->frco = &b->co;
-  self->frbf = &b->bf;
-  self->rxmq = &b->qa;
-  self->rxio = &b->qb;
-  self->txmq = &b->qc;
-  self->txms = &b->qd;
+
 
   l_mutex_init(self->svmtx);
   l_mutex_init(self->mutex);
@@ -191,40 +121,18 @@ static void llthreadinit(l_thread* self) {
 }
 
 static void llthreadfree(l_thread* self) {
-  if (self->svmtx) {
-    l_mutex_free(self->svmtx);
-    self->svmtx = 0;
-  }
-
-  if (self->mutex) {
-    l_mutex_free(self->mutex);
-    self->mutex = 0;
-  }
-
-  if (self->condv) {
-    l_condv_free(self->condv);
-    self->condv = 0;
-  }
+  l_mutex_free(self->svmtx);
+  l_mutex_free(self->mutex);
+  l_condv_free(self->condv);
 
   if (self->L) {
    l_close_luastate(self->L);
    self->L = 0;
   }
 
-  if (self->log) {
-    /* TODO: l_logger_free(self->log); */
-    self->log = 0;
-  }
-
-  if (self->frco) {
-    ll_freeq_free(self->frco, 0);
-    self->frco = 0;
-  }
-
-  if (self->frbf) {
-    ll_freeq_free(self->frbf, 0);
-    self->frbf = 0;
-  }
+  /* TODO: l_logger_free(self->log); */
+  ll_freeq_free(self->frco, 0);
+  ll_freeq_free(self->frbf, 0);
 
   /* TODO: free elems in rxmq/rxio/txmq/txms */
 }

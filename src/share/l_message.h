@@ -10,28 +10,29 @@
 
 typedef struct l_message {
   L_COMMON_BUFHEAD
-  void* extra;
+  l_service* srvc;
   l_umedit dstid;
   l_umedit type;
 } l_message;
 
 typedef struct {
   l_message head;
-  l_handle sock;
+  l_handle fd;
+  l_umedit masks;
   l_sockaddr remote;
 } l_connind_message;
 
 typedef struct {
   l_message head;
-  l_handle sock;
+  l_handle fd;
   l_umedit masks;
 } l_ioevent_message;
 
 typedef struct {
   l_message head;
   l_umedit svid;
-  l_handle sock;
-} l_closesock_message;
+  l_handle fd;
+} l_service_message;
 
 typedef struct {
   l_message head;
@@ -40,8 +41,8 @@ typedef struct {
 
 typedef struct {
   l_message head;
-  void* uptr; /* user ptr */
-} l_message_up;
+  void* ptr;
+} l_message_ptr;
 
 typedef struct {
   l_message head;
@@ -69,11 +70,13 @@ l_extern void l_free_message_queue(l_thread* thread, l_squeue* mq);
 l_extern void l_send_message(l_thread* thread, l_umedit destid, l_message* msg);
 l_extern void l_send_message_tp(l_thread* thread, l_umedit destid, l_umedit type);
 l_extern void l_send_message_fd(l_thread* thread, l_umedit destid, l_umedit type, l_handle fd);
-l_extern void l_send_message_up(l_thread* thread, l_umedit destid, l_umedit type, void* uptr);
+l_extern void l_send_message_ptr(l_thread* thread, l_umedit destid, l_umedit type, void* ptr);
 l_extern void l_send_message_u32(l_thread* thread, l_umedit destid, l_umedit type, l_umedit u32);
 l_extern void l_send_message_u64(l_thread* thread, l_umedit destid, l_umedit type, l_ulong u64);
 l_extern void l_send_message_s32(l_thread* thread, l_umedit destid, l_umedit type, l_medit s32);
 l_extern void l_send_message_s64(l_thread* thread, l_umedit destid, l_umedit type, l_long s64);
+
+l_extern void l_send_service_message(l_thread* thread, l_umedit destid, l_umedit type, l_umedit svid, l_handle fd);
 
 #endif /* l_message_lib_h */
 
