@@ -172,6 +172,8 @@ typedef struct {
   int size;
 } l_logger;
 
+l_extern void l_logger_free(l_logger* self);
+l_extern void l_logger_init(l_logger* self, l_int size, const void* file);
 l_extern void l_assert_func_impl(int pass, const void* expr, const void* fileline);
 l_extern void l_logger_func_impl(const void* tag, const void* fmt, ...);
 l_extern void l_set_log_level(int level);
@@ -368,8 +370,8 @@ l_specif int l_condv_timedwait(l_condv* self, l_mutex* mutex, l_long ns);
 l_specif void l_condv_signal(l_condv* self);
 l_specif void l_condv_broadcast(l_condv* self);
 
-l_specif l_thrid l_raw_self_thread();
-l_specif int l_raw_create_thread(l_thrid* thrid, void* (*start)(void*), void* para);
+l_specif l_thrid l_raw_thread_self();
+l_specif int l_raw_thread_create(l_thrid* thrid, void* (*start)(void*), void* para);
 l_specif int l_raw_thread_join(l_thrid* thrid);
 l_specif void l_raw_thread_exit();
 l_specif void l_thread_sleep(l_long us);

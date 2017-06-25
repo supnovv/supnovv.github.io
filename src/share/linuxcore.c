@@ -663,13 +663,13 @@ void l_condv_broadcast(l_condv* self) {
   }
 }
 
-l_thrid l_raw_self_thread() {
+l_thrid l_raw_thread_self() {
   l_thrid thrid;
   *((pthread_t*)&thrid) = pthread_self();
   return thrid;
 }
 
-int l_raw_create_thread(l_thrid* thrid, void* (*start)(void*), void* para) {
+int l_raw_thread_create(l_thrid* thrid, void* (*start)(void*), void* para) {
   pthread_t* thread = (pthread_t*)thrid;
   int n = pthread_create(thread, 0, start, para);
   if (n != 0) {
