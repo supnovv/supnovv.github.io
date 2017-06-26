@@ -1,25 +1,24 @@
 #include <stdlib.h>
 #include "l_thread.h"
+#include "l_state.h"
 
 extern int l_thread_mem_limit;
 extern int l_thread_log_bfsz;
-extern void* l_thread_log_file
+extern void* l_thread_log_file;
 
 typedef struct {
   l_squeue queue; /* free buffer q */
   l_int size;  /* size of the queue */
-  l_int total; /* total newed elems */
-  l_int ttmem; /* total memory size */
-  l_int limit; /* memory size limit */
+  l_int frmem; /* free memory size */
+  l_int limit; /* free memory limit */
 } l_freebufq;
 
 typedef struct {
   L_COMMON_BUFHEAD
 } l_bufhead;
 
-void* l_thread_ensure_bfsize(l_thread* self, l_smplnode* buffer, l_int size) {
+void* l_thread_ensure_bfsize(l_smplnode* buffer, l_int size) {
   l_bufhead* elem = (l_bufhead*)buffer;
-  l_freebufq* q = (l_freebufq*)self->frbfq;
   l_int bufsz = elem->bsize;
 
   if (bufsz >= size) {
@@ -36,7 +35,6 @@ void* l_thread_ensure_bfsize(l_thread* self, l_smplnode* buffer, l_int size) {
     else bufsz = l_max_rdwr_size;
   }
 
-  q->ttmem += bufsz - elem->bsize;
   elem = (l_bufhead*)l_raw_realloc(elem, elem->bsize, bufsz);
   elem->bsize = bufsz;
   return elem;
@@ -44,70 +42,55 @@ void* l_thread_ensure_bfsize(l_thread* self, l_smplnode* buffer, l_int size) {
 
 void* l_thread_alloc_buffer(l_thread* self, l_int sizeofbuffer) {
   l_bufhead* elem = 0;
-  l_freebufq* q = (l_freebufq*)self->frbfq;
+  l_freebufq* q = (l_freebufq*)self->frbf;
 
-  if (sizeofbuffer < sizeof(l_bufhead) || sizeofbuffer > l_max_rdwr_size) {
+  l_debug_assert(self == l_thread_self());
+
+  if (sizeofbuffer < (l_int)sizeof(l_bufhead) || sizeofbuffer > l_max_rdwr_size) {
     l_loge_1("size %d", ld(sizeofbuffer));
     return 0;
   }
 
   if ((elem = (l_bufhead*)l_squeue_pop(&q->queue))) {
     q->size -= 1;
-    return l_thread_ensure_bfsize(q, &elem->node, sizeofbuffer);
+    q->frmem -= elem->bsize;
+    return l_thread_ensure_bfsize(&elem->node, sizeofbuffer);
   }
 
-  q->total += 1;
-  q->ttmem += sizeofbuffer;
   elem = (l_bufhead*)l_raw_malloc(sizeofbuffer);
   elem->bsize = sizeofbuffer;
   return elem;
 }
 
-void* l_thread_acquire_buffer(l_thread* self, l_int sizeofbuffer) {
-  l_bufhead* elem = (l_bufhead*)l_thread_alloc_buffer(self, sizeofbuffer);
-  l_freebufq* q = (l_freebufq*)self->frbfq;
-  q->total -= 1;
-  q->ttmem -= elem->bsize;
-  return elem;
-}
-
-void l_thread_release_buffer(l_thread* self, l_smplnode* buffer) {
-  l_freebufq* q = (l_freebufq*)self->frbfq;
-  l_thread_free_buffer(self, buffer);
-  q->total += 1;
-  q->ttmem += ((l_bufhead*)buffer)->bsize;
-}
-
-#define L_THREAD_MIN_BUFFER_SIZE 1024
-
 void l_thread_free_buffer(l_thread* self, l_smplnode* buffer) {
-  l_freebufq* q = (l_freebufq*)self->frbfq;
-  l_int inuse = q->total - q->size;
+  l_freebufq* q = (l_freebufq*)self->frbf;
+
+  l_debug_assert(self == l_thread_self());
 
   l_squeue_push(&q->queue, buffer);
   q->size += 1;
+  q->frmem += ((l_bufhead*)buffer)->bsize;
 
-  if (q->ttmem < L_THREAD_MIN_BUFFER_SIZE || q->size / 4 <= inuse) {
+  if (q->frmem <= q->limit) {
     return;
   }
 
-  while (q->size / 2 > inuse) {
+  while (q->frmem > q->limit) {
     if (!(buffer = l_squeue_pop(&q->queue))) {
       break;
     }
 
-    q->total -= 1;
-    q->ttmem -= ((l_bufhead*)buffer)->bsize;
-
     q->size -= 1;
+    q->frmem -= ((l_bufhead*)buffer)->bsize;
     l_raw_free(buffer);
   }
 }
 
-static void l_freebufq_init(l_freebufq* self, l_int maxlimit) {
-  *self = (l_freebufq){{{0},0}, 0};
+static void l_freebufq_init(l_freebufq* self, l_int maxfreemem) {
+  l_zero_l(self, sizeof(l_freebufq));
   l_squeue_init(&self->queue);
-  self->limit = maxlimit;
+  if (maxfreemem < 1024) maxfreemen = 1024;
+  self->limit = maxfreemem;
 }
 
 static void l_freebufq_free(l_freebufq* self) {
@@ -127,9 +110,9 @@ static void ll_thread_init(l_thread* self) {
   l_squeue_init(self->txms);
 
   self->L = l_new_luastate();
-  self->weight = msgwait = 0;
-  l_freebufq_init((l_freebufq*)self->frbfq, l_thread_mem_limit);
-  l_logger_init(self->log, l_thread_log_bfsize, l_thread_log_file);
+  self->weight = self->msgwait = 0;
+  l_freebufq_init((l_freebufq*)self->frbf, l_thread_mem_limit);
+  l_logger_init(self->log, l_thread_log_bfsz, l_thread_log_file);
 }
 
 static void ll_thread_free(l_thread* self) {
@@ -150,7 +133,7 @@ static void ll_thread_free(l_thread* self) {
   }
 
   l_logger_free(self->log);
-  l_freebufq_free((l_freebufq*)self->frbfq);
+  l_freebufq_free((l_freebufq*)self->frbf);
 
   l_mutex_free(self->svmtx);
   l_mutex_free(self->mutex);

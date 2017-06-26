@@ -4,9 +4,7 @@
 #include "l_service.h"
 
 l_thrkey llg_thread_key;
-l_thrkey llg_logger_key;
 l_thread_local(l_thread* llg_thread_ptr);
-l_thread_local(l_logger* llg_logger_ptr);
 
 static l_priorq llg_thread_prq;
 static l_thread* llg_threads;
@@ -45,7 +43,6 @@ void l_threadpool_create(int numofthread) {
   l_thrblock* b = 0;
 
   l_thrkey_init(&llg_thread_key);
-  l_thrkey_init(&llg_logger_key);
   l_priorq_init(&llg_thread_prq, llthreadless);
 
   while (numofthread-- > 0) {
@@ -69,6 +66,9 @@ void l_threadpool_create(int numofthread) {
 
 void l_threadpool_destroy() {
   l_thread* t = 0;
+
+  l_thrkey_free(&llg_thread_key);
+
   while ((t = (l_thread*)l_priorq_pop(&llg_thread_prq))) {
     l_raw_free(t->block);
     l_raw_free(t);
@@ -620,6 +620,10 @@ void l_worker_loop() {
 static void l_master_parse_cmdline(int argc, char** argv) {
   (void)argc;
   (void)argv;
+}
+
+int startmainthread(int (*start)()) {
+  return startmainthread(start, 0, 0);
 }
 
 int startmainthreadcv(int (*start)(), int argc, char** argv) {

@@ -3,6 +3,8 @@
 #include "l_service.h"
 #include "l_string.h"
 #include "l_state.h"
+#include "l_thread.h"
+#include "l_master.h"
 
 int l_test_start() {
   l_set_log_level(4);

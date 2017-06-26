@@ -2,8 +2,10 @@
 #define l_service_lib_h
 #include "thatcore.h"
 #include "l_message.h"
+#include "l_ionfmgr.h"
+#include "l_state.h"
 
-#define L_SERVICE_MASTERID (0)
+#define L_SERVICE_MASTER_ID (0)
 
 /*
 1. 队列不能直接赋值

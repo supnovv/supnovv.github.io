@@ -1,6 +1,7 @@
 #ifndef l_string_lib_h
 #define l_string_lib_h
 #include "thatcore.h"
+#include "l_thread.h"
 
 typedef struct {
   const l_byte* start;
@@ -24,26 +25,15 @@ l_extern int l_strt_contain(l_strt s, int ch);
 
 typedef struct {
   L_COMMON_BUFHEAD
-  l_thread* belong;
-  l_int limit;
+  l_ushort tid;
+  l_byte flags;
+  l_byte nargs;
   l_int size;
-} l_buffer;
-
-l_inline l_byte* l_buffer_s(l_buffer* self) {
-  return (l_byte*)(self + 1);
-}
-
-l_inline l_int l_buffer_capacity(l_buffer* self) {
-  return self->bsize - sizeof(l_buffer);
-}
-
-l_extern l_buffer* l_buffer_new(l_thread* thread, l_int initsize, l_int maxlimit);
-l_extern void l_buffer_free(l_buffer* buffer);
-l_extern int l_buffer_ensure_capacity(l_buffer** self, l_int size);
-l_extern int l_buffer_ensure_remain(l_buffer** self, l_int remainsize);
+  l_int limit;
+} l_strbuf;
 
 typedef struct {
-  l_buffer* b;
+  l_strbuf* b;
 } l_string;
 
 l_inline const l_rune* l_string_cstr(l_string* self) {
@@ -55,13 +45,72 @@ l_inline l_strt l_string_strt(l_string* self) {
   return (l_strt){s, self->b->size};
 }
 
-l_extern l_string l_string_new(l_strt from);
-l_extern l_string l_thread_string_new(l_thread* thread, l_strt from);
+l_extern l_string l_string_init(l_strt from);
+l_extern l_string l_thread_string_init(l_thread* thread, l_strt from);
 l_extern void l_string_free(l_string* self);
 l_extern void l_string_clear(l_string* self);
 l_extern void l_string_set(l_string* self, l_strt s);
 l_extern int l_string_is_empty(l_string* self);
 l_extern int l_string_equal(l_string* self, l_strt s);
+l_extern int l_string_format_impl(l_string* self, const void* fmt, ...);
+l_extern int l_string_format_n_impl(l_string* self, const void* fmt, l_int n, l_value* a);
+
+l_inline int l_string_format_1(l_string* self, const void* fmt, l_valua a) {
+  self->b->nargs = 1;
+  return l_string_format_impl(self, fmt, a);
+}
+
+l_inline int l_string_format_2(l_string* self, const void* fmt, l_valua a,
+    l_value b) {
+  self->b->nargs = 2;
+  return l_string_format_impl(self, fmt, a, b);
+}
+
+l_inline int l_string_format_3(l_string* self, const void* fmt, l_valua a,
+    l_value b, l_value c) {
+  self->b->nargs = 3;
+  return l_string_format_impl(self, fmt, a, b, c);
+}
+
+l_inline int l_string_format_4(l_string* self, const void* fmt, l_valua a,
+    l_value b, l_value c, l_value d) {
+  self->b->nargs = 4;
+  return l_string_format_impl(self, fmt, a, b, c, d);
+}
+
+l_inline int l_string_format_5(l_string* self, const void* fmt, l_valua a,
+    l_value b, l_value c, l_value d, l_value e) {
+  self->b->nargs = 5;
+  return l_string_format_impl(self, fmt, a, b, c, d, e);
+}
+
+l_inline int l_string_format_6(l_string* self, const void* fmt, l_valua a,
+    l_value b, l_value c, l_value d, l_value e, l_value f) {
+  self->b->nargs = 6;
+  return l_string_format_impl(self, fmt, a, b, c, d, e, f);
+}
+
+l_inline int l_string_format_7(l_string* self, const void* fmt, l_valua a,
+    l_value b, l_value c, l_value d, l_value e, l_value f, l_value g) {
+  self->b->nargs = 7;
+  return l_string_format_impl(self, fmt, a, b, c, d, e, f, g);
+}
+
+l_inline int l_string_format_8(l_string* self, const void* fmt, l_valua a,
+    l_value b, l_value c, l_value d, l_value e, l_value f, l_value g, l_value h) {
+  self->b->nargs = 8;
+  return l_string_format_impl(self, fmt, a, b, c, d, e, f, g, h);
+}
+
+l_inline int l_string_format_9(l_string* self, const void* fmt, l_valua a,
+    l_value b, l_value c, l_value d, l_value e, l_value f, l_value g, l_value h, l_value i) {
+  self->b->nargs = 9;
+  return l_string_format_impl(self, fmt, a, b, c, d, e, f, g, h, i);
+}
+
+l_inline int l_string_format_n(l_string* self, const void* fmt, l_int n, l_value* a) {
+  return l_string_format_n_impl(self, fmt, n, a);
+}
 
 typedef struct {
   l_umedit m; /* string match this rune */

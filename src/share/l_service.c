@@ -1,4 +1,5 @@
 #include "l_service.h"
+#include "l_socket.h"
 
 #define L_MESSAGE_START_SERVICE 0x01
 #define L_MESSAGE_CLOSE_SERVICE 0x02
@@ -14,7 +15,7 @@ extern l_umedit l_master_gen_service_id();
 l_service* l_create_service(l_thread* thread, l_int size, int (*entry)(l_service*, l_message*), int insamethread) {
   l_debug_assert(thread == l_thread_self());
   l_service* srvc = 0;
-  if (size < sizeof(l_service)) return 0;
+  if (size < (l_int)sizeof(l_service)) return 0;
   srvc = l_thread_alloc_buffer(thread, size);
   srvc->svid = l_master_gen_service_id();
   srvc->ioev = 0;
@@ -27,21 +28,21 @@ l_service* l_create_service(l_thread* thread, l_int size, int (*entry)(l_service
   } else {
     srvc->mflgs = srvc->wflgs = 0;
   }
+  return srvc;
 }
 
 void l_start_service(l_service* srvc) {
   l_thread* thread = srvc->belong;
-  if (!(srvc->flags & L_SERVICE_SAMETHRD)) {
+  if (!(srvc->wflgs & L_SERVICE_SAMETHRD)) {
     srvc->belong = 0;
   }
   l_send_message_ptr(thread, L_SERVICE_MASTER_ID, L_MESSAGE_START_SERVICE, srvc);
 }
 
 static void ll_start_ioevent_service(l_service* srvc, l_handle sock, l_ushort masks, l_ushort flags) {
-  l_thread* thread = srvc->belong;
   l_ioevent* ioev = 0;
 
-  if (!l_socket_is_open(sock)) {
+  if (!l_socket_isopen(sock)) {
     l_logw_1("sock %d", ld(sock));
     return l_start_service(srvc);
   }
@@ -116,7 +117,7 @@ int l_service_resume(l_service* self, int (*func)(l_state*)) {
   return l_state_resume(self->co);
 }
 
-int l_service_yield(ccservice* self, int (*kfunc)(l_state*)) {
+int l_service_yield(l_service* self, int (*kfunc)(l_state*)) {
   return l_state_yield(self->co, kfunc);
 }
 

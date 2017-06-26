@@ -46,13 +46,15 @@ endif
 
 AUTOOBJ = $(BUILD_DIR)autoconf$(O)
 COREOBJ = $(BUILD_DIR)thatcore$(O) $(BUILD_DIR)linuxcore$(O) $(BUILD_DIR)thattest$(O)
+THREADO = $(BUILD_DIR)l_thread$(O)
+MESSAGE = $(BUILD_DIR)l_message$(O)
 STRINGO = $(BUILD_DIR)l_string$(O)
 LUACOBJ = $(BUILD_DIR)l_state$(O)
 IONFOBJ = $(BUILD_DIR)l_ionfmgr$(O)
 SOCKOBJ = $(BUILD_DIR)linuxsock$(O)
 SRVCOBJ = $(BUILD_DIR)l_service$(O)
-HTTPOBJ = $(BUILD_DIR)http_service$(O)
-TESTOBJ = $(COREOBJ) $(STRINGO) $(LUACOBJ) $(IONFOBJ) $(SOCKOBJ) $(SRVCOBJ) $(HTTPOBJ)
+HTTPOBJ = $(BUILD_DIR)httpservice$(O)
+TESTOBJ = $(COREOBJ) $(STRINGO) $(THREADO) $(MESSAGE) $(LUACOBJ) $(IONFOBJ) $(SOCKOBJ) $(SRVCOBJ) $(HTTPOBJ)
 ALLOBJS = $(AUTOOBJ) $(TESTOBJ)
 
 AUTOCONF = $(BUILD_DIR)autoconf$(E)
@@ -104,8 +106,10 @@ $(BUILD_DIR)%$(O): %.c
 $(AUTOOBJ): autoconf.c
 $(COREOBJ): thatcore.c linuxcore.c thattest.c thatcore.h autoconf.h l_prefix.h
 $(IONFOBJ): l_ionfmgr.c l_ionfmgr.h plationf.h
-$(SOCKOBJ): linuxsock.c socket.h platsock.h
-$(SRVCOBJ): l_service.c thatcore.h
-$(STRINGO): l_string.c thatcore.h
-$(HTTPOBJ): http_service.c http_service.h
+$(SOCKOBJ): linuxsock.c l_socket.h platsock.h
+$(SRVCOBJ): l_service.c l_service.h
+$(STRINGO): l_string.c l_string.h
+$(THREADO): l_thread.c l_thread.h
+$(MESSAGE): l_message.c l_message.h
+$(HTTPOBJ): httpservice.c httpservice.h
 

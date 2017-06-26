@@ -23,10 +23,11 @@ typedef struct l_thread {
   lua_State* L;
   l_squeue* txmq;
   l_squeue* txms;
-  l_logger* log;
+  l_string* log;
+  void* logfile;
+  void* frbf;
   l_thrid id;
   int (*start)();
-  void* frbfq;
   void* block;
 } l_thread;
 
@@ -39,17 +40,6 @@ l_inline l_thread* l_thread_self() {
   return llg_thread_ptr;
 #else
   return (l_thread*)l_thrkey_get_data(&llg_thread_key);
-#endif
-}
-
-l_extern l_thrkey llg_logger_key;
-l_extern_thread_local(l_logger* llg_logger_ptr);
-
-l_inline l_logger* l_thread_logger() {
-#if defined(l_thread_local_supported)
-  return llg_logger_ptr;
-#else
-  return (l_thread*)l_thrkey_get_data(&llg_logger_key);
 #endif
 }
 

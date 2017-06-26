@@ -76,6 +76,67 @@
 #define l_debug_assert(e) ((void)0)
 #endif
 
+#define L_MKSTR(a) #a
+#define L_X_MKSTR(a) L_MKSTR(a)
+#define L_MKFLSTR __FILE__ " (" L_X_MKSTR(__LINE__) ") "
+
+#define l_assert(e)                   l_assert_func_impl((e), (#e), L_MKFLSTR) /* 0:assert */
+#define l_loge_s(s)                   l_logger_func_s("10[E] " L_MKFLSTR, (s)) /* 1:error */
+#define l_loge_1(fmt,a)               l_logger_func_1("11[E] " L_MKFLSTR, (fmt), a)
+#define l_loge_n(fmt,n,a)             l_logger_func_n("1n[E] " L_MKFLSTR, (fmt), n,a)
+#define l_loge_2(fmt,a,b)             l_logger_func_2("12[E] " L_MKFLSTR, (fmt), a,b)
+#define l_loge_3(fmt,a,b,c)           l_logger_func_3("13[E] " L_MKFLSTR, (fmt), a,b,c)
+#define l_loge_4(fmt,a,b,c,d)         l_logger_func_4("14[E] " L_MKFLSTR, (fmt), a,b,c,d)
+#define l_loge_5(fmt,a,b,c,d,e)       l_logger_func_5("15[E] " L_MKFLSTR, (fmt), a,b,c,d,e)
+#define l_loge_6(fmt,a,b,c,d,e,f)     l_logger_func_6("16[E] " L_MKFLSTR, (fmt), a,b,c,d,e,f)
+#define l_loge_7(fmt,a,b,c,d,e,f,g)   l_logger_func_7("17[E] " L_MKFLSTR, (fmt), a,b,c,d,e,f,g)
+#define l_loge_8(fmt,a,b,c,d,e,f,g,h) l_logger_func_8("18[E] " L_MKFLSTR, (fmt), a,b,c,d,e,f,g,h)
+#define l_loge_9(t,a,b,c,d,e,f,g,h,i) l_logger_func_9("19[E] " L_MKFLSTR, (t), a,b,c,d,e,f,g,h,i)
+#define l_logw_s(s)                   l_logger_func_s("20[W] " L_MKFLSTR, (s)) /* 2:warning */
+#define l_logw_1(fmt,a)               l_logger_func_1("21[W] " L_MKFLSTR, (fmt), a)
+#define l_logw_n(fmt,n,a)             l_logger_func_n("2n[W] " L_MKFLSTR, (fmt), n,a)
+#define l_logw_2(fmt,a,b)             l_logger_func_2("22[W] " L_MKFLSTR, (fmt), a,b)
+#define l_logw_3(fmt,a,b,c)           l_logger_func_3("23[W] " L_MKFLSTR, (fmt), a,b,c)
+#define l_logw_4(fmt,a,b,c,d)         l_logger_func_4("24[W] " L_MKFLSTR, (fmt), a,b,c,d)
+#define l_logw_5(fmt,a,b,c,d,e)       l_logger_func_5("25[W] " L_MKFLSTR, (fmt), a,b,c,d,e)
+#define l_logw_6(fmt,a,b,c,d,e,f)     l_logger_func_6("26[W] " L_MKFLSTR, (fmt), a,b,c,d,e,f)
+#define l_logw_7(fmt,a,b,c,d,e,f,g)   l_logger_func_7("27[W] " L_MKFLSTR, (fmt), a,b,c,d,e,f,g)
+#define l_logw_8(fmt,a,b,c,d,e,f,g,h) l_logger_func_8("28[W] " L_MKFLSTR, (fmt), a,b,c,d,e,f,g,h)
+#define l_logw_9(t,a,b,c,d,e,f,g,h,i) l_logger_func_9("29[W] " L_MKFLSTR, (t), a,b,c,d,e,f,g,h,i)
+#define l_logm_s(s)                   l_logger_func_s("30[A] " L_MKFLSTR, (s)) /* 3:main log */
+#define l_logm_1(fmt,a)               l_logger_func_1("31[A] " L_MKFLSTR, (fmt), a)
+#define l_logm_n(fmt,n,a)             l_logger_func_n("3n[A] " L_MKFLSTR, (fmt), n,a)
+#define l_logm_2(fmt,a,b)             l_logger_func_2("32[A] " L_MKFLSTR, (fmt), a,b)
+#define l_logm_3(fmt,a,b,c)           l_logger_func_3("33[A] " L_MKFLSTR, (fmt), a,b,c)
+#define l_logm_4(fmt,a,b,c,d)         l_logger_func_4("34[A] " L_MKFLSTR, (fmt), a,b,c,d)
+#define l_logm_5(fmt,a,b,c,d,e)       l_logger_func_5("35[A] " L_MKFLSTR, (fmt), a,b,c,d,e)
+#define l_logm_6(fmt,a,b,c,d,e,f)     l_logger_func_6("36[A] " L_MKFLSTR, (fmt), a,b,c,d,e,f)
+#define l_logm_7(fmt,a,b,c,d,e,f,g)   l_logger_func_7("37[A] " L_MKFLSTR, (fmt), a,b,c,d,e,f,g)
+#define l_logm_8(fmt,a,b,c,d,e,f,g,h) l_logger_func_8("38[A] " L_MKFLSTR, (fmt), a,b,c,d,e,f,g,h)
+#define l_logm_9(t,a,b,c,d,e,f,g,h,i) l_logger_func_9("39[A] " L_MKFLSTR, (t), a,b,c,d,e,f,g,h,i)
+#define l_logd_s(s)                   l_logger_func_s("40[D] " L_MKFLSTR, (s)) /* 4:debug log */
+#define l_logd_1(fmt,a)               l_logger_func_1("41[D] " L_MKFLSTR, (fmt), a)
+#define l_logd_n(fmt,n,a)             l_logger_func_n("4n[D] " L_MKFLSTR, (fmt), n,a)
+#define l_logd_2(fmt,a,b)             l_logger_func_2("42[D] " L_MKFLSTR, (fmt), a,b)
+#define l_logd_3(fmt,a,b,c)           l_logger_func_3("43[D] " L_MKFLSTR, (fmt), a,b,c)
+#define l_logd_4(fmt,a,b,c,d)         l_logger_func_4("44[D] " L_MKFLSTR, (fmt), a,b,c,d)
+#define l_logd_5(fmt,a,b,c,d,e)       l_logger_func_5("45[D] " L_MKFLSTR, (fmt), a,b,c,d,e)
+#define l_logd_6(fmt,a,b,c,d,e,f)     l_logger_func_6("46[D] " L_MKFLSTR, (fmt), a,b,c,d,e,f)
+#define l_logd_7(fmt,a,b,c,d,e,f,g)   l_logger_func_7("47[D] " L_MKFLSTR, (fmt), a,b,c,d,e,f,g)
+#define l_logd_8(fmt,a,b,c,d,e,f,g,h) l_logger_func_8("48[D] " L_MKFLSTR, (fmt), a,b,c,d,e,f,g,h)
+#define l_logd_9(t,a,b,c,d,e,f,g,h,i) l_logger_func_9("49[D] " L_MKFLSTR, (t), a,b,c,d,e,f,g,h,i)
+
+#define l_zero_e(start, end) l_zero_l(start, l_str(end) - l_str(start))
+l_extern void l_zero_l(void* start, l_int len);
+
+#define l_copy_e(from, end, to) l_copy_l(from, l_str(end) - l_str(from), (to))
+l_extern void l_copy_l(const void* from, l_int len, void* to);
+
+l_extern void* l_raw_malloc(l_int size);
+l_extern void* l_raw_calloc(l_int size);
+l_extern void* l_raw_realloc(void* buffer, l_int oldsize, l_int newsize);
+l_extern void l_raw_free(void* buffer);
+
 typedef union {
   l_long d;
   l_ulong u;
@@ -103,42 +164,62 @@ l_inline l_value lf(double f) {
   l_value a; a.f = f; return a;
 }
 
-#define L_MKSTR(a) #a
-#define L_X_MKSTR(a) L_MKSTR(a)
-#define L_MKFLSTR __FILE__ " (" L_X_MKSTR(__LINE__) ") "
+l_extern void l_assert_func_impl(int pass, const void* expr, const void* fileline);
+l_extern void l_logger_func_impl(const void* tag, const void* fmt, ...);
+l_extern void l_set_log_level(int level);
+l_extern int l_get_log_level();
 
-#define l_assert(e)               l_assert_func_impl((e), (#e), L_MKFLSTR) /* 0:assert */
-#define l_loge_s(s)               l_logger_func_s("10[E] " L_MKFLSTR, (s)) /* 1:error */
-#define l_loge_1(fmt, a)          l_logger_func_1("11[E] " L_MKFLSTR, (fmt), a)
-#define l_loge_2(fmt, a, b)       l_logger_func_2("12[E] " L_MKFLSTR, (fmt), a, b)
-#define l_loge_3(fmt, a, b, c)    l_logger_func_3("13[E] " L_MKFLSTR, (fmt), a, b, c)
-#define l_loge_4(fmt, a, b, c, d) l_logger_func_4("14[E] " L_MKFLSTR, (fmt), a, b, c, d)
-#define l_logw_s(s)               l_logger_func_s("20[W] " L_MKFLSTR, (s)) /* 2:warning */
-#define l_logw_1(fmt, a)          l_logger_func_1("21[W] " L_MKFLSTR, (fmt), a);
-#define l_logw_2(fmt, a, b)       l_logger_func_2("22[W] " L_MKFLSTR, (fmt), a, b);
-#define l_logw_3(fmt, a, b, c)    l_logger_func_3("23[W] " L_MKFLSTR, (fmt), a, b, c);
-#define l_logw_4(fmt, a, b, c, d) l_logger_func_4("24[W] " L_MKFLSTR, (fmt), a, b, c, d);
-#define l_logm_s(s)               l_logger_func_s("30[A] " L_MKFLSTR, (s)) /* 3:main log */
-#define l_logm_1(fmt, a)          l_logger_func_1("31[A] " L_MKFLSTR, (fmt), a);
-#define l_logm_2(fmt, a, b)       l_logger_func_2("32[A] " L_MKFLSTR, (fmt), a, b);
-#define l_logm_3(fmt, a, b, c)    l_logger_func_3("33[A] " L_MKFLSTR, (fmt), a, b, c);
-#define l_logm_4(fmt, a, b, c, d) l_logger_func_4("34[A] " L_MKFLSTR, (fmt), a, b, c, d);
-#define l_logd_s(s)               l_logger_func_s("40[D] " L_MKFLSTR, (s)) /* 4:debug log */
-#define l_logd_1(fmt, a)          l_logger_func_1("41[D] " L_MKFLSTR, (fmt), a);
-#define l_logd_2(fmt, a, b)       l_logger_func_2("42[D] " L_MKFLSTR, (fmt), a, b);
-#define l_logd_3(fmt, a, b, c)    l_logger_func_3("43[D] " L_MKFLSTR, (fmt), a, b, c);
-#define l_logd_4(fmt, a, b, c, d) l_logger_func_4("44[D] " L_MKFLSTR, (fmt), a, b, c, d);
+l_inline void l_logger_func_s(const void* tag, const void* s) {
+  l_logger_func_impl(tag, s, 0);
+}
 
-#define l_zero_e(start, end) l_zero_l(start, l_str(end) - l_str(start))
-l_extern void l_zero_l(void* start, l_int len);
+l_inline void l_logger_func_1(const void* tag, const void* s, l_value a) {
+  l_logger_func_impl(tag, s, a);
+}
 
-#define l_copy_e(from, end, to) l_copy_l(from, l_str(end) - l_str(from), (to))
-l_extern void l_copy_l(const void* from, l_int len, void* to);
+l_inline void l_logger_func_2(const void* tag, const void* s, l_value a,
+    l_value b) {
+  l_logger_func_impl(tag, s, a, b);
+}
 
-l_extern void* l_raw_malloc(l_int size);
-l_extern void* l_raw_calloc(l_int size);
-l_extern void* l_raw_realloc(void* buffer, l_int oldsize, l_int newsize);
-l_extern void l_raw_free(void* buffer);
+l_inline void l_logger_func_3(const void* tag, const void* s, l_value a,
+    l_value b, l_value c) {
+  l_logger_func_impl(tag, s, a, b, c);
+}
+
+l_inline void l_logger_func_4(const void* tag, const void* s, l_value a,
+    l_value b, l_value c, l_value d) {
+  l_logger_func_impl(tag, s, a, b, c, d);
+}
+
+l_inline void l_logger_func_5(const void* tag, const void* s, l_value a,
+    l_value b, l_value c, l_value d, l_value e) {
+  l_logger_func_impl(tag, s, a, b, c, d, e);
+}
+
+l_inline void l_logger_func_6(const void* tag, const void* s, l_value a,
+    l_value b, l_value c, l_value d, l_value e, l_value f) {
+  l_logger_func_impl(tag, s, a, b, c, d, e, f);
+}
+
+l_inline void l_logger_func_7(const void* tag, const void* s, l_value a,
+    l_value b, l_value c, l_value d, l_value e, l_value f, l_value g) {
+  l_logger_func_impl(tag, s, a, b, c, d, e, f, g);
+}
+
+l_inline void l_logger_func_8(const void* tag, const void* s, l_value a,
+    l_value b, l_value c, l_value d, l_value e, l_value f, l_value g, l_value h) {
+  l_logger_func_impl(tag, s, a, b, c, d, e, f, g, h);
+}
+
+l_inline void l_logger_func_9(const void* tag, const void* s, l_value a,
+    l_value b, l_value c, l_value d, l_value e, l_value f, l_value g, l_value h, l_value i) {
+  l_logger_func_impl(tag, s, a, b, c, d, e, f, g, h, i);
+}
+
+l_inline void l_logger_func_n(const void* tag, const void* s, l_int n, const l_value* a) {
+  l_logger_func_impl(tag, s, n, a);
+}
 
 typedef struct {
   void* stream;
@@ -164,40 +245,6 @@ l_extern void l_rewind_file(l_filestream* self);
 l_extern void l_seek_from_begin(l_filestream* self, long offset);
 l_extern void l_seek_from_curpos(l_filestream* self, long offset);
 l_extern void l_clear_file_error(l_filestream* self);
-
-typedef struct {
-  l_filestream f;
-  l_rune* a;
-  int capacity;
-  int size;
-} l_logger;
-
-l_extern void l_logger_free(l_logger* self);
-l_extern void l_logger_init(l_logger* self, l_int size, const void* file);
-l_extern void l_assert_func_impl(int pass, const void* expr, const void* fileline);
-l_extern void l_logger_func_impl(const void* tag, const void* fmt, ...);
-l_extern void l_set_log_level(int level);
-l_extern int l_get_log_level();
-
-l_inline void l_logger_func_s(const void* tag, const void* s) {
-  l_logger_func_impl(tag, s, 0);
-}
-
-l_inline void l_logger_func_1(const void* tag, const void* s, l_value a) {
-  l_logger_func_impl(tag, s, a);
-}
-
-l_inline void l_logger_func_2(const void* tag, const void* s, l_value a, l_value b) {
-  l_logger_func_impl(tag, s, a, b);
-}
-
-l_inline void l_logger_func_3(const void* tag, const void* s, l_value a, l_value b, l_value c) {
-  l_logger_func_impl(tag, s, a, b, c);
-}
-
-l_inline void l_logger_func_4(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d) {
-  l_logger_func_impl(tag, s, a, b, c, d);
-}
 
 typedef struct l_linknode {
   struct l_linknode* next;

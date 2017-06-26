@@ -2,6 +2,7 @@
 #define l_message_lib_h
 #include "thatcore.h"
 #include "l_socket.h"
+#include "l_thread.h"
 
 #define L_MESSAGE_IOEVENT 0x7d
 #define L_MESSAGE_CONNRSP 0x7e

@@ -1,7 +1,7 @@
 #ifndef l_http_lib_h
 #define l_http_lib_h
-#include "service.h"
-#include "socket.h"
+#include "l_service.h"
+#include "l_socket.h"
 
 #define L_HTTP_GET (0)
 #define L_HTTP_HEAD (1)

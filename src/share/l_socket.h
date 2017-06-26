@@ -1,6 +1,7 @@
 #ifndef l_socket_lib_h
 #define l_socket_lib_h
 #include "thatcore.h"
+#include "l_string.h"
 
 #define L_SOCKET_BACKLOG  (32)
 #define L_SOCKET_IPSTRLEN (48)
