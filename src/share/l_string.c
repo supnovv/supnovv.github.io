@@ -463,9 +463,9 @@ void l_assert_func_impl(int pass, const void* expr, const void* fileline) {
   }
 }
 
-static int l_string_format_a_value(l_string* self, const l_rune* beg, const l_rune* end, l_value a) {
+static int l_string_format_a_value(l_string* self, const l_rune* start, const l_rune* end, l_value a) {
   l_umedit flags = 0; /* start pointer to '%' and next rune is not a '%' */
-  const l_rune* cur = beg;
+  const l_rune* cur = start;
   while (++cur < end) {
     switch (*cur) {
     case ' ':
@@ -579,7 +579,7 @@ static int l_string_format_a_value(l_string* self, const l_rune* beg, const l_ru
       break;
     }
 
-    l_string_format_out(self, l_strt_e(beg, end));
+    l_string_format_out(self, l_strt_e(start, end));
     return 0;
 }
 
@@ -614,7 +614,9 @@ static int l_string_format_v_impl(l_string* self, const l_rune* fmt, va_list vl)
     }
 
     fmt = cur;
-    if (++nfmts < nargs) {
+    ++nfmts;
+
+    if (nfmts >= nargs) {
       break;
     }
   }
@@ -659,7 +661,9 @@ int l_string_format_n_impl(l_string* self, const void* fmt, l_int n, l_value* a)
     }
 
     beg = cur;
-    if (++nfmts < nargs) {
+    ++nfmts;
+
+    if (nfmts >= nargs) {
       break;
     }
   }
