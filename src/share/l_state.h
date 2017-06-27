@@ -1,7 +1,6 @@
 #ifndef l_state_lib_h
 #define l_state_lib_h
 #include "thatcore.h"
-#include "l_thread.h"
 
 typedef struct l_state {
   l_smplnode node;

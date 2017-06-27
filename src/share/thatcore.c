@@ -5,8 +5,6 @@
 #include <errno.h>
 #define L_CORELIB_IMPL
 #include "thatcore.h"
-#include "l_thread.h"
-#include "l_string.h"
 
 void l_zero_l(void* start, l_int len) {
   if (!start || len <= 0 || len > l_max_rdwr_size) {

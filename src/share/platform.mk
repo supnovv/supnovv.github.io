@@ -108,8 +108,8 @@ $(COREOBJ): thatcore.c linuxcore.c thattest.c thatcore.h autoconf.h l_prefix.h
 $(IONFOBJ): l_ionfmgr.c l_ionfmgr.h plationf.h
 $(SOCKOBJ): linuxsock.c l_socket.h platsock.h
 $(SRVCOBJ): l_service.c l_service.h
-$(STRINGO): l_string.c l_string.h
-$(THREADO): l_thread.c l_thread.h
+$(STRINGO): l_string.c thatcore.h
+$(THREADO): l_thread.c thatcore.h
 $(MESSAGE): l_message.c l_message.h
 $(HTTPOBJ): httpservice.c httpservice.h
 

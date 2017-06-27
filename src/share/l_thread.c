@@ -1,5 +1,5 @@
 #include <stdlib.h>
-#include "l_thread.h"
+#include "thatcore.h"
 #include "l_state.h"
 
 extern int l_thread_mem_limit;
@@ -89,7 +89,7 @@ void l_thread_free_buffer(l_thread* self, l_smplnode* buffer) {
 static void l_freebufq_init(l_freebufq* self, l_int maxfreemem) {
   l_zero_l(self, sizeof(l_freebufq));
   l_squeue_init(&self->queue);
-  if (maxfreemem < 1024) maxfreemen = 1024;
+  if (maxfreemem < 1024) maxfreemem = 1024;
   self->limit = maxfreemem;
 }
 
@@ -99,6 +99,41 @@ static void l_freebufq_free(l_freebufq* self) {
     l_raw_free(node);
   }
 }
+
+#if 0
+void l_logger_free(l_logger* self) {
+  l_log_write_to_file(self);
+
+  if (self->f.stream != stdout && self->f.stream != stderr) {
+    l_close_file(&self->f);
+  }
+
+  l_raw_free(self->a);
+  self->a = 0;
+}
+
+void l_logger_init(l_logger* self, l_int size, const void* file) {
+  if (size < BUFSIZ) {
+    size = BUFSIZ;
+  }
+  else if (size + BUFSIZ > l_max_rdwr_size) {
+    size = l_max_rdwr_size - BUFSIZ;
+  }
+
+  size = (((size - 1) / BUFSIZ) + 1) * BUFSIZ;
+
+  if (file == stdout || file == stderr) {
+    self->f.stream = (void*)file;
+  } else {
+    /* TODO */
+    self->f = l_open_append_unbuffered(file);
+  }
+
+  self->a = (l_rune*)l_raw_malloc(size);
+  self->capacity = size;
+  self->size = 0;
+}
+#endif
 
 static void ll_thread_init(l_thread* self) {
   l_mutex_init(self->svmtx);
@@ -112,7 +147,8 @@ static void ll_thread_init(l_thread* self) {
   self->L = l_new_luastate();
   self->weight = self->msgwait = 0;
   l_freebufq_init((l_freebufq*)self->frbf, l_thread_mem_limit);
-  l_logger_init(self->log, l_thread_log_bfsz, l_thread_log_file);
+
+  /* self->log self->logfile */
 }
 
 static void ll_thread_free(l_thread* self) {
@@ -132,7 +168,8 @@ static void ll_thread_free(l_thread* self) {
     l_thread_release_buffer(self, msg);
   }
 
-  l_logger_free(self->log);
+  /* self->log self->logfile */
+
   l_freebufq_free((l_freebufq*)self->frbf);
 
   l_mutex_free(self->svmtx);
