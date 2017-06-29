@@ -620,6 +620,10 @@ void l_sigign(int sig) {
   llsigact(sig, SIG_IGN);
 }
 
+void l_socket_startup() {
+  l_sigign(SIGPIPE);
+}
+
 /** accept - accept a connection on a socket **
 #include <sys/types.h>
 #include <sys/socket.h>

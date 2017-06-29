@@ -18,6 +18,7 @@ l_extern int l_sockaddr_init(l_sockaddr* self, l_strt ip, l_ushort port);
 l_extern l_ushort l_sockaddr_port(l_sockaddr* self);
 l_extern int l_sockaddr_ipstring(l_sockaddr* self, l_string* out);
 
+l_extern void l_socket_startup(); /* socket global init */
 l_extern l_handle l_socket_listen(const l_sockaddr* addr, int backlog);
 l_extern void l_socket_accept(l_handle sock, void (*cb)(void*, l_sockconn*), void* ud);
 l_extern void l_socket_close(l_handle sock);

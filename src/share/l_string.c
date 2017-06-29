@@ -41,9 +41,9 @@ static int l_strbuf_ensure_remain(l_strbuf** self, l_int remainsize) {
 
 static l_strbuf* l_strbuf_init(l_thread* thread, l_int initsize, l_int maxlimit) {
   l_strbuf* p = 0;
-  if (!thread) thread = l_thread_self();
   if (initsize < (l_int)sizeof(l_strbuf)) initsize = sizeof(l_strbuf);
-  p = (l_strbuf*)l_thread_alloc_buffer(thread, sizeof(l_strbuf) + initsize);
+  if (thread) p = (l_strbuf*)l_thread_alloc_buffer(thread, sizeof(l_strbuf) + initsize);
+  else p = (l_strbuf*)l_raw_malloc(sizeof(l_strbuf) + initsize);
   *(l_strbuf_cstr(p)) = 0; /* zero terminated */
   p->size = 0;
   p->limit = (maxlimit < 0) ? 0 : maxlimit;
@@ -56,27 +56,54 @@ static void l_strbuf_free(l_thread* thread, l_strbuf* buffer) {
   l_thread_free_buffer(thread, &buffer->node);
 }
 
-l_string l_string_init(l_strt from) {
-  return l_thread_string_init(0, from);
+l_string l_thread_create_limited_string(l_thread* thread, l_int initsize, l_int maxlimit) {
+  if (!thread) thread = l_thread_self();
+  return (l_string){l_strbuf_init(thread, initsize+1, maxlimit)};
 }
 
-l_string l_thread_string_init(l_thread* thread, l_strt from) {
-  l_strbuf* p = l_strbuf_init(thread, from.len+1, 0);
-  if (!from.start || from.len <= 0) return (l_string){p};
-  l_copy_l(from.start, from.len, l_strbuf_cstr(p));
-  p->size = from.len;
-  *(l_strbuf_cstr(p) + from.len) = 0; /* zero terminated */
-  return (l_string){p};
+l_string l_thread_create_limited_string_from(l_thread* thread, l_strt from, l_int maxlimit) {
+  l_string s = l_thread_create_limited_string(thread, from.len, maxlimit);
+  if (from.start && from.len > 0) {
+    l_strbuf* b = s.b;
+    l_copy_l(from.start, from.len, l_strbuf_cstr(b));
+    b->size = from.len;
+    *(l_strbuf_cstr(b) + from.len) = 0;
+  }
+  return s;
 }
 
-void l_string_free(l_string* self) {
-  l_thread_string_free(0, self);
+l_string l_thread_create_string(l_thread* thread, l_int initsize) {
+  return l_thread_create_limited_string(thread, initsize, 0);
+}
+
+l_string l_thread_create_string_from(l_thread* thread, l_strt from) {
+  return l_thread_create_limited_string_from(thread, from, 0);
+}
+
+l_string l_create_string(l_int initsize) {
+  return l_thread_create_string(0, initsize);
+}
+
+l_string l_create_string_from(l_strt from) {
+  return l_thread_create_string_from(0, from);
+}
+
+l_string l_create_limited_string(l_int initsize, l_int maxlimit) {
+  return l_thread_create_limited_string(0, initsize, maxlimit);
+}
+
+l_string l_create_limited_string_from(l_strt from, l_int maxlimit) {
+  return l_thread_create_limited_string_from(0, from, maxlimit);
 }
 
 void l_thread_string_free(l_thread* thread, l_string* self) {
   if (!self->b) return;
   l_strbuf_free(thread, self->b);
   self->b = 0;
+}
+
+void l_string_free(l_string* self) {
+  l_thread_string_free(0, self);
 }
 
 void l_string_clear(l_string* self) {

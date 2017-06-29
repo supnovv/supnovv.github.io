@@ -129,8 +129,8 @@
 #define l_zero_e(start, end) l_zero_l(start, l_str(end) - l_str(start))
 l_extern void l_zero_l(void* start, l_int len);
 
-#define l_copy_e(from, end, to) l_copy_l(from, l_str(end) - l_str(from), (to))
-l_extern void l_copy_l(const void* from, l_int len, void* to);
+#define l_copy_e(from, end, to) return l_copy_l(from, l_str(end) - l_str(from), (to))
+l_extern l_int l_copy_l(const void* from, l_int len, void* to);
 
 l_extern void* l_raw_malloc(l_int size);
 l_extern void* l_raw_calloc(l_int size);
@@ -349,10 +349,16 @@ typedef struct {
 } l_string;
 
 typedef struct l_thread l_thread;
-l_extern l_string l_string_init(l_strt from);
-l_extern l_string l_thread_string_init(l_thread* thread, l_strt from);
-l_extern void l_string_free(l_string* self);
+l_extern l_string l_create_string(l_int initsize);
+l_extern l_string l_create_string_from(l_strt from);
+l_extern l_string l_create_limited_string(l_int initsize, l_int maxlimit);
+l_extern l_string l_create_limited_string_from(l_strt from, l_int maxlimit);
+l_extern l_string l_thread_create_string(l_thread* t, l_int initsize);
+l_extern l_string l_thread_create_string_from(l_thread* t, l_strt from);
+l_extern l_string l_thread_create_limited_string(l_thread* t, l_int initsize, l_int maxlimit);
+l_extern l_string l_thread_create_limited_string_from(l_thread* t, l_strt from, l_int maxlimit);
 l_extern void l_thread_string_free(l_thread* thread, l_string* self);
+l_extern void l_string_free(l_string* self);
 l_extern void l_string_clear(l_string* self);
 l_extern void l_string_set(l_string* self, l_strt s);
 l_extern void l_string_append(l_string* self, l_strt s);
@@ -604,22 +610,22 @@ typedef struct l_thread {
   l_squeue* txmq;
   l_squeue* txms;
   l_string log;
-  void* logfile;
-  void* frbf;
+  l_filestream logfile;
+  void* frbq;
   l_thrid id;
   int (*start)();
   void* block;
 } l_thread;
 
-l_extern l_thrkey llg_thread_key;
-l_extern_thread_local(l_thread* llg_thread_ptr);
+l_extern l_thrkey L_thread_key;
+l_extern_thread_local(l_thread* L_thread_ptr);
 
 l_extern l_thread* l_thread_master();
 l_inline l_thread* l_thread_self() {
 #if defined(l_thread_local_supported)
-  return llg_thread_ptr;
+  return L_thread_ptr;
 #else
-  return (l_thread*)l_thrkey_get_data(&llg_thread_key);
+  return (l_thread*)l_thrkey_get_data(&L_thread_key);
 #endif
 }
 
