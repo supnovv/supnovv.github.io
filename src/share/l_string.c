@@ -144,10 +144,25 @@ static void l_write_log_to_file(l_string* self) {
   l_strbuf* b = self->b;
   if (b->size > 0) {
     l_thread* thread = (l_thread*)((l_byte*)self - offsetof(l_thread, log));
-    l_write_file(thread->logfile, l_strbuf_cstr(b), b->size);
+    l_write_file(&thread->logfile, l_strbuf_cstr(b), b->size);
   }
   *(l_strbuf_cstr(b)) = 0;
   b->size = 0;
+}
+
+int l_string_append(l_string* self, l_strt s) {
+  const l_rune* end  = 0;
+  l_rune *bstr, *dest;
+  if (!l_strbuf_ensure_remain(&self->b, s.len+1)) return false;
+  bstr = l_strbuf_cstr(self->b);
+  dest = bstr + self->b->size;
+  end = s.start + s.len;
+  while (s.start < end) {
+    *dest++ = *s.start++;
+  }
+  *dest = 0;
+  self->b->size += dest - bstr;
+  return true;
 }
 
 static void l_string_format_out(l_string* self, l_strt s) {
@@ -363,7 +378,7 @@ static void l_string_format_long(l_string* self, l_long a, l_umedit flags) {
   l_string_format_ulong(self, n, flags);
 }
 
-static l_rune* l_string_format_ipart(l_ulong n, l_rune* p) {
+l_rune* l_string_print_ulong(l_ulong n, l_rune* p) {
   l_rune a[80];
   l_rune* s = a;
 
@@ -380,7 +395,7 @@ static l_rune* l_string_format_ipart(l_ulong n, l_rune* p) {
   return p;
 }
 
-static l_rune* l_string_format_fraction(double f, l_rune* p, int precise) {
+static l_rune* l_string_print_fraction(double f, l_rune* p, int precise) {
   l_ulong ipart = 0;
 
   if (precise == 0) precise = 80;
@@ -463,20 +478,20 @@ static void l_string_format_float(l_string* self, l_value v, l_umedit flags) {
       l_log_print_fraction(mantissa, intmasks, p);
       #endif
       *p++ = '0'; *p++ = '.'; dot = p;
-      p = l_string_format_fraction(v.f, p, precise);
+      p = l_string_print_fraction(v.f, p, precise);
     } else {
       if (exponent >= 52) {
         /* only have integer part */
         if (exponent <= 63) { /* 52 + 11 */
           mantissa <<= (exponent - 52);
-          p = l_string_format_ipart(mantissa, p);
+          p = l_string_print_ulong(mantissa, p);
           *p++ = '.'; dot = p; *p++ = '0';
         } else {
           exponent -= 63;
           mantissa <<= 11;
-          p = l_string_format_ipart(mantissa, p);
+          p = l_string_print_ulong(mantissa, p);
           *p++ = '*'; *p++ = '2'; *p++ = '^';
-          p = l_string_format_ipart(exponent, p);
+          p = l_string_print_ulong(exponent, p);
         }
       } else {
         /* have integer part and fraction part */
@@ -487,9 +502,9 @@ static void l_string_format_float(l_string* self, l_value v, l_umedit flags) {
         l_log_print_fraction(mantissa & (~intmasks), intmasks, p);
         #endif
         l_ulong ipart = l_cast(l_ulong, v.f);
-        p = l_string_format_ipart(ipart, p);
+        p = l_string_print_ulong(ipart, p);
         *p++ = '.'; dot = p;
-        p = l_string_format_fraction(v.f - ipart, p, precise);
+        p = l_string_print_fraction(v.f - ipart, p, precise);
       }
     }
   }

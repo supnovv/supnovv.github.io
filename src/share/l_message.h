@@ -36,6 +36,11 @@ typedef struct {
 
 typedef struct {
   l_message head;
+  int (*bootstrap)();
+} l_bootstrap_message;
+
+typedef struct {
+  l_message head;
   l_handle fd;
 } l_message_fd;
 
@@ -75,8 +80,9 @@ l_extern void l_send_message_u32(l_thread* thread, l_umedit destid, l_umedit typ
 l_extern void l_send_message_u64(l_thread* thread, l_umedit destid, l_umedit type, l_ulong u64);
 l_extern void l_send_message_s32(l_thread* thread, l_umedit destid, l_umedit type, l_medit s32);
 l_extern void l_send_message_s64(l_thread* thread, l_umedit destid, l_umedit type, l_long s64);
-
+l_extern void l_send_ioevent_message(l_thread* thread, l_umedit destid, l_umedit type, l_handle fd, l_umedit masks);
 l_extern void l_send_service_message(l_thread* thread, l_umedit destid, l_umedit type, l_umedit svid, l_handle fd);
+l_extern void l_send_bootstrap_message(l_thread* thread, int (*bootstrap)());
 
 #endif /* l_message_lib_h */
 

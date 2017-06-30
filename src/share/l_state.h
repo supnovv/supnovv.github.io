@@ -3,7 +3,7 @@
 #include "thatcore.h"
 
 typedef struct l_state {
-  l_smplnode node;
+  L_COMMON_BUFHEAD
   l_thread* belong;
   lua_State* co;
   int coref;

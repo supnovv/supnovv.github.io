@@ -130,7 +130,7 @@
 l_extern void l_zero_l(void* start, l_int len);
 
 #define l_copy_e(from, end, to) return l_copy_l(from, l_str(end) - l_str(from), (to))
-l_extern l_int l_copy_l(const void* from, l_int len, void* to);
+l_extern l_byte* l_copy_l(const void* from, l_int len, void* to);
 
 l_extern void* l_raw_malloc(l_int size);
 l_extern void* l_raw_calloc(l_int size);
@@ -361,7 +361,7 @@ l_extern void l_thread_string_free(l_thread* thread, l_string* self);
 l_extern void l_string_free(l_string* self);
 l_extern void l_string_clear(l_string* self);
 l_extern void l_string_set(l_string* self, l_strt s);
-l_extern void l_string_append(l_string* self, l_strt s);
+l_extern int l_string_append(l_string* self, l_strt s);
 l_extern int l_string_format_impl(l_string* self, const void* fmt, ...);
 l_extern int l_string_format_n(l_string* self, const void* fmt, int n, l_value* a);
 

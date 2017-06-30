@@ -1130,7 +1130,7 @@ l_int l_socket_write(l_handle sock, const void* from, l_int count, l_int* status
 
 void l_plat_sock_test() {
   l_sockaddr sa;
-  l_string ip = l_string_init(l_empty_strt());
+  l_string ip = l_create_string_from(l_empty_strt());
   /* all kind of socket address size */
   l_logd_1("socklen_t %d-byte", ld(sizeof(socklen_t)));
   l_logd_1("struct in_addr %d-byte", ld(sizeof(struct in_addr)));

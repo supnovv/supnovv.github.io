@@ -1,5 +1,4 @@
 #include "httpservice.h"
-#include "l_string.h"
 #include "l_ionfmgr.h"
 
 #define L_HTTP_METHOD_MAX_LEN (4)

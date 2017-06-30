@@ -15,10 +15,10 @@ void l_zero_l(void* start, l_int len) {
   memset(start, 0, (size_t)len);
 }
 
-void l_copy_l(const void* from, l_int len, void* to) {
+l_byte* l_copy_l(const void* from, l_int len, void* to) {
   if (!from || len <= 0 || len > l_max_rdwr_size) {
     l_loge_1("invalid %d", ld(len));
-    return;
+    return 0;
   }
   if (l_rstr(to) + len <= l_rstr(from) || l_rstr(to) >= l_rstr(from) + len) {
     /* void* memcpy(void* destination, const void* source, size_t num);
@@ -33,6 +33,7 @@ void l_copy_l(const void* from, l_int len, void* to) {
     allowing the destination and source to overlap. */
     memmove(to, from, l_cast(size_t, len));
   }
+  return l_rstr(to) + len;
 }
 
 static void* l_out_of_memory(l_int size, int init) {

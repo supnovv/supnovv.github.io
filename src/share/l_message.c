@@ -4,13 +4,13 @@
 l_message* l_create_message(l_thread* thread, l_umedit type, l_int size) {
   l_message* msg = 0;
   if (size < (l_int)sizeof(l_message) || type <= L_MIN_USER_MSGID) return 0;
-  msg = (l_message*)l_thread_acquire_buffer(thread, size);
+  msg = (l_message*)l_thread_alloc_buffer(thread, size);
   msg->type = type;
   return msg;
 }
 
 void l_free_message(l_thread* thread, l_message* msg) {
-  l_thread_release_buffer(thread, &msg->node);
+  l_thread_free_buffer(thread, &msg->node);
 }
 
 void l_send_message(l_thread* thread, l_umedit destid, l_message* msg) {
@@ -64,3 +64,16 @@ void l_send_message_u64(l_thread* thread, l_umedit destid, l_umedit type, l_ulon
   l_send_message(thread, destid, &msg->head);
 }
 
+void l_send_ioevent_message(l_thread* thread, l_umedit destid, l_umedit type, l_handle fd, l_umedit masks) {
+  l_ioevent_message* msg = (l_ioevent_message*)l_create_message(thread, type, sizeof(l_ioevent_message));
+  msg->fd = fd;
+  msg->masks = masks;
+  l_send_message(thread, destid, &msg->head);
+}
+
+void l_send_service_message(l_thread* thread, l_umedit destid, l_umedit type, l_umedit svid, l_handle fd) {
+  l_service_message* msg = (l_service_message*)l_create_message(thread, type, sizeof(l_service_message));
+  msg->svid = svid;
+  msg->fd = fd;
+  l_send_message(thread, destid, &msg->head);
+}
