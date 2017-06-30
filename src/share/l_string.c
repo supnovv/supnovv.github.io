@@ -1,3 +1,4 @@
+#include <stdio.h>
 #include <string.h>
 #include <stdarg.h>
 #include <stddef.h>
@@ -42,8 +43,12 @@ static int l_strbuf_ensure_remain(l_strbuf** self, l_int remainsize) {
 static l_strbuf* l_strbuf_init(l_thread* thread, l_int initsize, l_int maxlimit) {
   l_strbuf* p = 0;
   if (initsize < (l_int)sizeof(l_strbuf)) initsize = sizeof(l_strbuf);
-  if (thread) p = (l_strbuf*)l_thread_alloc_buffer(thread, sizeof(l_strbuf) + initsize);
-  else p = (l_strbuf*)l_raw_malloc(sizeof(l_strbuf) + initsize);
+  if (thread) {
+    p = (l_strbuf*)l_thread_alloc_buffer(thread, sizeof(l_strbuf) + initsize);
+  } else {
+    p = (l_strbuf*)l_raw_malloc(sizeof(l_strbuf) + initsize);
+    p->bsize = sizeof(l_strbuf) + initsize;
+  }
   *(l_strbuf_cstr(p)) = 0; /* zero terminated */
   p->size = 0;
   p->limit = (maxlimit < 0) ? 0 : maxlimit;
@@ -53,7 +58,8 @@ static l_strbuf* l_strbuf_init(l_thread* thread, l_int initsize, l_int maxlimit)
 static void l_strbuf_free(l_thread* thread, l_strbuf* buffer) {
   if (!buffer) return;
   if (!thread) thread = l_thread_self();
-  l_thread_free_buffer(thread, &buffer->node);
+  if (thread) l_thread_free_buffer(thread, &buffer->node);
+  else l_raw_free(buffer);
 }
 
 l_string l_thread_create_limited_string(l_thread* thread, l_int initsize, l_int maxlimit) {
@@ -161,7 +167,7 @@ int l_string_append(l_string* self, l_strt s) {
     *dest++ = *s.start++;
   }
   *dest = 0;
-  self->b->size += dest - bstr;
+  self->b->size = dest - bstr;
   return true;
 }
 
@@ -188,7 +194,7 @@ static void l_string_format_out(l_string* self, l_strt s) {
     }
 
     *dest = 0;
-    b->size += dest - bstr;
+    b->size = dest - bstr;
 
   } else {
     l_string_append(self, s);
@@ -227,7 +233,7 @@ static void l_string_format_out_reverse(l_string* self, l_strt s) {
   }
 
   *dest = 0;
-  b->size += dest - bstr;
+  b->size = dest - bstr;
 }
 
 static void l_string_format_fill_and_out(l_string* self, l_rune* a, l_rune* p, l_umedit flags) {
@@ -791,6 +797,11 @@ void l_logger_func_impl(const void* tag, const void* fmt, ...) {
   if (level < 0 || level > l_log_level) return;
 
   thread = l_thread_self();
+  if (!thread) {
+    printf("[W] cannot print thread log\n");
+    return;
+  }
+
   log = &thread->log;
   log->b->flags |= L_STRING_PRINT_LOG;
   l_string_format_out(log, l_strt_c(l_rstr(tag) + 2));
@@ -809,6 +820,9 @@ void l_logger_func_impl(const void* tag, const void* fmt, ...) {
   log->b->nargs = nargs - '0';
   l_string_format_v_impl(log, l_rstr(fmt), vl);
   va_end(vl);
+
+  l_string_format_out(log, l_strt_l(L_NEWLINE, L_NL_SIZE));
+  if (l_log_level == 4) l_write_log_to_file(log);
 }
 
 #define L_BLANK_MAX_LEN (3)

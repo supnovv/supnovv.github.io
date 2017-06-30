@@ -223,8 +223,8 @@ l_config* l_create_config() {
   conf->service_table_size = 10; /* 2^10 = 1024 */
   conf->log_buffer_size = 1024*8;
   conf->thread_frmem_max_size = 1024;
-  l_copy_l("trace", 6, conf->logfile);
-  conf->prefixend = conf->logfile + 5;
+  l_copy_l("stdout", 7, conf->logfile);
+  conf->prefixend = conf->logfile + 6;
   /* TODO: read config file */
   L = l_new_luastate();
   l_close_luastate(L);
@@ -403,31 +403,36 @@ int l_thread_join(l_thread* self) {
 
 static void l_master_init() {
   int i = 0;
-  l_config* conf = l_create_config();
+  l_config* conf = 0;
   l_thread* master = 0;
   l_thread* thread = 0;
 
+  L_thread_ptr = 0;
   l_thrkey_init(&L_thread_key);
-  l_priorq_init(&L_thread_prq, l_thread_less);
+
+  master = L_master_thread = (l_thread*)l_raw_calloc(sizeof(l_thread));
+  master->block = l_raw_malloc(sizeof(l_thrblock));
+
+  conf = l_create_config();
+  l_thread_init(master, conf);
+
+  L_thread_ptr = master;
+  l_thrkey_set_data(&L_thread_key, master);
 
   L_num_workers = conf->workers;
-  master = L_master_thread = (l_thread*)l_raw_calloc(sizeof(l_thread) * (conf->workers + 1));
-  L_worker_threads = master + 1;
+  L_worker_threads = (l_thread*)l_raw_calloc(sizeof(l_thread) * conf->workers);
 
-  for (i = 0; i < conf->workers + 1; ++i) {
-    thread = master + i;
+  l_priorq_init(&L_thread_prq, l_thread_less);
+
+  for (i = 0; i < conf->workers; ++i) {
+    thread = L_worker_threads + i;
     thread->block = l_raw_malloc(sizeof(l_thrblock));
     thread->index = i;
     l_thread_init(thread, conf);
     l_priorq_push(&L_thread_prq, &thread->node);
   }
 
-  l_free_config(conf);
-
   /* init globals */
-
-  L_thread_ptr = master;
-  l_thrkey_set_data(&L_thread_key, master);
 
   l_socket_startup();
   l_ionfmgr_init(&L_ionf_mgr);
@@ -438,6 +443,8 @@ static void l_master_init() {
   l_mutex_init(&L_srvc_mtx);
   L_svid_seed = L_MIN_SERVICE_ID;
   l_srvctable_init(&L_srvc_table, conf->service_table_size);
+
+  l_free_config(conf);
 }
 
 static void l_master_free() {
@@ -673,7 +680,7 @@ void l_send_bootstrap_message(l_thread* thread, int (*bootstrap)()) {
   l_send_message(thread, L_SERVICE_BOOTSTRAP, &msg->head);
 }
 
-void l_master_start(int (*start)()) {
+void l_master_loop(int (*start)()) {
   l_squeue rxmq, frmq;
   l_message* msg = 0;
   l_service* srvc = 0;
@@ -683,6 +690,8 @@ void l_master_start(int (*start)()) {
   l_squeue* mq = 0;
   int n = L_num_workers;
   int i = 0;
+
+  l_logm_s("master run");
 
   mq = (l_squeue*)l_raw_calloc(sizeof(l_squeue) * n);
   for (; i < n; ++i) {
@@ -791,6 +800,8 @@ int l_worker_start() {
 
   thread = l_thread_self();
 
+  l_logm_1("worker %d run", ld(thread->index));
+
   for (; ;) {
     l_thread_lock(thread);
     while (l_squeue_is_empty(thread->rxmq)) {
@@ -876,11 +887,17 @@ int startmainthreadcv(int (*start)(), int argc, char** argv) {
 
   l_master_parse_command_line(argc, argv);
 
+  l_logm_s("master initialized");
+
   for (i = 0; i < L_num_workers; ++i) {
     l_thread_start(L_worker_threads + i, l_worker_start);
   }
 
-  l_master_start(start);
+  l_logm_1("%d-worker started", ld(L_num_workers));
+
+  l_master_loop(start);
+
+  l_logm_s("master loop exit");
 
   for (i = 0; i < L_num_workers; ++i) {
     l_thread_join(L_worker_threads + i);

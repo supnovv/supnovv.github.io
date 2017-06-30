@@ -5,7 +5,6 @@
 #include "l_master.h"
 
 int l_test_start() {
-  l_set_log_level(4);
   l_core_test();
   l_luac_test();
   l_plat_test();
@@ -16,6 +15,7 @@ int l_test_start() {
 }
 
 int main() {
+  l_set_log_level(4);
   return startmainthread(l_test_start);
 }
 
