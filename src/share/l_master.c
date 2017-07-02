@@ -6,16 +6,11 @@
 #include "l_message.h"
 #include "l_service.h"
 
-#define L_MESSAGE_START_SERVICE 0x01
-#define L_MESSAGE_START_SRVCRSP 0x02
-#define L_MESSAGE_CLOSE_SERVICE 0x03
-#define L_MESSAGE_CLOSE_SRVCRSP 0x04
-#define L_MESSAGE_CLOSE_EVENTFD 0x05
-#define L_MESSAGE_BOOTSTRAP 0x06
 #define L_MIN_SERVICE_ID (1024*1024)
 #define L_SERVICE_SAMETHRD 0x01
 #define L_SERVICE_IO_EVENT 0x02
 #define L_SERVICE_CLOSING  0x04
+#define L_MASTER_EXIT 0x01
 
 typedef struct {
   l_smplnode node;
@@ -100,13 +95,15 @@ static void l_srvctable_foreach(l_srvctable* self, void (*cb)(l_service*)) {
 static void l_srvctable_clear(l_srvctable* self, void (*elemfree)(void*)) {
   l_srvcslot* slot = self->slot;
   l_srvcslot* end = slot + self->nslot;
+  l_smplnode* head = 0;
   l_smplnode* first = 0;
   if (self->slot == 0) return;
   for (; slot < end; ++slot) {
-    first = slot->node.next;
-    while (first) {
+    head = &slot->node;
+    while (head->next) {
+      first = head->next;
+      head->next = first->next;
       if (elemfree) elemfree(first);
-      slot->node.next = first->next;
     }
   }
 }
@@ -223,8 +220,8 @@ l_config* l_create_config() {
   conf->service_table_size = 10; /* 2^10 = 1024 */
   conf->log_buffer_size = 1024*8;
   conf->thread_frmem_max_size = 1024;
-  l_copy_l("stdout", 7, conf->logfile);
-  conf->prefixend = conf->logfile + 6;
+  l_copy_l("trace", 6, conf->logfile);
+  conf->prefixend = conf->logfile + 5;
   /* TODO: read config file */
   L = l_new_luastate();
   l_close_luastate(L);
@@ -328,6 +325,7 @@ static void l_thread_init(l_thread* t, l_config* conf) {
     suffix = l_copy_l(".txt", 4, suffix);
     *suffix = 0;
     t->logfile = l_open_append_unbuffered(conf->logfile);
+    l_write_strt_to_file(&t->logfile, l_literal_strt("--------" L_NEWLINE));
   }
 
   t->L = l_new_luastate();
@@ -357,12 +355,6 @@ static void l_thread_free(l_thread* t) {
     t->L = 0;
   }
 
-  l_string_free(&t->log);
-
-  if (t->logfile.stream != stdout && t->logfile.stream != stderr) {
-    l_close_file(&t->logfile);
-  }
-
   frbq = &((l_freebq*)t->frbq)->queue;
   while ((node = l_squeue_pop(frbq))) {
     l_raw_free(node);
@@ -371,6 +363,14 @@ static void l_thread_free(l_thread* t) {
   l_mutex_free(t->svmtx);
   l_mutex_free(t->mutex);
   l_condv_free(t->condv);
+
+
+  l_thread_flush_log(t);
+  l_string_free(&t->log);
+
+  if (t->logfile.stream != stdout && t->logfile.stream != stderr) {
+    l_close_file(&t->logfile);
+  }
 }
 
 static void* l_thread_func(void* para) {
@@ -379,7 +379,8 @@ static void* l_thread_func(void* para) {
   L_thread_ptr = self;
   l_thrkey_set_data(&L_thread_key, self);
   n = self->start();
-  l_thread_free(self);
+  L_thread_ptr = 0;
+  l_thrkey_set_data(&L_thread_key, 0);
   return (void*)(l_int)n;
 }
 
@@ -389,7 +390,6 @@ int l_thread_start(l_thread* self, int (*start)()) {
 }
 
 void l_thread_exit() {
-  l_thread_free(l_thread_self());
   l_raw_thread_exit();
 }
 
@@ -408,7 +408,7 @@ static void l_master_init() {
   l_thread* thread = 0;
 
   L_thread_ptr = 0;
-  l_thrkey_init(&L_thread_key);
+  l_thrkey_set_data(&L_thread_key, 0);
 
   master = L_master_thread = (l_thread*)l_raw_calloc(sizeof(l_thread));
   master->block = l_raw_malloc(sizeof(l_thrblock));
@@ -427,7 +427,7 @@ static void l_master_init() {
   for (i = 0; i < conf->workers; ++i) {
     thread = L_worker_threads + i;
     thread->block = l_raw_malloc(sizeof(l_thrblock));
-    thread->index = i;
+    thread->index = i + 1; /* worker index should not 0 */
     l_thread_init(thread, conf);
     l_priorq_push(&L_thread_prq, &thread->node);
   }
@@ -447,7 +447,7 @@ static void l_master_init() {
   l_free_config(conf);
 }
 
-static void l_master_free() {
+static void l_master_clean_all() {
   l_smplnode* node = 0;
   l_thread* thread = 0;
 
@@ -466,11 +466,18 @@ static void l_master_free() {
   l_srvctable_free(&L_srvc_table, l_raw_free);
 
   while ((thread = (l_thread*)l_priorq_pop(&L_thread_prq))) {
+    l_thread_free(thread);
     l_raw_free(thread->block);
   }
+
   l_raw_free(L_master_thread);
+  l_raw_free(L_worker_threads);
+
   L_master_thread = 0;
-  l_thrkey_free(&L_thread_key);
+  L_worker_threads = 0;
+
+  L_thread_ptr = 0;
+  l_thrkey_set_data(&L_thread_key, 0);
 }
 
 l_ionfmgr* l_master_get_ionfmgr() {
@@ -508,12 +515,10 @@ static l_service* l_master_del_service(l_umedit svid) {
 }
 
 static void l_master_get_messages(l_squeue* outq) {
-  l_squeue* mq = &L_msg_rxq;
   l_mutex* mtx = &L_msg_lock;
-
   l_mutex_lock(mtx);
-  l_squeue_push_queue(outq, mq);
-  l_mutex_lock(mtx);
+  l_squeue_push_queue(outq, &L_msg_rxq);
+  l_mutex_unlock(mtx);
 }
 
 static void l_master_wakeup() {
@@ -586,16 +591,19 @@ static void l_master_dispatch_event(l_ioevent* rxev) {
   l_mutex_unlock(svmtx);
 }
 
-static void l_master_messages_handle(l_squeue* frmq) {
+static int l_master_messages_handle(l_squeue* frmq) {
   l_thread* master = l_thread_master();
   l_message* msg = 0;
   l_squeue msgq;
+  int exited_workers = 0;
 
   l_squeue_init(&msgq);
 
   l_thread_lock(master);
   l_squeue_push_queue(&msgq, master->rxmq);
   l_thread_unlock(master);
+
+  l_squeue_push_queue(&msgq, master->txms);
 
   while ((msg = (l_message*)l_squeue_pop(&msgq))) {
     switch (msg->type) {
@@ -605,6 +613,9 @@ static void l_master_messages_handle(l_squeue* frmq) {
         if (!srvc->belong) {
           srvc->belong = l_threadpool_acquire();
         }
+
+        l_logm_1("start service %d", ld(srvc->svid));
+
         /* then add event */
         if (srvc->ioev) {
           l_ioevent event = *srvc->ioev;
@@ -635,6 +646,8 @@ static void l_master_messages_handle(l_squeue* frmq) {
         l_service* srvc = l_master_del_service(p->svid);
         l_handle fd = p->fd;
 
+        l_logm_1("close service %d", ld(p->svid));
+
         if (fd != -1) {
           l_ionfmgr_del(l_master_get_ionfmgr(), fd);
           l_socket_close(fd);
@@ -642,28 +655,48 @@ static void l_master_messages_handle(l_squeue* frmq) {
 
         if (!srvc) break;
         l_threadpool_release(srvc->belong); /* L_MESSAGE_CLOSE_SRVCRSP is the last msg */
-        l_send_message_ptr(l_thread_master(), srvc->svid, L_MESSAGE_CLOSE_SRVCRSP, srvc);
+        l_send_message_ptr(master, srvc->svid, L_MESSAGE_CLOSE_SRVCRSP, srvc);
+      }
+      break;
+    case L_MESSAGE_MASTER_EXIT: {
+        int i = 0;
+        l_thread* t = L_worker_threads;
+        l_logm_s("prepare exit");
+        for (; i < L_num_workers; ++i) {
+          if (t[i].index == 0) continue; /* already exit */
+          l_send_message_tp(master, t[i].index, L_MESSAGE_WORKER_EXIT);
+        }
+      }
+      break;
+    case L_MESSAGE_WORKER_EXITRSP: {
+        int index = ((l_message_u32*)msg)->u32;
+        ++exited_workers;
+        L_worker_threads[index].index = 0;
+        l_logm_3("worker %d exited %d/%d", ld(index), ld(exited_workers), ld(L_num_workers));
+        if (exited_workers == L_num_workers) {
+          return false;
+        }
       }
       break;
     default:
-      l_loge_s("unknow message id");
+      l_loge_1("unknow message %d", ld(msg->type));
       break;
     }
 
     l_squeue_push(frmq, &msg->node);
   }
-}
 
-l_extern l_service* l_create_service(l_thread* thread, l_int size, int (*entry)(l_service*, l_message*), int samethread);
-l_extern void l_start_service(l_service* srvc);
+  return true;
+}
 
 static int l_bootstrap_service_proc(l_service* self, l_message* msg) {
   (void)self;
   switch (msg->type) {
   case L_MESSAGE_START_SRVCRSP:
-    l_logm_s("bootstrap service startup");
+    l_logm_s("bootstrap startup");
     break;
   case L_MESSAGE_BOOTSTRAP:
+    l_logm_1("bootstrap service %d", ld(self->svid));
     if (((l_bootstrap_message*)msg)->bootstrap) {
       return ((l_bootstrap_message*)msg)->bootstrap();
     }
@@ -674,13 +707,11 @@ static int l_bootstrap_service_proc(l_service* self, l_message* msg) {
   return 0;
 }
 
-void l_send_bootstrap_message(l_thread* thread, int (*bootstrap)()) {
-  l_bootstrap_message* msg = (l_bootstrap_message*)l_create_message(thread, L_MESSAGE_BOOTSTRAP, sizeof(l_bootstrap_message));
-  msg->bootstrap = bootstrap;
-  l_send_message(thread, L_SERVICE_BOOTSTRAP, &msg->head);
+void l_master_exit() {
+  l_send_message_tp(l_thread_self(), L_SERVICE_MASTER_ID, L_MESSAGE_MASTER_EXIT);
 }
 
-void l_master_loop(int (*start)()) {
+static int l_master_loop(int (*start)()) {
   l_squeue rxmq, frmq;
   l_message* msg = 0;
   l_service* srvc = 0;
@@ -688,6 +719,7 @@ void l_master_loop(int (*start)()) {
   l_thread* thread = 0;
   l_thread* ta = L_worker_threads;
   l_squeue* mq = 0;
+  l_uint wait_count = 0;
   int n = L_num_workers;
   int i = 0;
 
@@ -701,22 +733,32 @@ void l_master_loop(int (*start)()) {
   l_squeue_init(&rxmq);
   l_squeue_init(&frmq);
 
-
-  /* start bootstrap service */
   srvc = l_create_service(master, sizeof(l_service), l_bootstrap_service_proc, false);
   srvc->svid = L_SERVICE_BOOTSTRAP;
-  l_start_service(srvc);
-
-  /* execute start code in bootstrap */
-  l_send_bootstrap_message(master, start);
+  l_start_service(srvc); /* start bootstrap service */
+  l_master_messages_handle(&frmq); /* let bootstrap service startup */
+  l_send_bootstrap_message(master, start); /* send BOOTSTRAP message to execute 'start' */
+  l_master_wakeup(); /* wait up master to deliver the messages */
 
   for (; ;) {
+    l_logm_1("master T%d wait", ld(++wait_count));
     l_ionfmgr_wait(l_master_get_ionfmgr(), l_master_dispatch_event);
-    l_master_messages_handle(&frmq); /* handle master's messages */
+    l_logm_1("master T%d wakeup", ld(wait_count));
+
+    if (!l_master_messages_handle(&frmq)) {
+      return L_MASTER_EXIT;
+    }
+
     l_master_get_messages(&rxmq); /* messages belong to workers */
     l_squeue_push_queue(&rxmq, master->txmq); /* master to workers' messages */
 
     while ((msg = (l_message*)l_squeue_pop(&rxmq))) {
+      if (msg->type == L_MESSAGE_WORKER_EXIT) {
+        msg->srvc = 0; /* msg->dstid contains thread index */
+        l_squeue_push(mq + msg->dstid - 1, &msg->node);
+        continue;
+      }
+
       srvc = l_master_find_service(msg->dstid);
       if (!srvc && msg->type != L_MESSAGE_CLOSE_SRVCRSP) {
         l_squeue_push(&frmq, &msg->node);
@@ -740,12 +782,17 @@ void l_master_loop(int (*start)()) {
       }
 
       msg->srvc = srvc;
-      l_squeue_push(mq + thread->index, &msg->node);
+      l_squeue_push(mq + thread->index - 1, &msg->node);
     }
 
     for (i = 0; i < n; ++i) {
       if (l_squeue_is_empty(mq + i)) continue;
       thread = ta + i;
+
+      if (thread->index == 0) { /* already exit */
+        l_squeue_push_queue(&frmq, mq + i);
+        continue;
+      }
 
       l_thread_lock(thread);
       l_squeue_push_queue(thread->rxmq, mq + i);
@@ -789,11 +836,12 @@ static void l_worker_flush_messages(l_thread* self) {
   }
 }
 
-int l_worker_start() {
+static int l_worker_start() {
   l_squeue msgq, frmq;
   l_service* srvc = 0;
   l_message* msg = 0;
   l_thread* thread = 0;
+  int thread_exit = 0;
 
   l_squeue_init(&msgq);
   l_squeue_init(&frmq);
@@ -827,8 +875,18 @@ int l_worker_start() {
           l_mutex_unlock(svmtx);
         }
         break;
+      case L_MESSAGE_START_SRVCRSP:
+        l_logm_1("service %d started", ld(srvc->svid));
+        break;
       case L_MESSAGE_CLOSE_SRVCRSP:
+        l_logm_1("service %d closed", ld(srvc->svid));
         l_thread_free_buffer(thread, &srvc->node);
+        l_squeue_push(&frmq, &msg->node);
+        continue;
+      case L_MESSAGE_WORKER_EXIT:
+        l_logm_1("worker %d prepare exit", ld(thread->index));
+        thread_exit = 1;
+        l_send_message_u32(thread, L_SERVICE_MASTER_ID, L_MESSAGE_WORKER_EXITRSP, thread->index);
         l_squeue_push(&frmq, &msg->node);
         continue;
       default:
@@ -863,6 +921,10 @@ int l_worker_start() {
 
     l_free_message_queue(thread, &frmq);
     l_worker_flush_messages(thread);
+
+    if (thread_exit) {
+      break;
+    }
   }
 
   return 0;
@@ -880,6 +942,8 @@ int startmainthread(int (*start)()) {
 int startmainthreadcv(int (*start)(), int argc, char** argv) {
   int i = 0;
   l_thread* master = 0;
+  l_thrkey_init(&L_thread_key);
+
   l_master_init();
 
   master = l_thread_master();
@@ -895,15 +959,21 @@ int startmainthreadcv(int (*start)(), int argc, char** argv) {
 
   l_logm_1("%d-worker started", ld(L_num_workers));
 
-  l_master_loop(start);
+  i = l_master_loop(start);
 
-  l_logm_s("master loop exit");
+  l_logm_1("master exited %d", ld(i));
 
   for (i = 0; i < L_num_workers; ++i) {
     l_thread_join(L_worker_threads + i);
   }
 
-  l_master_free();
+  l_logm_s("workers exited");
+
+  l_master_clean_all();
+
+  l_logm_s("cleaned up");
+
+  l_thrkey_free(&L_thread_key);
   return 0;
 }
 

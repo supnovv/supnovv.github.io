@@ -1,12 +1,6 @@
 #include "l_service.h"
 #include "l_socket.h"
 
-#define L_MESSAGE_START_SERVICE 0x01
-#define L_MESSAGE_START_SRVCRSP 0x02
-#define L_MESSAGE_CLOSE_SERVICE 0x03
-#define L_MESSAGE_CLOSE_SRVCRSP 0x04
-#define L_MESSAGE_CLOSE_EVENTFD 0x05
-
 #define L_SERVICE_SAMETHRD 0x01
 #define L_SERVICE_IO_EVENT 0x02
 #define L_SERVICE_CLOSING  0x04

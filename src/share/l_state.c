@@ -30,7 +30,7 @@ static void llinitstate(l_state* co) {
 int l_state_init(l_state* ccco, l_thread* belong, l_service* srvc, int (*func)(l_state*)) {
   lua_State* co = 0;
   llinitstate(ccco);
-  if ((co = lua_newthread(belong->L))) {
+  if (!(co = lua_newthread(belong->L))) {
     l_loge_s("lua_newthread failed");
     return false;
   }

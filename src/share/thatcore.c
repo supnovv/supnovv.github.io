@@ -238,6 +238,10 @@ void l_clear_file_error(l_filestream* self) {
   clearerr((FILE*)self->stream);
 }
 
+l_int l_write_strt_to_file(l_filestream* self, l_strt s) {
+  return l_write_file(self, s.start, s.len);
+}
+
 l_int l_write_file(l_filestream* self, const void* s, l_int len) {
   l_int n = 0;
   if (!s || len <= 0 || len > l_max_rdwr_size) {

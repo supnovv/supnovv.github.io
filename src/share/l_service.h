@@ -5,8 +5,8 @@
 #include "l_ionfmgr.h"
 #include "l_state.h"
 
-#define L_SERVICE_MASTER_ID (0)
-#define L_SERVICE_BOOTSTRAP (1)
+#define L_SERVICE_MASTER_ID (0) /* worker's default svid is its index (16-bit) */
+#define L_SERVICE_BOOTSTRAP (0xffff+1)
 
 /*
 1. 队列不能直接赋值

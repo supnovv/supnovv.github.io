@@ -679,6 +679,18 @@ int l_raw_thread_create(l_thrid* thrid, void* (*start)(void*), void* para) {
   return true;
 }
 
+void l_raw_thread_cancel(l_thrid* thrid) {
+  /* pthread_cancel - send a cancellation request to a thread
+  #include <pthread.h>
+  int pthread_cancel(pthread_t thread);
+  On success, it returns 0; on error, it returns a nonzero
+  error number */
+  int n = pthread_cancel(*((pthread_t*)thrid));
+  if (n != 0) {
+    l_loge_1("pthread_cancel %s", lserror(errno));
+  }
+}
+
 void l_raw_thread_sleep(l_long us) {
   struct timespec req;
   req.tv_sec = (time_t)(us/1000000);
@@ -712,8 +724,8 @@ void l_plat_test() {
   l_assert(sizeof(l_rwlock) >= sizeof(pthread_rwlock_t));
   l_assert(sizeof(l_condv) >= sizeof(pthread_cond_t));
   l_assert(sizeof(int) == sizeof(l_umedit)); /* test file descriptor size */
-  l_logd_1("pthread_t %s-byte", ld(sizeof(pthread_t)));
-  l_logd_1("pthread_mutext_t %s-byte", ld(sizeof(pthread_mutex_t)));
-  l_logd_1("pthread_rwlock_t %s-byte", ld(sizeof(pthread_rwlock_t)));
+  l_logd_1("pthread_t %d-byte", ld(sizeof(pthread_t)));
+  l_logd_1("pthread_mutext_t %d-byte", ld(sizeof(pthread_mutex_t)));
+  l_logd_1("pthread_rwlock_t %d-byte", ld(sizeof(pthread_rwlock_t)));
 }
 

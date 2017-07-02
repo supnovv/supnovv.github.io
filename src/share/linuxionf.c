@@ -306,17 +306,16 @@ static int llepollmgr_ctl(int epfd, int op, int fd, struct epoll_event* event) {
   encountered while trying to register a new fd on an epoll instance.
   EPERM - the target file fd does not support epoll. this can occur if fd
   refers to, for example, a regular file or a directory. */
-  return (epoll_ctl(epfd, op, fd, event) != 0);
+  return (epoll_ctl(epfd, op, fd, event) == 0);
 }
 
 static int llepollmgr_add(int epfd, int fd, struct epoll_event* event) {
-  if (!llepollmgr_ctl(epfd, EPOLL_CTL_ADD, fd, event)) {
-    if (errno != EEXIST || !llepollmgr_ctl(epfd, EPOLL_CTL_MOD, fd, event)) {
-      l_loge_1("llepollmgr_add %s", lserror(errno));
-      return false;
-    }
+  if (llepollmgr_ctl(epfd, EPOLL_CTL_ADD, fd, event)) return true;
+  if (errno == EEXIST && llepollmgr_ctl(epfd, EPOLL_CTL_MOD, fd, event)) {
+    return true;
   }
-  return true;
+  l_loge_1("epoll add %s", lserror(errno));
+  return false;
 }
 
 static int llepollmgr_mod(int epfd, int fd, struct epoll_event* event) {
@@ -396,7 +395,7 @@ static void llepollmgr_wait(llepollmgr* self, int ms) {
 
   n = errno;
   if (n == EINTR) {
-    l_logw_1("epoll_wait interrupted %s", lserror(n));
+    l_logw_1("epoll_wait EINTR %s", lserror(n));
   } else if (n != 0) {
     l_loge_1("epoll_wait %s", lserror(errno));
   }
@@ -570,7 +569,7 @@ int l_ionfmgr_del(l_ionfmgr* self, l_handle fd) {
 /* return > 0 success, -1 block, -2 error, -3 already signaled */
 int l_ionfmgr_wakeup(l_ionfmgr* self) {
   llepollmgr* mgr = (llepollmgr*)self;
-  int needtowakeup = false;
+  l_mutex* mtx = (l_mutex*)&(mgr->mutex);
 
   /* if we use a flag like "wait_is_called" to indicate master called epoll_wait() or not,
   and then write eventfd to signal master wakeup only "wait_is_called" is true, then master
@@ -581,17 +580,13 @@ int l_ionfmgr_wakeup(l_ionfmgr* self) {
   /* here is the another trick to count the wakeup times.
   this function can be called from any thread, the counter
   need to be protected by a lock.*/
-  l_mutex_lock((l_mutex*)&(mgr->mutex));
-  if (mgr->wakeup_count < 2) {
-    mgr->wakeup_count += 1;
-    needtowakeup = true;
+  l_mutex_lock(mtx);
+  if (mgr->wakeup_count) {
+    l_mutex_unlock(mtx);
+    return -3; /* already signaled to wakeup */
   }
-  l_mutex_unlock((l_mutex*)&(mgr->mutex));
-
-  if (!needtowakeup) {
-    /* already signaled to wakeup */
-    return -3;
-  }
+  mgr->wakeup_count = 1;
+  l_mutex_unlock(mtx);
 
   return ll_event_fd_write(mgr->wakeupfd);
 }
@@ -602,7 +597,6 @@ int l_ionfmgr_timedwait(l_ionfmgr* self, int ms, void (*cb)(l_ioevent*)) {
   struct epoll_event* start = 0;
   struct epoll_event* beyond = 0;
   l_ioevent event;
-  int n = 0;
 
   /* timeout cannot be negative except infinity (-1) */
   if (ms < 0 && ms != -1) {
@@ -635,13 +629,10 @@ int l_ionfmgr_timedwait(l_ionfmgr* self, int ms, void (*cb)(l_ioevent*)) {
   for (; start < beyond; ++start) {
     if (start->data.fd == mgr->wakeupfd) {
       /* return > 0 success, -1 block, -2 error */
-      n = ll_event_fd_read(mgr->wakeupfd);
-      l_logd_1("ionf wakeup %d", ld(n));
-      /* count down wakeup_count */
+      ll_event_fd_read(mgr->wakeupfd);
+
       l_mutex_lock((l_mutex*)&(mgr->mutex));
-      if (mgr->wakeup_count > 0) {
-        mgr->wakeup_count -= 1;
-      }
+      mgr->wakeup_count = 0;
       l_mutex_unlock((l_mutex*)&(mgr->mutex));
       continue;
     }

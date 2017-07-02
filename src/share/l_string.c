@@ -146,14 +146,24 @@ static l_umedit l_right_most_bit(l_umedit n) {
   return n & (-n);
 }
 
+static int l_log_level = 2;
+
 static void l_write_log_to_file(l_string* self) {
   l_strbuf* b = self->b;
   if (b->size > 0) {
     l_thread* thread = (l_thread*)((l_byte*)self - offsetof(l_thread, log));
     l_write_file(&thread->logfile, l_strbuf_cstr(b), b->size);
+    if (l_log_level >= 4 && thread->logfile.stream != stdout && thread->logfile.stream != stderr) {
+      l_filestream file = {stdout};
+      l_write_file(&file, l_strbuf_cstr(b), b->size);
+    }
   }
   *(l_strbuf_cstr(b)) = 0;
   b->size = 0;
+}
+
+void l_thread_flush_log(l_thread* self) {
+  l_write_log_to_file(&self->log);
 }
 
 int l_string_append(l_string* self, l_strt s) {
@@ -524,8 +534,6 @@ static void l_string_format_float(l_string* self, l_value v, l_umedit flags) {
   l_string_format_fill_and_out(self, a, p, flags);
 }
 
-static int l_log_level = 2;
-
 void l_set_log_level(int level) {
   l_log_level = level;
 }
@@ -534,12 +542,12 @@ int l_get_log_level() {
   return l_log_level;
 }
 
-void l_assert_func_impl(int pass, const void* expr, const void* fileline) {
-  if (pass) {
-    l_logger_func_2("42[D] ", "%sassert pass: %s", lp(fileline), lp(expr));
-  } else {
-    l_logger_func_2("02[E] ", "%sassert fail: %s", lp(fileline), lp(expr));
-  }
+void l_assert_func_pass(const void* tag, const void* expr) {
+  l_logger_func_1(tag, "assert pass: %s", lp(expr));
+}
+
+void l_assert_func_fail(const void* tag, const void* expr) {
+  l_logger_func_1(tag, "assert fail: %s", lp(expr));
 }
 
 static const l_rune* l_string_format_a_value(l_string* self, const l_rune* start, const l_rune* end, l_value a) {
@@ -724,6 +732,10 @@ static int l_string_format_v_impl(l_string* self, const l_rune* fmt, va_list vl)
     }
   }
 
+  if (fmt < end) {
+    l_string_format_out(self, l_strt_e(fmt, end));
+  }
+
   return nfmts;
 }
 
@@ -771,6 +783,10 @@ int l_string_format_n_impl(l_string* self, const void* fmt, int n, l_value* a) {
     }
   }
 
+  if (beg < end) {
+    l_string_format_out(self, l_strt_e(beg, cur));
+  }
+
   return nfmts;
 }
 
@@ -798,13 +814,15 @@ void l_logger_func_impl(const void* tag, const void* fmt, ...) {
 
   thread = l_thread_self();
   if (!thread) {
-    printf("[W] cannot print thread log\n");
+    printf("%s00 %s ~\n", ((char*)tag) + 2, (char*)fmt);
     return;
   }
 
   log = &thread->log;
   log->b->flags |= L_STRING_PRINT_LOG;
   l_string_format_out(log, l_strt_c(l_rstr(tag) + 2));
+  l_string_format_ulong(log, thread->index, (2 << 16));
+  l_string_format_out(log, l_literal_strt(" "));
 
   if (!fmt) return;
 
@@ -822,7 +840,7 @@ void l_logger_func_impl(const void* tag, const void* fmt, ...) {
   va_end(vl);
 
   l_string_format_out(log, l_strt_l(L_NEWLINE, L_NL_SIZE));
-  if (l_log_level == 4) l_write_log_to_file(log);
+  if (l_log_level >= 4) l_write_log_to_file(log);
 }
 
 #define L_BLANK_MAX_LEN (3)

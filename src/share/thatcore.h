@@ -80,7 +80,7 @@
 #define L_X_MKSTR(a) L_MKSTR(a)
 #define L_MKFLSTR __FILE__ " (" L_X_MKSTR(__LINE__) ") "
 
-#define l_assert(e)                   l_assert_func_impl((e), (#e), L_MKFLSTR) /* 0:assert */
+#define l_assert(e) ((e) ? l_assert_func_pass("41[D] " L_MKFLSTR, (#e)) : l_assert_func_fail("01[E] " L_MKFLSTR, (#e))) /* 0:assert */
 #define l_loge_s(s)                   l_logger_func_s("10[E] " L_MKFLSTR, (s)) /* 1:error */
 #define l_loge_1(fmt,a)               l_logger_func_1("11[E] " L_MKFLSTR, (fmt), a)
 #define l_loge_n(fmt,n,a)             l_logger_func_n("1n[E] " L_MKFLSTR, (fmt), n,a)
@@ -164,7 +164,8 @@ l_inline l_value lf(double f) {
   l_value a; a.f = f; return a;
 }
 
-l_extern void l_assert_func_impl(int pass, const void* expr, const void* fileline);
+l_extern void l_assert_func_pass(const void* tag, const void* expr);
+l_extern void l_assert_func_fail(const void* tag, const void* expr);
 l_extern void l_logger_func_impl(const void* tag, const void* fmt, ...);
 l_extern void l_set_log_level(int level);
 l_extern int l_get_log_level();
@@ -222,6 +223,26 @@ l_inline void l_logger_func_n(const void* tag, const void* s, l_int n, const l_v
 }
 
 typedef struct {
+  const l_byte* start;
+  l_int len;
+} l_strt;
+
+#define l_strt_c(s) l_strt_l((s), strlen((char*)(s)))
+
+l_inline l_strt l_strt_l(const void* s, l_int len) {
+  return ((l_strt){l_rstr(s), len});
+}
+
+l_inline l_strt l_strt_e(const void* s, const void* e) {
+  return l_strt_l(s, l_rstr(e) - l_rstr(s));
+}
+
+#define l_empty_strt() ((l_strt){0,0})
+#define l_literal_strt(s) l_strt_l("" s, (sizeof(s)/sizeof(char))-1)
+l_extern int l_strt_equal(l_strt lhs, l_strt rhs);
+l_extern int l_strt_contain(l_strt s, int ch);
+
+typedef struct {
   void* stream;
 } l_filestream;
 
@@ -231,6 +252,7 @@ l_extern l_filestream l_open_append(const void* name);
 l_extern l_filestream l_open_read_write(const void* name);
 l_extern l_filestream l_open_write_unbuffered(const void* name);
 l_extern l_filestream l_open_append_unbuffered(const void* name);
+l_extern l_int l_write_strt_to_file(l_filestream* self, l_strt s);
 l_extern l_int l_write_file(l_filestream* self, const void* s, l_int len);
 l_extern l_int l_read_file(l_filestream* self, void* out, l_int len);
 
@@ -311,26 +333,6 @@ l_extern void l_mmheap_init(l_mmheap* self, int (*less)(void*, void*), int inits
 l_extern void l_mmheap_free(l_mmheap* self);
 l_extern void l_mmheap_add(l_mmheap* self, void* elem);
 l_extern void* l_mmheap_del(l_mmheap* self, l_umedit i);
-
-typedef struct {
-  const l_byte* start;
-  l_int len;
-} l_strt;
-
-#define l_strt_c(s) l_strt_l((s), strlen((char*)(s)))
-
-l_inline l_strt l_strt_l(const void* s, l_int len) {
-  return ((l_strt){l_rstr(s), len});
-}
-
-l_inline l_strt l_strt_e(const void* s, const void* e) {
-  return l_strt_l(s, l_rstr(e) - l_rstr(s));
-}
-
-#define l_empty_strt() ((l_strt){0,0})
-#define l_literal_strt(s) l_strt_l("" s, (sizeof(s)/sizeof(char))-1)
-l_extern int l_strt_equal(l_strt lhs, l_strt rhs);
-l_extern int l_strt_contain(l_strt s, int ch);
 
 #define L_COMMON_BUFHEAD \
   l_smplnode node; \
@@ -589,6 +591,7 @@ l_specif void l_condv_broadcast(l_condv* self);
 l_specif l_thrid l_raw_thread_self();
 l_specif int l_raw_thread_create(l_thrid* thrid, void* (*start)(void*), void* para);
 l_specif int l_raw_thread_join(l_thrid* thrid);
+l_specif void l_raw_thread_cancel(l_thrid* thrid);
 l_specif void l_raw_thread_exit();
 l_specif void l_thread_sleep(l_long us);
 
@@ -645,6 +648,7 @@ l_extern void l_thread_release_buffer(l_thread* self, l_smplnode* buffer);
 
 l_extern int l_thread_start(l_thread* self, int (*start)());
 l_extern int l_thread_join(l_thread* self);
+l_extern void l_thread_flush_log(l_thread* self);
 l_extern void l_thread_exit();
 l_extern void l_process_exit();
 

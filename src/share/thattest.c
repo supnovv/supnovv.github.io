@@ -11,6 +11,7 @@ int l_test_start() {
   l_plat_ionf_test();
   l_plat_sock_test();
   l_string_test();
+  l_master_exit();
   return 0;
 }
 

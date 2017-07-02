@@ -3,7 +3,7 @@
 
 l_message* l_create_message(l_thread* thread, l_umedit type, l_int size) {
   l_message* msg = 0;
-  if (size < (l_int)sizeof(l_message) || type <= L_MIN_USER_MSGID) return 0;
+  if (size < (l_int)sizeof(l_message)) { l_loge_1("size %d", ld(size)); return 0; }
   msg = (l_message*)l_thread_alloc_buffer(thread, size);
   msg->type = type;
   return msg;
@@ -77,3 +77,10 @@ void l_send_service_message(l_thread* thread, l_umedit destid, l_umedit type, l_
   msg->fd = fd;
   l_send_message(thread, destid, &msg->head);
 }
+
+void l_send_bootstrap_message(l_thread* thread, int (*bootstrap)()) {
+  l_bootstrap_message* msg = (l_bootstrap_message*)l_create_message(thread, L_MESSAGE_BOOTSTRAP, sizeof(l_bootstrap_message));
+  msg->bootstrap = bootstrap;
+  l_send_message(thread, L_SERVICE_BOOTSTRAP, &msg->head);
+}
+
