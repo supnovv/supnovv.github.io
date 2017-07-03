@@ -241,6 +241,7 @@ l_inline l_strt l_strt_e(const void* s, const void* e) {
 #define l_literal_strt(s) l_strt_l("" s, (sizeof(s)/sizeof(char))-1)
 l_extern int l_strt_equal(l_strt lhs, l_strt rhs);
 l_extern int l_strt_contain(l_strt s, int ch);
+l_extern l_byte* l_copy_from(l_strt s, void* to);
 
 typedef struct {
   void* stream;
@@ -363,6 +364,7 @@ l_extern void l_thread_string_free(l_thread* thread, l_string* self);
 l_extern void l_string_free(l_string* self);
 l_extern void l_string_clear(l_string* self);
 l_extern void l_string_set(l_string* self, l_strt s);
+l_extern int l_string_ensure_remain(l_string* self, l_int remainsize);
 l_extern int l_string_append(l_string* self, l_strt s);
 l_extern int l_string_format_impl(l_string* self, const void* fmt, ...);
 l_extern int l_string_format_n(l_string* self, const void* fmt, int n, l_value* a);
@@ -453,16 +455,7 @@ l_inline int l_string_format_9(l_string* self, const void* fmt, l_value a,
 }
 
 typedef struct {
-  l_umedit m; /* string match this rune */
-  l_umedit e; /* string ended with this rune */
-} l_runeinfo;
-
-typedef struct { /* 4 * 256 * 2 = 2048 (2KB) */
-  l_runeinfo a[256];
-} l_runetable;
-
-typedef struct {
-  l_runetable* t; /* table array, 1 table contains 1 rune, the array size is up to the length of the string */
+  void* t; /* table array, 1 table contains 1 rune, the array size is up to the length of the string */
   int size; /* a string map can store strings up to 'maxnumofstr', the size is the length of the longest string */
   int maxnumofstr;
 } l_stringmap;
@@ -623,7 +616,6 @@ typedef struct l_thread {
 l_extern l_thrkey L_thread_key;
 l_extern_thread_local(l_thread* L_thread_ptr);
 
-l_extern l_thread* l_thread_master();
 l_inline l_thread* l_thread_self() {
 #if defined(l_thread_local_supported)
   return L_thread_ptr;
@@ -632,20 +624,7 @@ l_inline l_thread* l_thread_self() {
 #endif
 }
 
-l_inline void l_thread_lock(l_thread* self) {
-  l_mutex_lock(self->mutex);
-}
-
-l_inline void l_thread_unlock(l_thread* self) {
-  l_mutex_unlock(self->mutex);
-}
-
-l_extern void* l_thread_alloc_buffer(l_thread* self, l_int sizeofbuffer);
-l_extern void* l_thread_ensure_bfsize(l_smplnode* buffer, l_int size);
-l_extern void l_thread_free_buffer(l_thread* self, l_smplnode* buffer);
-l_extern void* l_thread_acquire_buffer(l_thread* self, l_int sizeofbuffer);
-l_extern void l_thread_release_buffer(l_thread* self, l_smplnode* buffer);
-
+l_extern l_thread* l_thread_master();
 l_extern int l_thread_start(l_thread* self, int (*start)());
 l_extern int l_thread_join(l_thread* self);
 l_extern void l_thread_flush_log(l_thread* self);

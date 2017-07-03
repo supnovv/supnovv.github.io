@@ -2,9 +2,6 @@
 #define l_socket_lib_h
 #include "thatcore.h"
 
-#define L_SOCKET_BACKLOG  (32)
-#define L_SOCKET_IPSTRLEN (48)
-
 typedef struct {
   L_PLAT_IMPL_SIZE(L_SOCKADDR_SIZE);
 } l_sockaddr;

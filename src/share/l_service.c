@@ -5,27 +5,6 @@
 #define L_SERVICE_IO_EVENT 0x02
 #define L_SERVICE_CLOSING  0x04
 
-extern l_umedit l_master_gen_service_id();
-
-l_service* l_create_service(l_thread* thread, l_int size, int (*entry)(l_service*, l_message*), int insamethread) {
-  l_debug_assert(thread == l_thread_self());
-  l_service* srvc = 0;
-  if (size < (l_int)sizeof(l_service)) return 0;
-  srvc = l_thread_alloc_buffer(thread, size);
-  srvc->svid = l_master_gen_service_id();
-  srvc->ioev = 0;
-  srvc->belong = thread;
-  srvc->co = 0;
-  srvc->entry = entry;
-  srvc->stop_rx_msg = 0;
-  if (insamethread) {
-    srvc->mflgs = srvc->wflgs = L_SERVICE_SAMETHRD;
-  } else {
-    srvc->mflgs = srvc->wflgs = 0;
-  }
-  return srvc;
-}
-
 void l_start_service(l_service* srvc) {
   l_thread* thread = srvc->belong;
   if (!(srvc->wflgs & L_SERVICE_SAMETHRD)) {
@@ -97,19 +76,6 @@ void l_close_event(l_service* srvc) {
 
   if (fd == -1) return;
   l_send_service_message(thread, L_SERVICE_MASTER_ID, L_MESSAGE_CLOSE_EVENTFD, srvc->svid, fd);
-}
-
-int l_service_resume(l_service* self, int (*func)(l_state*)) {
-  if (self->co == 0) {
-    l_thread* thread = self->belong;
-    l_debug_assert(thread == l_thread_self());
-    self->co = l_thread_alloc_buffer(thread, sizeof(l_state));
-    l_state_init(self->co, thread, self, func);
-  } else {
-    self->co->srvc = self;
-    self->co->func = func;
-  }
-  return l_state_resume(self->co);
 }
 
 int l_service_yield(l_service* self, int (*kfunc)(l_state*)) {

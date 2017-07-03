@@ -8,7 +8,7 @@
 
 void l_zero_l(void* start, l_int len) {
   if (!start || len <= 0 || len > l_max_rdwr_size) {
-    l_loge_1("invalid %d", ld(len));
+    l_loge_1("size %d", ld(len));
     return;
   }
   /* void* memset(void* ptr, int value, size_t num); */
@@ -17,7 +17,7 @@ void l_zero_l(void* start, l_int len) {
 
 l_byte* l_copy_l(const void* from, l_int len, void* to) {
   if (!from || len <= 0 || len > l_max_rdwr_size) {
-    l_loge_1("invalid %d", ld(len));
+    l_loge_1("size %d", ld(len));
     return 0;
   }
   if (l_rstr(to) + len <= l_rstr(from) || l_rstr(to) >= l_rstr(from) + len) {
@@ -34,6 +34,10 @@ l_byte* l_copy_l(const void* from, l_int len, void* to) {
     memmove(to, from, l_cast(size_t, len));
   }
   return l_rstr(to) + len;
+}
+
+l_byte* l_copy_from(l_strt s, void* to) {
+  return l_copy_l(s.start, s.len, to);
 }
 
 static void* l_out_of_memory(l_int size, int init) {
@@ -70,7 +74,7 @@ void* l_raw_calloc(l_int size) {
 void* l_raw_realloc(void* p, l_int old, l_int newsz) {
   void* temp = 0;
   l_int n = l_check_alloc_size(newsz);
-  if (!p || old <= 0 || n == 0) { l_loge_1("invalid %d", ld(newsz)); return 0; }
+  if (!p || old <= 0 || n == 0) { l_loge_1("size %d", ld(newsz)); return 0; }
 
   /** void* realloc(void* buffer, size_t size); **
   Changes the size of the memory block pointed by buffer. The function

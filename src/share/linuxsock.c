@@ -2,6 +2,9 @@
 #include "platsock.h"
 #include "l_socket.h"
 
+#define L_SOCKET_BACKLOG  (32)
+#define L_SOCKET_IPSTRLEN (48)
+
 int l_sockaddr_init(l_sockaddr* self, l_strt ip, l_ushort port) {
   /** inet_pton htons/l ntohs/l **
   #include <arpa/inet.h> // some systems require <netinet/in.h> instead of <arpa/inet.h>

@@ -116,6 +116,23 @@ static void l_srvctable_free(l_srvctable* self, void (*elemfree)(void*)) {
   self->nelem = 0;
 }
 
+l_thrkey L_thread_key;
+l_thread_local(l_thread* L_thread_ptr);
+
+static l_thread* L_worker_threads;
+static int L_num_workers;
+static l_priorq L_thread_prq;
+
+static l_thread* L_master_thread;
+static l_ionfmgr L_ionf_mgr;
+
+static l_squeue L_msg_rxq;
+static l_mutex L_msg_lock;
+
+static l_mutex L_srvc_mtx;
+static l_umedit L_svid_seed;
+static l_srvctable L_srvc_table;
+
 typedef struct {
   l_squeue queue; /* free buffer q */
   l_int size;  /* size of the queue */
@@ -127,7 +144,7 @@ typedef struct {
   L_COMMON_BUFHEAD
 } l_bufhead;
 
-void* l_thread_ensure_bfsize(l_smplnode* buffer, l_int size) {
+static void* l_thread_ensure_bfsize(l_smplnode* buffer, l_int size) {
   l_bufhead* elem = (l_bufhead*)buffer;
   l_int bufsz = elem->bsize;
 
@@ -150,7 +167,7 @@ void* l_thread_ensure_bfsize(l_smplnode* buffer, l_int size) {
   return elem;
 }
 
-void* l_thread_alloc_buffer(l_thread* self, l_int sizeofbuffer) {
+static void* l_thread_alloc_buffer(l_thread* self, l_int sizeofbuffer) {
   l_bufhead* elem = 0;
   l_freebq* q = (l_freebq*)self->frbq;
 
@@ -172,7 +189,7 @@ void* l_thread_alloc_buffer(l_thread* self, l_int sizeofbuffer) {
   return elem;
 }
 
-void l_thread_free_buffer(l_thread* self, l_smplnode* buffer) {
+static void l_thread_free_buffer(l_thread* self, l_smplnode* buffer) {
   l_freebq* q = (l_freebq*)self->frbq;
 
   l_debug_assert(self == l_thread_self());
@@ -196,11 +213,159 @@ void l_thread_free_buffer(l_thread* self, l_smplnode* buffer) {
   }
 }
 
+l_message* l_create_message(l_thread* thread, l_umedit type, l_int size) {
+  l_message* msg = 0;
+  if (size < (l_int)sizeof(l_message)) { l_loge_1("size %d", ld(size)); return 0; }
+  msg = (l_message*)l_thread_alloc_buffer(thread, size);
+  msg->type = type;
+  return msg;
+}
+
+void l_free_message(l_thread* thread, l_message* msg) {
+  l_thread_free_buffer(thread, &msg->node);
+}
+
 void l_free_message_queue(l_thread* self, l_squeue* mq) {
   l_smplnode* node = 0;
   while ((node = l_squeue_pop(mq))) {
     l_thread_free_buffer(self, node);
   }
+}
+
+static l_umedit l_master_gen_service_id() {
+  l_mutex* mtx = &L_srvc_mtx;
+  l_umedit svid = 0;
+
+  l_mutex_lock(mtx);
+  svid = ++L_svid_seed;
+  if (svid < L_MIN_SERVICE_ID) {
+    svid = L_svid_seed = L_MIN_SERVICE_ID;
+  }
+  l_mutex_unlock(mtx);
+
+  return svid;
+}
+
+l_service* l_create_service(l_thread* thread, l_int size, int (*entry)(l_service*, l_message*), int insamethread) {
+  l_debug_assert(thread == l_thread_self());
+  l_service* srvc = 0;
+  if (size < (l_int)sizeof(l_service)) return 0;
+  srvc = l_thread_alloc_buffer(thread, size);
+  srvc->svid = l_master_gen_service_id();
+  srvc->ioev = 0;
+  srvc->belong = thread;
+  srvc->co = 0;
+  srvc->entry = entry;
+  srvc->stop_rx_msg = 0;
+  if (insamethread) {
+    srvc->mflgs = srvc->wflgs = L_SERVICE_SAMETHRD;
+  } else {
+    srvc->mflgs = srvc->wflgs = 0;
+  }
+  return srvc;
+}
+
+int l_service_resume(l_service* self, int (*func)(l_state*)) {
+  if (self->co == 0) {
+    l_thread* thread = self->belong;
+    l_debug_assert(thread == l_thread_self());
+    self->co = l_thread_alloc_buffer(thread, sizeof(l_state));
+    l_state_init(self->co, thread, self, func);
+  } else {
+    self->co->srvc = self;
+    self->co->func = func;
+  }
+  return l_state_resume(self->co);
+}
+
+static l_byte* l_strbuf_cstr(l_strbuf* self) {
+  return (l_byte*)(self + 1);
+}
+
+static l_int l_strbuf_capacity(l_strbuf* self) {
+  return self->bsize - sizeof(l_strbuf);
+}
+
+static int l_strbuf_ensure_capacity(l_strbuf** self, l_int size) {
+  l_int limit = (*self)->limit;
+  if (limit && size > limit) return false;
+  *self = (l_strbuf*)l_thread_ensure_bfsize(&(*self)->node, sizeof(l_strbuf) + size);
+  return true;
+}
+
+static int l_strbuf_ensure_remain(l_strbuf** self, l_int remainsize) {
+  return l_strbuf_ensure_capacity(self, (*self)->size + remainsize);
+}
+
+static l_strbuf* l_strbuf_init(l_thread* thread, l_int initsize, l_int maxlimit) {
+  l_strbuf* p = 0;
+  if (initsize < (l_int)sizeof(l_strbuf)) initsize = sizeof(l_strbuf);
+  if (thread) {
+    p = (l_strbuf*)l_thread_alloc_buffer(thread, sizeof(l_strbuf) + initsize);
+  } else {
+    p = (l_strbuf*)l_raw_malloc(sizeof(l_strbuf) + initsize);
+    p->bsize = sizeof(l_strbuf) + initsize;
+  }
+  *(l_strbuf_cstr(p)) = 0; /* zero terminated */
+  p->size = 0;
+  p->limit = (maxlimit < 0) ? 0 : maxlimit;
+  return p;
+}
+
+static void l_strbuf_free(l_thread* thread, l_strbuf* buffer) {
+  if (!buffer) return;
+  if (!thread) thread = l_thread_self();
+  if (thread) l_thread_free_buffer(thread, &buffer->node);
+  else l_raw_free(buffer);
+}
+
+l_string l_thread_create_limited_string(l_thread* thread, l_int initsize, l_int maxlimit) {
+  if (!thread) thread = l_thread_self();
+  return (l_string){l_strbuf_init(thread, initsize+1, maxlimit)};
+}
+
+l_string l_thread_create_limited_string_from(l_thread* thread, l_strt from, l_int maxlimit) {
+  l_string s = l_thread_create_limited_string(thread, from.len, maxlimit);
+  if (from.start && from.len > 0) {
+    l_strbuf* b = s.b;
+    l_copy_l(from.start, from.len, l_strbuf_cstr(b));
+    b->size = from.len;
+    *(l_strbuf_cstr(b) + from.len) = 0;
+  }
+  return s;
+}
+
+void l_thread_string_free(l_thread* thread, l_string* self) {
+  if (!self->b) return;
+  l_strbuf_free(thread, self->b);
+  self->b = 0;
+}
+
+void l_string_set(l_string* self, l_strt s) {
+  if (!s.start || s.len <= 0) return;
+  l_strbuf_ensure_capacity(&self->b, s.len+1);
+  l_copy_l(s.start, s.len, l_strbuf_cstr(self->b));
+  self->b->size = s.len;
+  *(l_strbuf_cstr(self->b) + s.len) = 0;
+}
+
+int l_string_ensure_remain(l_string* self, l_int remainsize) {
+  return l_strbuf_ensure_remain(&self->b, remainsize);
+}
+
+int l_string_append(l_string* self, l_strt s) {
+  const l_rune* end  = 0;
+  l_rune *bstr, *dest;
+  if (!l_strbuf_ensure_remain(&self->b, s.len+1)) return false;
+  bstr = l_strbuf_cstr(self->b);
+  dest = bstr + self->b->size;
+  end = s.start + s.len;
+  while (s.start < end) {
+    *dest++ = *s.start++;
+  }
+  *dest = 0;
+  self->b->size = dest - bstr;
+  return true;
 }
 
 typedef struct {
@@ -242,36 +407,6 @@ void l_free_config(l_config* self) {
   l_raw_free(self);
 }
 
-l_thrkey L_thread_key;
-l_thread_local(l_thread* L_thread_ptr);
-
-static l_thread* L_worker_threads;
-static int L_num_workers;
-static l_priorq L_thread_prq;
-
-static l_thread* L_master_thread;
-static l_ionfmgr L_ionf_mgr;
-
-static l_squeue L_msg_rxq;
-static l_mutex L_msg_lock;
-
-static l_mutex L_srvc_mtx;
-static l_umedit L_svid_seed;
-static l_srvctable L_srvc_table;
-
-l_thread* l_threadpool_acquire() {
-  l_thread* thread = (l_thread*)l_priorq_pop(&L_thread_prq);
-  thread->weight += 1;
-  l_priorq_push(&L_thread_prq, &thread->node);
-  return thread;
-}
-
-void l_threadpool_release(l_thread* thread) {
-  thread->weight -= 1;
-  l_priorq_remove(&L_thread_prq, &thread->node);
-  l_priorq_push(&L_thread_prq, &thread->node);
-}
-
 typedef struct {
   l_mutex ma;
   l_mutex mb;
@@ -284,6 +419,27 @@ typedef struct {
 
 static int l_thread_less(void* lhs, void* rhs) {
   return ((l_thread*)lhs)->weight < ((l_thread*)rhs)->weight;
+}
+
+static void l_thread_lock(l_thread* self) {
+  l_mutex_lock(self->mutex);
+}
+
+static void l_thread_unlock(l_thread* self) {
+  l_mutex_unlock(self->mutex);
+}
+
+static l_thread* l_threadpool_acquire() {
+  l_thread* thread = (l_thread*)l_priorq_pop(&L_thread_prq);
+  thread->weight += 1;
+  l_priorq_push(&L_thread_prq, &thread->node);
+  return thread;
+}
+
+static void l_threadpool_release(l_thread* thread) {
+  thread->weight -= 1;
+  l_priorq_remove(&L_thread_prq, &thread->node);
+  l_priorq_push(&L_thread_prq, &thread->node);
 }
 
 extern l_rune* l_string_print_ulong(l_ulong n, l_rune* p);
@@ -486,20 +642,6 @@ l_ionfmgr* l_master_get_ionfmgr() {
 
 l_thread* l_thread_master() {
   return L_master_thread;
-}
-
-l_umedit l_master_gen_service_id() {
-  l_mutex* mtx = &L_srvc_mtx;
-  l_umedit svid = 0;
-
-  l_mutex_lock(mtx);
-  svid = ++L_svid_seed;
-  if (svid < L_MIN_SERVICE_ID) {
-    svid = L_svid_seed = L_MIN_SERVICE_ID;
-  }
-  l_mutex_unlock(mtx);
-
-  return svid;
 }
 
 static void l_master_add_service(l_service* srvc) {

@@ -1,18 +1,6 @@
 #include "l_message.h"
 #include "l_service.h"
 
-l_message* l_create_message(l_thread* thread, l_umedit type, l_int size) {
-  l_message* msg = 0;
-  if (size < (l_int)sizeof(l_message)) { l_loge_1("size %d", ld(size)); return 0; }
-  msg = (l_message*)l_thread_alloc_buffer(thread, size);
-  msg->type = type;
-  return msg;
-}
-
-void l_free_message(l_thread* thread, l_message* msg) {
-  l_thread_free_buffer(thread, &msg->node);
-}
-
 void l_send_message(l_thread* thread, l_umedit destid, l_message* msg) {
   msg->srvc = 0;
   msg->dstid = destid;

@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stddef.h>
+#include <float.h>
 #include "thatcore.h"
 
 int l_strt_contain(l_strt s, int ch) {
@@ -29,55 +30,6 @@ static l_int l_strbuf_capacity(l_strbuf* self) {
   return self->bsize - sizeof(l_strbuf);
 }
 
-static int l_strbuf_ensure_capacity(l_strbuf** self, l_int size) {
-  l_int limit = (*self)->limit;
-  if (limit && size > limit) return false;
-  *self = (l_strbuf*)l_thread_ensure_bfsize(&(*self)->node, sizeof(l_strbuf) + size);
-  return true;
-}
-
-static int l_strbuf_ensure_remain(l_strbuf** self, l_int remainsize) {
-  return l_strbuf_ensure_capacity(self, (*self)->size + remainsize);
-}
-
-static l_strbuf* l_strbuf_init(l_thread* thread, l_int initsize, l_int maxlimit) {
-  l_strbuf* p = 0;
-  if (initsize < (l_int)sizeof(l_strbuf)) initsize = sizeof(l_strbuf);
-  if (thread) {
-    p = (l_strbuf*)l_thread_alloc_buffer(thread, sizeof(l_strbuf) + initsize);
-  } else {
-    p = (l_strbuf*)l_raw_malloc(sizeof(l_strbuf) + initsize);
-    p->bsize = sizeof(l_strbuf) + initsize;
-  }
-  *(l_strbuf_cstr(p)) = 0; /* zero terminated */
-  p->size = 0;
-  p->limit = (maxlimit < 0) ? 0 : maxlimit;
-  return p;
-}
-
-static void l_strbuf_free(l_thread* thread, l_strbuf* buffer) {
-  if (!buffer) return;
-  if (!thread) thread = l_thread_self();
-  if (thread) l_thread_free_buffer(thread, &buffer->node);
-  else l_raw_free(buffer);
-}
-
-l_string l_thread_create_limited_string(l_thread* thread, l_int initsize, l_int maxlimit) {
-  if (!thread) thread = l_thread_self();
-  return (l_string){l_strbuf_init(thread, initsize+1, maxlimit)};
-}
-
-l_string l_thread_create_limited_string_from(l_thread* thread, l_strt from, l_int maxlimit) {
-  l_string s = l_thread_create_limited_string(thread, from.len, maxlimit);
-  if (from.start && from.len > 0) {
-    l_strbuf* b = s.b;
-    l_copy_l(from.start, from.len, l_strbuf_cstr(b));
-    b->size = from.len;
-    *(l_strbuf_cstr(b) + from.len) = 0;
-  }
-  return s;
-}
-
 l_string l_thread_create_string(l_thread* thread, l_int initsize) {
   return l_thread_create_limited_string(thread, initsize, 0);
 }
@@ -102,12 +54,6 @@ l_string l_create_limited_string_from(l_strt from, l_int maxlimit) {
   return l_thread_create_limited_string_from(0, from, maxlimit);
 }
 
-void l_thread_string_free(l_thread* thread, l_string* self) {
-  if (!self->b) return;
-  l_strbuf_free(thread, self->b);
-  self->b = 0;
-}
-
 void l_string_free(l_string* self) {
   l_thread_string_free(0, self);
 }
@@ -116,14 +62,6 @@ void l_string_clear(l_string* self) {
   l_strbuf* p = self->b;
   *l_strbuf_cstr(p) = 0;
   p->size = 0;
-}
-
-void l_string_set(l_string* self, l_strt s) {
-  if (!s.start || s.len <= 0) return;
-  l_strbuf_ensure_capacity(&self->b, s.len+1);
-  l_copy_l(s.start, s.len, l_strbuf_cstr(self->b));
-  self->b->size = s.len;
-  *(l_strbuf_cstr(self->b) + s.len) = 0;
 }
 
 #define L_FORMAT_HEX     0x01000000
@@ -164,21 +102,6 @@ static void l_write_log_to_file(l_string* self) {
 
 void l_thread_flush_log(l_thread* self) {
   l_write_log_to_file(&self->log);
-}
-
-int l_string_append(l_string* self, l_strt s) {
-  const l_rune* end  = 0;
-  l_rune *bstr, *dest;
-  if (!l_strbuf_ensure_remain(&self->b, s.len+1)) return false;
-  bstr = l_strbuf_cstr(self->b);
-  dest = bstr + self->b->size;
-  end = s.start + s.len;
-  while (s.start < end) {
-    *dest++ = *s.start++;
-  }
-  *dest = 0;
-  self->b->size = dest - bstr;
-  return true;
 }
 
 static void l_string_format_out(l_string* self, l_strt s) {
@@ -227,7 +150,7 @@ static void l_string_format_out_reverse(l_string* self, l_strt s) {
       }
     }
   } else {
-    if (!l_strbuf_ensure_remain(&self->b, s.len + 1)) {
+    if (!l_string_ensure_remain(self, s.len + 1)) {
       l_loge_1("len %d", ld(s.len));
       return;
     }
@@ -414,12 +337,16 @@ l_rune* l_string_print_ulong(l_ulong n, l_rune* p) {
 static l_rune* l_string_print_fraction(double f, l_rune* p, int precise) {
   l_ulong ipart = 0;
 
-  if (precise == 0) precise = 80;
+  if (f < DBL_EPSILON) {
+    *p++ = '0';
+    return p;
+  }
 
-  while (f > 0 && precise-- > 0) {
+  if (precise == 0) precise = 80;
+  while (f >= DBL_EPSILON && precise-- > 0) {
     ipart = l_cast(l_ulong, f * 10);
     *p++ = l_cast(l_rune, ipart + '0');
-    f -= ipart;
+    f = f * 10 - ipart;
   }
 
   return p;
@@ -848,6 +775,15 @@ void l_logger_func_impl(const void* tag, const void* fmt, ...) {
 #define L_NUM_OF_NEWLINES (6)
 #define L_NUM_OF_BLANKS (29)
 
+typedef struct {
+  l_umedit m; /* string match this rune */
+  l_umedit e; /* string ended with this rune */
+} l_runeinfo;
+
+typedef struct { /* 4 * 256 * 2 = 2048 (2KB) */
+  l_runeinfo a[256];
+} l_runetable;
+
 static const l_rune* l_blanks[] = {
   l_rstr("\x09"), /* \t */
   l_rstr("\x0b"), /* \v */
@@ -926,7 +862,7 @@ const l_stringmap* l_string_blank_map() {
 void l_string_set_map(l_stringmap* self, const l_rune** str, int numofstr, int casesensitive) {
   int stridx = 0, charidx = 0;
   const l_rune* s = 0;
-  l_runetable* t = self->t;
+  l_runetable* t = (l_runetable*)(self->t);
   l_rune ch = 0;
 
   l_zero_l(self->t, sizeof(l_runetable) * self->size);
@@ -1056,7 +992,7 @@ const l_rune* l_string_match_ex(const l_stringmap* map, const void* s, int len, 
   }
 
   while (i < end) {
-    t = map->t + i;
+    t = ((l_runetable*)(map->t)) + i;
     ch = l_rstr(s)[i];
 
     curmatch = prevmatch & t->a[ch].m;
@@ -1203,6 +1139,12 @@ void l_string_test() {
   const l_rune subject[] = "gEtoHEAdopOStogeoend";
   const l_rune* s = 0;
   l_stringmap map;
+  l_string str = l_create_string(8);
+
+  l_string_format_1(&str, "%f", lf(3.1415926));
+  l_logd_1("%f", lf(3.1415926));
+  printf("[D] %.80f\n", 3.1415926);
+  l_assert(l_string_equal(&str, l_literal_strt("3.14159260000000006840537025709636509418487548828125")));
 
   l_assert(l_right_most_bit(0x0000) == 0x0000);
   l_assert(l_right_most_bit(0x0001) == 0x0001);
@@ -1254,5 +1196,6 @@ void l_string_test() {
   l_assert(*s == 0);
 
   l_string_free_map(&map);
+  l_string_free(&str);
 }
 

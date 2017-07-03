@@ -21,6 +21,7 @@ int l_thrid_size = sizeof(pthread_t);
 #include <time.h>
 #include <stdlib.h>
 #include <stddef.h>
+#include <float.h>
 
 #define l_byte unsigned char
 
@@ -233,6 +234,8 @@ int main(void) {
   l_write_line(file, "/* TMP_MAX %d */", TMP_MAX);
   l_write_line(file, "/* L_tmpnam %d */", L_tmpnam);
   l_write_line(file, "/* RAND_MAX %d */", RAND_MAX);
+  l_write_line(file, "/* FLT_EPSILON %.80f */", FLT_EPSILON);
+  l_write_line(file, "/* DBL_EPSILON %.80f */", DBL_EPSILON);
 
   l_write_line(file, "%s#endif /* l_autoconf_lib_h */", L_NEWLINE);
   fclose(file);
