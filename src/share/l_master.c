@@ -247,9 +247,9 @@ static l_umedit l_master_gen_service_id() {
 }
 
 l_service* l_create_service(l_thread* thread, l_int size, int (*entry)(l_service*, l_message*), int insamethread) {
-  l_debug_assert(thread == l_thread_self());
   l_service* srvc = 0;
   if (size < (l_int)sizeof(l_service)) return 0;
+  if (!thread) thread = l_thread_self();
   srvc = l_thread_alloc_buffer(thread, size);
   srvc->svid = l_master_gen_service_id();
   srvc->ioev = 0;

@@ -4,3 +4,9 @@ workers = 1
 -- log_buffer_size = 1024*8
 -- backlog = 0
 
+http_conf = {
+  ip = "";
+  port = 80;
+  rxlimit = 1024*8;
+}
+

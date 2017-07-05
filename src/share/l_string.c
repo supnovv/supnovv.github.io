@@ -859,7 +859,7 @@ const l_stringmap* l_string_blank_map() {
 [^chars] - the complement of [chars]
 */
 
-void l_string_set_map(l_stringmap* self, const l_rune** str, int numofstr, int casesensitive) {
+void l_string_set_map(l_stringmap* self, const l_rune** str, l_int numofstr, int casesensitive) {
   int stridx = 0, charidx = 0;
   const l_rune* s = 0;
   l_runetable* t = (l_runetable*)(self->t);
@@ -906,7 +906,7 @@ void l_string_set_map(l_stringmap* self, const l_rune** str, int numofstr, int c
   }
 }
 
-l_stringmap l_string_new_map(int maxstrlen, const l_rune** str, int numofstr, int casesensitive) {
+l_stringmap l_string_new_map(int maxstrlen, const l_rune** str, l_int numofstr, int casesensitive) {
   l_stringmap map = {0};
   if (maxstrlen <= 0 || str == 0) return map;
   map.t = (l_runetable*)l_raw_malloc(sizeof(l_runetable) * maxstrlen);
@@ -966,11 +966,11 @@ static int l_power_of_two_bit_pos(l_umedit n) {
 }
 
 /* return 0 doesn't match, -1 too short, >s match success */
-const l_rune* l_string_match_ex(const l_stringmap* map, const void* s, int len, int* strid, int* mlen) {
+const l_rune* l_string_match_ex(const l_stringmap* map, l_strt s, l_int* strid, l_int* matched_len) {
   l_umedit prevmatch = 0xFFFFFFFF, curmatch = 0;
   l_umedit matches = 0, headmatch = 0;
   l_runetable* t = 0;
-  int i = 0, end = len;
+  l_int i = 0, end = s.len;
   l_rune ch = 0;
   const l_rune* p = 0;
 
@@ -983,17 +983,17 @@ const l_rune* l_string_match_ex(const l_stringmap* map, const void* s, int len, 
   (c) curmatch = 0b0001; t->e['c'] = 0b1001; headmatch = 0b0001;
   */
 
-  if (len <= 0) {
+  if (s.len <= 0) {
     return l_string_too_short;
   }
 
-  if (map->size < len) {
+  if (map->size < s.len) {
     end = map->size;
   }
 
   while (i < end) {
     t = ((l_runetable*)(map->t)) + i;
-    ch = l_rstr(s)[i];
+    ch = s.start[i];
 
     curmatch = prevmatch & t->a[ch].m;
     if (!curmatch) {
@@ -1005,7 +1005,7 @@ const l_rune* l_string_match_ex(const l_stringmap* map, const void* s, int len, 
     }
 
     if (t->a[ch].e & curmatch) {
-      p = l_rstr(s) + i + 1;
+      p = s.start + i + 1;
       matches = t->a[ch].e & curmatch;
       headmatch = l_right_most_bit(curmatch);
       if (matches & headmatch) {
@@ -1026,109 +1026,80 @@ const l_rune* l_string_match_ex(const l_stringmap* map, const void* s, int len, 
 
 MatchSuccess:
   if (strid) *strid = l_power_of_two_bit_pos(headmatch);
-  if (mlen) *mlen = p - l_rstr(s);
+  if (mlen) *mlen = p - s.start;
   return p;
 }
 
-const l_rune* l_string_match(const l_stringmap* map, const void* s, int len) {
-  return l_string_match_ex(map, s, len, 0, 0);
+const l_rune* l_string_match(const l_stringmap* map, l_strt s) {
+  return l_string_match_ex(map, s, 0, 0);
 }
 
-/* match exactly n times, return >=s or ccstringtooshort */
-const l_rune* l_string_match_ntimes(const l_stringmap* map, int n, const void* s, int len) {
-  const l_rune* e = l_rstr(s);
+/* match exactly n times, return 0 or l_string_too_short for fail */
+const l_rune* l_string_match_ntimes(const l_stringmap* map, int n, l_strt s) {
+  const l_rune* e = s.start;
   int i = 0;
-
   while (i++ < n) {
-    e = l_string_match(map, s, len);
-    if (e == 0) {
-      return l_rstr(s);
-    }
-    if (e == l_string_too_short) {
-      return e;
-    }
-    s = e;
-    len -= e - l_rstr(s);
+    if ((e = l_string_match(map, s)) == 0 || e == l_string_too_short) return 0;
+    s.len -= (e - s.start);
+    s.start = e;
   }
-
   return e;
 }
 
 /* return >=s */
-const l_rune* l_string_match_repeat(const l_stringmap* map, const void* s, int len, int* lastmatchfailed) {
+const l_rune* l_string_match_repeat(const l_stringmap* map, l_strt　s) {
   const l_rune* e = 0;
-  const l_rune* prev = l_rstr(s);
+  const l_rune* prev = s.start;
 
-  while ((e = l_string_match(map, s, len)) != 0 && e != l_string_too_short) {
+  while ((e = l_string_match(map, s)) != 0 && e != l_string_too_short) {
     prev = e;
-    s = e;
-    len -= e - l_rstr(s);
-  }
-
-  if (e == 0) {
-    if (lastmatchfailed) *lastmatchfailed = 1;
-  } else {
-    if (lastmatchfailed) *lastmatchfailed = 0;
+    s.len -= (e - s.start);
+    s.start = e;
   }
 
   return prev;
 }
 
-/* return 0 - too short to match, >=s - match success, n is the length */
-const l_rune* l_string_match_until(const l_stringmap* map, const void* s, int len, int* n) {
+/* return 0 - too short to match, otherwise success */
+const l_rune* l_string_match_until(const l_stringmap* map, l_strt s, l_rune** last_match_start) {
   const l_rune* e = 0;
-  const l_rune* cur = l_rstr(s);
-
-  while ((e = l_string_match(map, cur, len)) == 0) { /* continue only doesn't match */
-    ++cur;
-    --len;
+  while ((e = l_string_match(map, s)) == 0) { /* continue loop when unmatched */
+    ++s.start;
+    --s.len;
   }
 
-  if (e == l_string_too_short) {
-    if (n) *n = cur - l_rstr(s);
-    return 0;
+  if (last_match_start) *last_match_start = s.start;
+  return (e == l_string_too_short ? 0 : e);
+}
+
+const l_rune* l_string_skip_space_and_match_until(const l_stringmap* map, l_strt s, l_rune** first_non_space_pos) {
+  const l_rune* e = 0;
+  l_rune* last_match_start = 0;
+
+  while ((e = l_string_match(l_string_space_map(), s)) != 0 && e != l_string_too_short) {
+    s.len -= (e - s.start);
+    s.start = e; /* skip space */
   }
 
-  if (n) *n = e - cur;
+  if (e == l_string_too_short) return 0; /* all chars are spaces, or even last space is not complete */
+  if (first_non_space_pos) *first_non_space_pos = e;
+  if (!(e = l_string_match_until(map, s, &last_match_start))) {
+    return last_match_start;
+  }
   return e;
 }
 
-const l_rune* l_string_skip_space_and_match_until(const l_stringmap* map, const void* s, int len, int* n) {
-  const l_rune* e = 0;
-
-  /* match space and skip */
-  while ((e = l_string_match(l_string_space_map(), s, len)) != 0 && e != l_string_too_short) {
-    s = l_rstr(s) + 1;
-    --len;
-  }
-
-  if (e == l_string_too_short) {
-    return 0; /* all chars are spaces, or even last space is not complete */
-  }
-
-  /* current char is not a space, try match the string */
-  return l_string_match_until(map, s, len, n);
-}
-
 /* return 0 - match failed; otherwise success, strid and mlen are set */
-const l_rune* l_string_skip_space_and_match(const l_stringmap* map, const void* s, int len, int* strid, int* mlen) {
+const l_rune* l_string_skip_space_and_match(const l_stringmap* map, l_strt s, l_int* strid, l_int* matched_len) {
   const l_rune* e = 0;
-
-  /* match space and skip */
-  while ((e = l_string_match(l_string_space_map(), s, len)) != 0 && e != l_string_too_short) {
-    s = l_rstr(s) + 1;
-    --len;
+  while ((e = l_string_match(l_string_space_map(), s)) != 0 && e != l_string_too_short) {
+    s.len -= (e - s.start);
+    s.start = e; /* skip space */
   }
 
-  if (e == l_string_too_short) {
-    return 0; /* all chars are spaces, or even last space is not complete */
-  }
-
-  /* current char is not a space, try match the string */
-  e = l_string_match_ex(map, s, len, strid, mlen);
-  if (e == 0 || e == l_string_too_short) {
-    return 0;
-  }
+  if (e == l_string_too_short) return 0; /* all chars are spaces, or even last space is not complete */
+  e = l_string_match_ex(map, s, len, strid, matched_len);
+  if (e == 0 || e == l_string_too_short) return 0;
   return e;
 }
 

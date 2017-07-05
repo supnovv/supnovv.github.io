@@ -237,6 +237,10 @@ l_inline l_strt l_strt_e(const void* s, const void* e) {
   return l_strt_l(s, l_rstr(e) - l_rstr(s));
 }
 
+l_inline l_strt l_strt_sft(const void* s, l_int from, l_int to) {
+  return l_strt_l(l_rstr(s) + from, to -from);
+}
+
 #define l_empty_strt() ((l_strt){0,0})
 #define l_literal_strt(s) l_strt_l("" s, (sizeof(s)/sizeof(char))-1)
 l_extern int l_strt_equal(l_strt lhs, l_strt rhs);
@@ -381,6 +385,14 @@ l_inline l_int l_string_size(l_string* self) {
   return self->b->size;
 }
 
+l_inline l_byte* l_string_start(l_string* self) {
+  return l_string_cstr(self);
+}
+
+l_inline l_byte* l_string_end(l_string* self) {
+  return l_string_cstr(self) + l_string_size(self);
+}
+
 l_inline l_strt l_string_strt(l_string* self) {
   return (l_strt){l_string_cstr(self), self->b->size};
 }
@@ -456,25 +468,25 @@ l_inline int l_string_format_9(l_string* self, const void* fmt, l_value a,
 
 typedef struct {
   void* t; /* table array, 1 table contains 1 rune, the array size is up to the length of the string */
-  int size; /* a string map can store strings up to 'maxnumofstr', the size is the length of the longest string */
-  int maxnumofstr;
+  l_int size; /* a string map can store strings up to 'maxnumofstr', the size is the length of the longest string */
+  l_int maxnumofstr;
 } l_stringmap;
 
 l_extern const l_stringmap* l_string_space_map();
 l_extern const l_stringmap* l_string_newline_map();
 l_extern const l_stringmap* l_string_blank_map();
 
-l_extern l_stringmap l_string_new_map(int maxstrlen, const l_rune** str, int numofstr, int casesensitive);
-l_extern void l_string_set_map(l_stringmap* self, const l_rune** str, int numofstr, int casesensitive);
+l_extern l_stringmap l_string_new_map(l_int maxstrlen, const l_rune** str, l_int numofstr, int casesensitive);
+l_extern void l_string_set_map(l_stringmap* self, const l_rune** str, l_int numofstr, int casesensitive);
 l_extern void l_string_free_map(l_stringmap* self);
 
-l_extern const l_rune* l_string_match(const l_stringmap* map, const void* s, int len);
-l_extern const l_rune* l_string_match_ex(const l_stringmap* map, const void* s, int len, int* strid, int* mlen);
-l_extern const l_rune* l_string_match_ntimes(const l_stringmap* map, int n, const void* s, int len);
-l_extern const l_rune* l_string_match_repeat(const l_stringmap* map, const void* s, int len, int* lastmatchfailed);
-l_extern const l_rune* l_string_match_until(const l_stringmap* map, const void* s, int len, int* n);
-l_extern const l_rune* l_string_skip_space_and_match_until(const l_stringmap* map, const void* s, int len, int* n);
-l_extern const l_rune* l_string_skip_space_and_match(const l_stringmap* map, const void* s, int len, int* strid, int* mlen);
+l_extern const l_rune* l_string_match(const l_stringmap* map, l_strt s);
+l_extern const l_rune* l_string_match_ex(const l_stringmap* map, l_strt s, l_int* strid, l_int* mlen);
+l_extern const l_rune* l_string_match_ntimes(const l_stringmap* map, int n, l_strt s);
+l_extern const l_rune* l_string_match_repeat(const l_stringmap* map, l_strt s);
+l_extern const l_rune* l_string_match_until(const l_stringmap* map, l_strt s, l_rune** last_match_start);
+l_extern const l_rune* l_string_skip_space_and_match_until(const l_stringmap* map, l_strt s, l_rune** first_non_space_pos);
+l_extern const l_rune* l_string_skip_space_and_match(const l_stringmap* map, l_strt s, l_int* strid, l_int* mlen);
 
 /* linuxcore.c */
 

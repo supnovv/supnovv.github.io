@@ -17,7 +17,7 @@ typedef struct l_service {
   /* thread own use */
   l_byte wflgs; /* only accessed by a worker */
   l_umedit svid; /* only set once when init, so can freely access it */
-  l_thread* belong; /* only set once when init, so can freely access it */
+  l_thread* thread; /* only set once when init, so can freely access it */
   l_state* co; /* only accessed by a worker */
   int (*entry)(l_service*, l_message*); /* only accessed by a worker */
 } l_service;

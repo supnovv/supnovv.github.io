@@ -435,19 +435,20 @@ l_handle l_socket_listen(const l_sockaddr* addr, int backlog) {
   int domain = (addr == 0 ? AF_INET : sa->addr.sa.sa_family);
   if (domain != AF_INET && domain != AF_INET6) {
     l_loge_s("invalid address family");
-    return sock;
+    return -1;
   }
   if (!llsocketcreate(domain, SOCK_STREAM, IPPROTO_TCP, &sock)) {
-    return sock;
+    return -1;
   }
   /* 如果一个TCP客户或服务器未曾调用bind绑定一个端口，当使用connect或
   listen 时，内核会为相应的套接字选择一个临时端口 */
   if (addr && !llsocketbind(sock, addr)) {
     l_socket_close(sock);
-    return sock;
+    return -1;
   }
   if (!llsocketlisten(sock, (backlog <= 0 ? L_SOCKET_BACKLOG : backlog))) {
     l_socket_close(sock);
+    return -1
   }
   return sock;
 }
