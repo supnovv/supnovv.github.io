@@ -1,49 +1,54 @@
 #include "httpservice.h"
 #include "l_ionfmgr.h"
 
-#define L_HTTP_GET (0)
-#define L_HTTP_HEAD (1)
-#define L_HTTP_POST (2)
+#define L_HTTP_METHOD_MAX_LEN (7)
+#define L_NUM_OF_HTTP_METHODS (4)
 
-#define L_HTTP_VER_0NN (0)
-#define L_HTTP_VER_10N (1)
-#define L_HTTP_VER_11N (2)
-#define L_HTTP_VER_2NN (3)
-
-#define L_HTTP_METHOD_MAX_LEN (4)
-#define L_NUM_OF_HTTP_METHODS (3)
+enum l_http_methods_enum {
+  L_HTTP_M_GET,
+  L_HTTP_M_HEAD,
+  L_HTTP_M_OPTIONS,
+  L_HTTP_M_POST
+};
 
 static const l_rune* l_http_methods[] = {
-  l_rstr("GET"), l_rstr("HEAD"), l_rstr("POST")
+  l_rstr("GET"), l_rstr("HEAD"), l_rstr("OPTIONS"), l_rstr("POST")
 };
 
 #define L_HTTP_VER_MAX_LEN (8)
 #define L_NUM_OF_HTTP_VERS (4)
 
+enum l_http_versions_enum {
+  L_HTTP_VER_0NN,
+  L_HTTP_VER_10N,
+  L_HTTP_VER_11N,
+  L_HTTP_VER_2NN
+};
+
 static const l_rune* l_http_versions[] = {
   l_rstr("HTTP/0"), l_rstr("HTTP/1.0"), l_rstr("HTTP/1.1"), l_rstr("HTTP/2")
 };
 
-#define HTTP_SUCCESS (200)
-#define HTTP_CREATED (201)
-#define HTTP_ACCEPTED (202)
-#define HTTP_BAD_REQUEST (400)
-#define HTTP_UNAUTHORIZED (401)
-#define HTTP_FORBIDDEN (403)
-#define HTTP_NOT_FOUND (404)
-#define HTTP_METHOD_NOT_ALLOWED (405)
-#define HTTP_NOT_ACCEPTABLE (406)
-#define HTTP_REQUEST_TIMEOUT (408)
-#define HTTP_CONFLICT (409)
-#define HTTP_LENGTH_REQUIRED (411)
-#define HTTP_REQUEST_ENTITY_TOO_LARGE (413)
-#define HTTP_REQUEST_URI_TOO_LONG (414)
-#define HTTP_UNSUPPORTED_MEDIA_TYPE (415)
-#define HTTP_SERVER_ERROR (500)
-#define HTTP_NOT_IMPLEMENTED (501)
-#define HTTP_BAD_GATEWAY (502)
-#define HTTP_SERVICE_UNAVAILABLE (503)
-#define HTTP_VERSION_NOT_SUPPORT (505)
+#define L_HTTP_S_SUCCESS (200)
+#define L_HTTP_S_CREATED (201)
+#define L_HTTP_S_ACCEPTED (202)
+#define L_HTTP_S_BAD_REQUEST (400)
+#define L_HTTP_S_UNAUTHORIZED (401)
+#define L_HTTP_S_FORBIDDEN (403)
+#define L_HTTP_S_NOT_FOUND (404)
+#define L_HTTP_S_METHOD_NOT_ALLOWED (405)
+#define L_HTTP_S_NOT_ACCEPTABLE (406)
+#define L_HTTP_S_REQUEST_TIMEOUT (408)
+#define L_HTTP_S_CONFLICT (409)
+#define L_HTTP_S_LENGTH_REQUIRED (411)
+#define L_HTTP_S_REQUEST_ENTITY_TOO_LARGE (413)
+#define L_HTTP_S_REQUEST_URI_TOO_LONG (414)
+#define L_HTTP_S_UNSUPPORTED_MEDIA_TYPE (415)
+#define L_HTTP_S_SERVER_ERROR (500)
+#define L_HTTP_S_NOT_IMPLEMENTED (501)
+#define L_HTTP_S_BAD_GATEWAY (502)
+#define L_HTTP_S_SERVICE_UNAVAILABLE (503)
+#define L_HTTP_S_VERSION_NOT_SUPPORT (505)
 
 #define HTTP_GIF_IMAGE (0x01) /* image/gif */
 #define HTTP_JPG_IMAGE (0x02) /* image/jpeg */
@@ -56,40 +61,43 @@ static const l_rune* l_http_versions[] = {
 #define HTTP_JAVASCRIPT (0x10) /* application/x-javascript */
 #define HTTP_GZIP_FILE (0x12) /* application/x-gzip */
 
-/* Request headers */
-#define HTTP_HEADER_FROM (0x01)
-#define HTTP_HEADER_HOST (0x02)
-#define HTTP_HEADER_REFERER (0x04)
-#define HTTP_HEADER_USER_AGENT (0x08)
-#define HTTP_HEADER_ACCEPT (0x10)
-#define HTTP_HEADER_ACCEPT_CHARSET (0x20)
-#define HTTP_HEADER_ACCEPT_ENCODING (0x40)
-#define HTTP_HEADER_ACCEPT_LANGUAGE (0x80)
-#define HTTP_HEADER_TE (0x0100)
-
-/* Response headers */
-#define HTTP_HEADER_RETRY_AFTER (0x1000)
-#define HTTP_HEADER_CONTENT_ENCODING (0x2000)
-#define HTTP_HEADER_CONTENT_LANGUAGE (0x4000)
-#define HTTP_HEADER_CONTENT_LENGTH (0x8000)
-#define HTTP_HEADER_CONTENT_MD5 (0x00010000)
-#define HTTP_HEADER_CONTENT_RANGE (0x00010000)
-#define HTTP_HEADER_CONTENT_TYPE (0x00020000)
-#define HTTP_HEADER_SERVER (0x00040000)
-#define HTTP_HEADER_LAST_MODIFIED (0x00080000)
-#define HTTP_HEADER_EXPIRES (0x00100000)
-
-/* Common headers */
-#define HTTP_HEADER_CONNECTION (0x01000000)
-#define HTTP_HEADER_KEEP_ALIVE (0x02000000)
-#define HTTP_HEADER_TRANSFER_ENCODING (0x04000000)
-#define HTTP_HEADER_TRAILER (0x08000000)
-
-
 #define L_HTTP_HEADER_MAX_LEN (27)
 #define L_NUM_OF_COMMON_HEADERS (30)
 #define L_NUM_OF_REQUEST_HEADERS (31)
 #define L_NUM_OF_RESPONSE_HEADERS (25)
+
+enum l_http_common_headers_enum {
+  L_HTTP_H_AGE,
+  L_HTTP_H_CACHE_CONTROL,
+  L_HTTP_H_CONNECTION,
+  L_HTTP_H_CONTENT_BASE,
+  L_HTTP_H_CONTENT_DISPOSITION,
+  L_HTTP_H_CONTENT_ENCODING,
+  L_HTTP_H_CONTENT_LANGUAGE,
+  L_HTTP_H_CONTENT_LENGTH,
+  L_HTTP_H_CONTENT_LOCATION,
+  L_HTTP_H_CONTENT_MD5,
+  L_HTTP_H_CONTENT_RANGE,
+  L_HTTP_H_CONTENT_TYPE,
+  L_HTTP_H_DATE,
+  L_HTTP_H_ETAG,
+  L_HTTP_H_EXPIRES,
+  L_HTTP_H_KEEP_ALIVE,
+  L_HTTP_H_LAST_MODIFIED,
+  L_HTTP_H_PRAGMA,
+  L_HTTP_H_TRAILER,
+  L_HTTP_H_TRANSFER_ENCODING,
+  L_HTTP_H_UPGRADE,
+  L_HTTP_H_VIA,
+  L_HTTP_H_WARNING,
+  L_HTTP_H_X_REQUEST_ID,
+  L_HTTP_H_X_CORRELATION_ID,
+  L_HTTP_H_FORWARDED,
+  L_HTTP_H_MAX_FORWARDEDS,
+  L_HTTP_H_X_FORWARDED_FOR,
+  L_HTTP_H_X_FORWARDED_HOST,
+  L_HTTP_H_X_FORWARDED_PROOTO
+};
 
 static const l_rune* l_http_common_headers[] = {
   l_rstr("age"),
@@ -124,7 +132,41 @@ static const l_rune* l_http_common_headers[] = {
   l_rstr("x-forwarded-proto")
 };
 
-static const ccnauty_char* l_http_request_headers[] = {
+enum l_http_request_headers_enum {
+  L_HTTP_H_ACCEPT,
+  L_HTTP_H_ACCEPT_CHARSET,
+  L_HTTP_H_ACCEPT_ENCODING,
+  L_HTTP_H_ACCEPT_LANGUAGE,
+  L_HTTP_H_ACCEPT_DATETIME,
+  L_HTTP_H_AUTHORIZATION,
+  L_HTTP_H_COOKIE,
+  L_HTTP_H_COOKIE2,
+  L_HTTP_H_DNT,
+  L_HTTP_H_EXPECT,
+  L_HTTP_H_FORM,
+  L_HTTP_H_HOST,
+  L_HTTP_H_IF_MATCH,
+  L_HTTP_H_IF_MODIFIED_SINCE,
+  L_HTTP_H_IF_NONE_MATCH,
+  L_HTTP_H_IF_RANGE,
+  L_HTTP_H_IF_UNMODIFIED_SINCE,
+  L_HTTP_H_ORIGIN,
+  L_HTTP_H_PROXY_AUTHORIZATION,
+  L_HTTP_H_PROXY_CONNECTION,
+  L_HTTP_H_RANGE,
+  L_HTTP_H_REFERER,
+  L_HTTP_H_TE,
+  L_HTTP_H_UA_CPU,
+  L_HTTP_H_UA_DISP,
+  L_HTTP_H_UA_OS,
+  L_HTTP_H_USER_AGENT,
+  L_HTTP_H_X_REQUESTED_WITH,
+  L_HTTP_H_X_HTTP_MOTHOD_OVERRIDE,
+  L_HTTP_H_X_UIDH,
+  L_HTTP_H_X_CSRF_TOKEN
+};
+
+static const l_rune* l_http_request_headers[] = {
   l_rstr("accept"),
   l_rstr("accept-charset"),
   l_rstr("accept-encoding"),
@@ -147,7 +189,7 @@ static const ccnauty_char* l_http_request_headers[] = {
   l_rstr("proxy-connection"),
   l_rstr("range"),
   l_rstr("referer"),
-  l_rstr("te"),
+  l_rstr("te"), /* client accept transfer encoding, TE: trailers, chunked */
   l_rstr("ua-cpu"),
   l_rstr("ua-disp"),
   l_rstr("ua-os"),
@@ -158,7 +200,35 @@ static const ccnauty_char* l_http_request_headers[] = {
   l_rstr("x-csrf-token")
 };
 
-static const ccnauty_char* l_http_response_headers[] = {
+enum l_http_response_headers_enum {
+  L_HTTP_H_ACCESS_CONTROL_ALLOW_ORIGIN,
+  L_HTTP_H_ACCEPT_PATCH,
+  L_HTTP_H_ACCEPT_RANGES,
+  L_HTTP_H_ALLOW,
+  L_HTTP_H_ALT_SVC,
+  L_HTTP_H_LINK,
+  L_HTTP_H_LOCATION,
+  L_HTTP_H_P3P,
+  L_HTTP_H_PROXY_AUTHENTICATE,
+  L_HTTP_H_PUBLIC_KEY_PINS,
+  L_HTTP_H_REFRESH,
+  L_HTTP_H_RETRY_AFTER,
+  L_HTTP_H_SERVER,
+  L_HTTP_H_SET_COOKIE,
+  L_HTTP_H_SET_COOKIE2,
+  L_HTTP_H_STATUS,
+  L_HTTP_H_STRICT_TRANSPORT_SECURITY,
+  L_HTTP_H_TK,
+  L_HTTP_H_VARY,
+  L_HTTP_H_WWW_AUTHENTICATE,
+  L_HTTP_H_X_FRAME_OPTIONS,
+  L_HTTP_H_X_XSS_PROTECTION,
+  L_HTTP_H_X_CONTENT_TYPE_OPTIONS,
+  L_HTTP_H_X_POWERED_BY,
+  L_HTTP_H_X_UA_COMPATIBLE
+};
+
+static const l_rune* l_http_response_headers[] = {
   l_rstr("access-control-allow-origin"),
   l_rstr("accept-patch"),
   l_rstr("accept-ranges"),
@@ -343,43 +413,33 @@ HTTP/1.1规定用户Agent代理应该在接收且检测到无效长度时通知�
 该情况下，数据是分为一系列的块来发送的，每块都有大小说明
 哪怕服务器在生成首部的时候不知道整个实体的大小（通常是因为实体是动态生成的），仍然可以使用分块编码传输若干已知大小的块
 HTTP允许对实体内容进行编码，比如可以使之更安全或进行压缩以节省空间，如果主体进行了编码，Content-Length应该说明编码后的主体字节长度
-不幸的是，HTTP/1.1规范中没有首部可以用来说明原始未编码的主体长度，这就客户端难以验证解码过程的完整性　*/
+不幸的是，HTTP/1.1规范中没有首部可以用来说明原始未编码的主体长度，这就客户端难以验证解码过程的完整性
+  ** URL **
+"<scheme>://<user>:<password>@<host>:<port>/<path>;<params>?<query>#<frag>"
+/hammers;sale=0;color=red?item=1&size=m
+/hammers;sale=false/index.html;graphics=true
+/check.cgi?item=12731&color=blue&size=large
+/tools.html#drills
+
+URL编码机制，为了使用不安全字符，使用%和两个两个十六进制字符表示，例如空格可使用%20表示，根据浏览器的不同组合成的字符可能使用不同的编码
+保留字符有 % / . .. # ? ; : $ + @ & =
+受限字符有 {} | \ ^ ~ [ ] ' < > "　以及不可打印字符 0x00~0x1F >=0x7F，而且不能使用空格，通常使用+来替代空格
+0~9A~Za~z_-
+---
+<method> <request-url> HTTP/<major>.<minor>
+<headers> header: value<crlf>
+<crlf>
+<entity-body>
+---
+HTTP/<major>.<minor> <status-code> <status-text>
+<headers> header: value<crlf>
+<crlf>
+<entity-body>
+---　*/
 
 #define L_HTTP_BACKLOG (32)
 #define L_HTTP_RDREQ_STAGE (1)
 #define L_HTTP_WRRES_STAGE (2)
-
-typedef struct {
-  l_service head;
-  l_handle sock;
-  l_int rxlimit;
-  int backlog;
-} l_http_server_service;
-
-typedef struct {
-  l_service head;
-
-} l_http_client_service;
-
-typedef struct {
-  l_service head;
-
-} l_http_client_receive_service;
-
-
-
-
-static void l_http_in_conn_init(l_httpinconn* self, l_httpdaemon* d, l_handle sock) {
-  l_zerol(self, sizeof(l_httpinconn));
-  self->d = d;
-  self->sock = sock;
-  self->lstart = -1;
-}
-
-static int l_http_write_response(l_state* state) {
-  (void)state;
-  return 0;
-}
 
 typedef struct {
   l_service head;
@@ -402,6 +462,11 @@ typedef struct {
 } l_http_read_common;
 
 typedef struct {
+  l_int start;
+  l_int end;
+} l_startend;
+
+typedef struct {
   l_service head;
   l_http_server_service* server;
   l_sockaddr remote;
@@ -411,21 +476,42 @@ typedef struct {
   l_byte method; /* method */
   l_byte httpver; /* http version */
   l_int url, uend; /* request url */
-  l_int body, bend; /* body */
-  l_umedit cmasks; /* common headers */
-  l_umedit rmasks; /* request headers */
-  l_rune* chead[L_NUM_OF_COMMON_HEADERS];
-  l_rune* rhead[L_NUM_OF_REQUEST_HEADERS];
+  l_int body, bodylen; /* body */
+  l_umedit commasks;
+  l_umedit reqmasks;
+  l_startend comhead[32];
+  l_startend reqhead[32];
 } l_http_server_receive_service;
 
 #define L_HTTP_ESTIMATED_LINE_LENGTH (128)
 
-typedef struct {
-  l_smplnode node;
-  void* match;
-  l_int len;
-  l_uint flags;
-} l_stringmap_chain;
+static int l_http_read_length(l_http_read_common* comm, l_int len) {
+  l_string* rxbuf = comm->buf;
+  l_int count = 0, n = 0, status = 0;
+
+  comm->lstart = comm->lend /* move forward to last end position */
+
+ContinueCheckLength:
+  if (l_string_size(rxbuf) - comm->lstart >= len) {
+    comm->lend = comm->lstart + len;
+    return 0;
+  }
+
+  if (count > 0 && n < count) return L_STATUS_WAITMORE; /* last time socket read indicates there is no more data */
+
+  if (!l_string_ensure_capacity(rxbuf, comm->lstart + len + 1)) {
+    return L_STATUS_ELIMIT;
+  }
+
+  buff_start = l_string_start(rxbuf);
+  count = l_string_reamin(rxbuf) - 1;
+  n = l_socket_read(comm->sock, buff_start + l_string_size(rxbuf), count, &status);
+  if (status < 0) return L_STATUS_EREAD;
+
+  rxbuf->b->size += n; /* may read more data beyond newline */
+  *(buff_start + rxbuf->b->size) = 0;
+  goto ContinueCheckLength;
+}
 
 static int l_http_read_line(l_http_read_common* comm) {
   l_string* rxbuf = comm->buf;
@@ -434,36 +520,87 @@ static int l_http_read_line(l_http_read_common* comm) {
   l_rune* last_match_start = 0;
   l_int count = 0, n = 0, status = 0;
 
-  if (comm->lstart == comm->lend) {
-    comm->mstart = conn->lstart;
+  comm->lstart = comm->lend; /* move forward to last line end */
+
+ContinueMatch:
+
+  buff_start = l_string_start(rxbuf);
+  match_end = l_string_match_until(l_string_newline_map(), l_strt_sft(buff_start, comm->mstart, l_string_size(rxbuf)), &last_match_start);
+  if (matched_end) { /* newline matched */
+    comm->lnewline = last_match_start - buff_start;
+    comm->lend = match_end - buff_start;
+    comm->mstart = comm->lend;
+    return 0;
   }
 
-ReadSocket:
+  comm->mstart = last_match_start - buff_start; /* next time match start here */
+  if (count > 0 && n < count) return L_STATUS_WAITMORE; /* last time socket read indicates there is no more data */
+
   if (!l_string_ensure_remain(rxbuf, L_HTTP_ESTIMATED_LINE_LENGTH)) {
     return L_STATUS_ELIMIT;
   }
 
   buff_start = l_string_start(rxbuf);
-  count = l_string_reamin(rxbuf);
+  count = l_string_reamin(rxbuf) - 1;
   n = l_socket_read(comm->sock, buff_start + l_string_size(rxbuf), count, &status);
-  if (status < 0) {
-    return L_STATUS_EREAD;
-  }
+  if (status < 0) return L_STATUS_EREAD;
 
   rxbuf->b->size += n; /* may read more data beyond newline */
+  *(buff_start + rxbuf->b->size) = 0;
+  goto ContinueMatch;
+}
 
-  match_end = l_string_match_until(l_string_newline_map(), l_strt_sft(buff_start, comm->mstart, l_string_size(rxbuf)), &last_match_start);
-  if (!match_end) { /* cannot find newline */
-    comm->mstart = last_match_start - buff_start; /* next time match start here */
-    if (n < count) return L_STATUS_WAITMORE;
-    goto ReadSocket; /* continue to read if have more */
+l_int l_http_match_header(l_stringmap* name, l_stre s, l_stre* value) {
+  l_rune* match_end = 0;
+  l_int headid = 0;
+
+  if ((match_end = l_string_match_ex(name, s, &headid, 0)) == 0 || match_end == l_string_too_short) {
+    return L_STATUS_EMATCH;
   }
 
-  /* newline matched */
-  comm->lnewline = last_match_start - buff_start;
-  comm->lend = match_end - buff_start;
-  if (n < count) return 0; /* read line and no more data */
-  return L_STATUS_CONTREAD; /* read line and have more */
+  s.start = match_end;
+  if (!(match_end = l_string_skip_space_and_match_sub(l_literal_strt(":"), s))) {
+    return L_STATUS_EMATCH;
+  }
+
+  s.start = match_end;
+  if (!(value->start = l_string_trim_head(s))) return L_STATUS_EINVAL;
+  value->end = s.end;
+  return headid;
+}
+
+static int l_http_read_chunked_body(l_state* state) {
+  /* Transfer-Encoding: chunked<CRLF>
+     Trailer: Content-MD5<CRLF>
+     <CRLF>
+     f<CRLF>
+     123456789abcdef<CRLF>
+     2<CRLF>
+     ab<CRLF>
+     0<CRLF>
+     Content-MD5:gjqei54p26tjisgj3p4utjgrj53<CRLF> */
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+  (void)state;
+  (void)ssrx;
+  return 0;
+}
+
+static int l_http_read_body(l_state* state) {
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+  l_http_read_common* comm = &ssrx->comm;
+  int status = 0;
+
+  if (ssrx->bodylen <= 0) return 0;
+
+  if ((status = l_http_read_length(comm, ssrx->bodylen)) < 0) {
+    return status;
+  }
+
+  if (status == L_STATUS_WAITMORE) {
+    return l_state_yield(state, l_http_read_body);
+  }
+
+  return 0;
 }
 
 static int l_http_server_read_headers(l_state* state) {
@@ -478,6 +615,10 @@ static int l_http_server_read_headers(l_state* state) {
   l_rune* buff_start = 0;
   l_rune* line_end = 0;
   l_rune* match_end = 0;
+  l_stre headval;
+  l_strt cur_line;
+  l_int headid = 0;
+  int status = 0;
 
   for (; ;) {
     if ((status = l_http_read_line(comm)) < 0) {
@@ -490,16 +631,44 @@ static int l_http_server_read_headers(l_state* state) {
 
     buff_start = l_string_start(rxbuf);
     line_end = buff_start + comm->lnewline;
+    cur_line = l_strt_e(buff_start + comm->lstart, line_end);
 
-    match_end = l_string_match_repeat(l_string_space_map(), l_strt_e(buff_start + comm->lstart, line_end));
+    match_end = l_string_match_repeat(l_string_space_map(), cur_line);
     if (match_end == line_end) {
       break; /* current line is empty line, headers ended here */
     }
 
-    match_end = l_string_skip_space_and_match(l_http_common_map(), ...);
+    if ((headid = l_http_match_header(l_http_common_map(), cur_line, &headval)) >= 0) {
+      ssrx->commasks |= (1 << headid);
+      ssrx->comhead[headid].start = headval.start - buff_start;
+      ssrx->comhead[headid].end = headval.end - buff_start;
+      if (headid == L_HTTP_H_CONTENT_LENGTH) {
+        ssrx->bodylen = l_string_parse_dec(headval);
+      }
+      continue;
+    }
 
+    if ((headid = l_http_match_header(l_http_request_map(), cur_line, &headval) >= 0) {
+      ssrx->reqmasks |= (1 << headid);
+      ssrx->reqhead[headid].start = headval.start - buff_start;
+      ssrx->reqhead[headid].end = headval.end - buff_start;
+      continue;
+    }
+
+    l_logw_1("unknown or invalid header %w", lp(&cur_line));
   }
-  return 0;
+
+  if (ssrx->method < L_HTTP_M_POST) {
+    return 0; /* these method don't have body */
+  }
+
+  ssrx->body = comm->lend - buff_start;
+
+  if (ssrx->comhead[L_HTTP_H_TRANSFER_ENCODING].start) {
+    return l_http_read_chunked_body(state);
+  }
+
+  return l_http_read_body(state);
 }
 
 static int l_http_server_read_request(l_state* state) {
@@ -526,7 +695,10 @@ static int l_http_server_read_request(l_state* state) {
   buff_start = l_string_start(rxbuf);
   line_end = buff_start + comm->lnewline;
   match_end = l_string_skip_space_and_match(l_http_method_map(), l_strt_e(buff_start + comm->lstart, line_end), &strid, 0);
-  if (!match_end) return L_STATUS_EMATCH;
+  if (!match_end) {
+    l_logw_1("unsupported method %s", lp(buff_start + comm->lstart));
+    return L_STATUS_EMATCH;
+  }
   ssrx->method = strid;
 
   /* parse <request-url> */
@@ -539,16 +711,12 @@ static int l_http_server_read_request(l_state* state) {
   match_end = l_string_skip_space_and_match(l_http_version_map(), l_strt_e(match_end, line_end), &strid, 0);
   if (!match_end) {
     ssrx->httpver = L_HTTP_VER_0NN;
-    return 0; /* v0.9 only has start line */
+    return 0; /* v0.9请求报文只包括<method>和<request-url>，没有版本、头部、和主体；而响应报文只包含主体 */
   }
   ssrx->httpver = strid;
 
   /* start to parse headers */
-  comm->lstart = comm->lend;
-  if (n == L_STATUS_CONTREAD) {
-    return l_http_server_read_headers(state);
-  }
-  return l_state_yield(state, l_http_server_read_headers);
+  return l_http_server_read_headers(state);
 }
 
 static int l_http_server_receive_service_proc(l_service* srvc, l_message* msg) {
@@ -584,7 +752,7 @@ static int l_http_server_receive_service_proc(l_service* srvc, l_message* msg) {
     }
   }
 
-  n = l_service_resume(srvc, l_http_server_write_response);
+  n = l_service_resume(srvc, ssrx->server->client_request_handler);
   if (n < 0) l_close_service(srvc);
   return 0;
 }
@@ -600,14 +768,13 @@ static int l_http_server_service_proc(l_service* self, l_message* msg) {
   }
 
   ssrx = (l_http_server_receive_service*)l_create_service(self->thread, sizeof(l_http_server_receive_service), l_http_server_receive_service_proc, false);
+  l_zero_l(l_rstr(ssrx) + sizeof(l_service), sizeof(l_http_server_receive_service) - sizeof(l_service));
   ssrx->server = ss;
   ssrx->remote = connind->remote;
   ssrx->comm.sock = connind->fd;
   ssrx->comm.rxlimit = ss->rxlimit;
   ssrx->comm.buf = &ssrx->rxbuf;
-  ssrx->comm.lstart = ssrx->comm.lnewline = ssrx->comm.lend = ssrx->comm.mstart = 0;
   ssrx->rxbuf = l_thread_create_limited_string(self->thread, ss->rxinitsize, ss->rxlimit);
-  ssrx->stage = 0;
 
   l_start_receiver_service(&ssrx->head, ssrx->sock);
   return 0;
@@ -633,29 +800,4 @@ int l_start_http_server(l_strt ip, l_ushort port, int (*client_request_handler)(
   l_start_listener_service(&ss->head, ss->sock);
   return 0;
 }
-
-/*
-"<scheme>://<user>:<password>@<host>:<port>/<path>;<params>?<query>#<frag>"
-/hammers;sale=0;color=red?item=1&size=m
-/hammers;sale=false/index.html;graphics=true
-/check.cgi?item=12731&color=blue&size=large
-/tools.html#drills
-
-URL编码机制，为了使用不安全字符，使用%和两个两个十六进制字符表示，例如空格可使用%20表示，根据浏览器的不同组合成的字符可能使用不同的编码
-保留字符有 % / . .. # ? ; : $ + @ & =
-受限字符有 {} | \ ^ ~ [ ] ' < > "　以及不可打印字符 0x00~0x1F >=0x7F，而且不能使用空格，通常使用+来替代空格
-0~9A~Za~z_-
-
----
-<method> <request-url> HTTP/<major>.<minor>
-<headers> header: value<crlf>
-<crlf>
-<entity-body>
----
-HTTP/<major>.<minor> <status-code> <status-text>
-<headers> header: value<crlf>
-<crlf>
-<entity-body>
----
-*/
 

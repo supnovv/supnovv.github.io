@@ -253,7 +253,7 @@ l_service* l_create_service(l_thread* thread, l_int size, int (*entry)(l_service
   srvc = l_thread_alloc_buffer(thread, size);
   srvc->svid = l_master_gen_service_id();
   srvc->ioev = 0;
-  srvc->belong = thread;
+  srvc->thread = thread;
   srvc->co = 0;
   srvc->entry = entry;
   srvc->stop_rx_msg = 0;
@@ -267,7 +267,7 @@ l_service* l_create_service(l_thread* thread, l_int size, int (*entry)(l_service
 
 int l_service_resume(l_service* self, int (*func)(l_state*)) {
   if (self->co == 0) {
-    l_thread* thread = self->belong;
+    l_thread* thread = self->thread;
     l_debug_assert(thread == l_thread_self());
     self->co = l_thread_alloc_buffer(thread, sizeof(l_state));
     l_state_init(self->co, thread, self, func);
@@ -325,12 +325,13 @@ l_string l_thread_create_limited_string(l_thread* thread, l_int initsize, l_int 
 }
 
 l_string l_thread_create_limited_string_from(l_thread* thread, l_strt from, l_int maxlimit) {
-  l_string s = l_thread_create_limited_string(thread, from.len, maxlimit);
-  if (from.start && from.len > 0) {
+  l_int len = from.end - from.start;
+  l_string s = l_thread_create_limited_string(thread, len, maxlimit);
+  if (from.start && len > 0) {
     l_strbuf* b = s.b;
-    l_copy_l(from.start, from.len, l_strbuf_cstr(b));
-    b->size = from.len;
-    *(l_strbuf_cstr(b) + from.len) = 0;
+    l_copy_l(from.start, len, l_strbuf_cstr(b));
+    b->size = len;
+    *(l_strbuf_cstr(b) + len) = 0;
   }
   return s;
 }
@@ -342,11 +343,16 @@ void l_thread_string_free(l_thread* thread, l_string* self) {
 }
 
 void l_string_set(l_string* self, l_strt s) {
-  if (!s.start || s.len <= 0) return;
-  l_strbuf_ensure_capacity(&self->b, s.len+1);
-  l_copy_l(s.start, s.len, l_strbuf_cstr(self->b));
-  self->b->size = s.len;
-  *(l_strbuf_cstr(self->b) + s.len) = 0;
+  l_int len = s.end - s.start;
+  if (!s.start || len <= 0) {
+    l_string_clear(self);
+    return;
+  }
+
+  l_strbuf_ensure_capacity(&self->b, len + 1);
+  l_copy_from(s, l_strbuf_cstr(self->b));
+  self->b->size = len;
+  *(l_strbuf_cstr(self->b) + len) = 0;
 }
 
 int l_string_ensure_remain(l_string* self, l_int remainsize) {
@@ -354,17 +360,13 @@ int l_string_ensure_remain(l_string* self, l_int remainsize) {
 }
 
 int l_string_append(l_string* self, l_strt s) {
-  const l_rune* end  = 0;
-  l_rune *bstr, *dest;
-  if (!l_strbuf_ensure_remain(&self->b, s.len+1)) return false;
-  bstr = l_strbuf_cstr(self->b);
-  dest = bstr + self->b->size;
-  end = s.start + s.len;
-  while (s.start < end) {
-    *dest++ = *s.start++;
-  }
-  *dest = 0;
-  self->b->size = dest - bstr;
+  l_int len = s.end - s.start;
+  if (len <= 0) return true;
+  if (!l_strbuf_ensure_remain(&self->b, len + 1)) return false;
+
+  l_copy_from(s, l_string_end(self));
+  self->b->size += len;
+  *(l_string_end(self)) = 0;
   return true;
 }
 
@@ -696,7 +698,7 @@ static void l_master_dispatch_event(l_ioevent* rxev) {
 
   if (rxev->masks == 0) return;
   if (!(srvc = l_master_find_service(rxev->udata))) return;
-  if (!(thread = srvc->belong)) return;
+  if (!(thread = srvc->thread)) return;
   if (!(srvc->mflgs & L_SERVICE_IO_EVENT)) return;
 
   svmtx = thread->svmtx;
@@ -752,8 +754,8 @@ static int l_master_messages_handle(l_squeue* frmq) {
     case L_MESSAGE_START_SERVICE: {
         l_service* srvc = (l_service*)((l_message_ptr*)msg)->ptr;
         /* attach thread first */
-        if (!srvc->belong) {
-          srvc->belong = l_threadpool_acquire();
+        if (!srvc->thread) {
+          srvc->thread = l_threadpool_acquire();
         }
 
         l_logm_1("start service %d", ld(srvc->svid));
@@ -796,7 +798,7 @@ static int l_master_messages_handle(l_squeue* frmq) {
         }
 
         if (!srvc) break;
-        l_threadpool_release(srvc->belong); /* L_MESSAGE_CLOSE_SRVCRSP is the last msg */
+        l_threadpool_release(srvc->thread); /* L_MESSAGE_CLOSE_SRVCRSP is the last msg */
         l_send_message_ptr(master, srvc->svid, L_MESSAGE_CLOSE_SRVCRSP, srvc);
       }
       break;
@@ -909,10 +911,10 @@ static int l_master_loop(int (*start)()) {
 
       if (msg->type == L_MESSAGE_CLOSE_SRVCRSP) {
         srvc = (l_service*)((l_message_ptr*)msg)->ptr;
-        thread = srvc->belong;
+        thread = srvc->thread;
       } else {
         l_mutex* svmtx = 0;
-        thread = srvc->belong;
+        thread = srvc->thread;
         svmtx = thread->svmtx;
         l_mutex_lock(svmtx);
         if (srvc->stop_rx_msg) {

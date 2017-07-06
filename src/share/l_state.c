@@ -27,25 +27,25 @@ static void llinitstate(l_state* co) {
   co->coref = LUA_NOREF;
 }
 
-int l_state_init(l_state* ccco, l_thread* belong, l_service* srvc, int (*func)(l_state*)) {
+int l_state_init(l_state* ccco, l_thread* thread, l_service* srvc, int (*func)(l_state*)) {
   lua_State* co = 0;
   llinitstate(ccco);
-  if (!(co = lua_newthread(belong->L))) {
+  if (!(co = lua_newthread(thread->L))) {
     l_loge_s("lua_newthread failed");
     return false;
   }
-  ccco->belong = belong;
+  ccco->thread = thread;
   ccco->co = co;
-  ccco->coref = luaL_ref(belong->L, LUA_REGISTRYINDEX);
+  ccco->coref = luaL_ref(thread->L, LUA_REGISTRYINDEX);
   ccco->func = func;
   ccco->srvc = srvc;
   return true;
 }
 
 void l_state_free(l_state* co) {
-  if (co->belong->L && co->coref != LUA_NOREF) {
+  if (co->thread->L && co->coref != LUA_NOREF) {
     /* if ref is LUA_NOREF or LUA_REFNIL, luaL_unref does nothing. */
-    luaL_unref(co->belong->L, LUA_REGISTRYINDEX, co->coref);
+    luaL_unref(co->thread->L, LUA_REGISTRYINDEX, co->coref);
   }
 }
 
@@ -61,7 +61,7 @@ static int llstateresume(l_state* co, int nargs) {
   stack when the function returns, and the last result is on the top
   of the stack. */
   int nelems = 0;
-  int n = lua_resume(co->co, co->belong->L, nargs);
+  int n = lua_resume(co->co, co->thread->L, nargs);
   if (n == LUA_OK) {
     /* coroutine finishes its execution without errors, the stack in L contains
     all values returned by the coroutine main function 'func'. */

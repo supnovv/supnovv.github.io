@@ -448,7 +448,7 @@ l_handle l_socket_listen(const l_sockaddr* addr, int backlog) {
   }
   if (!llsocketlisten(sock, (backlog <= 0 ? L_SOCKET_BACKLOG : backlog))) {
     l_socket_close(sock);
-    return -1
+    return -1;
   }
   return sock;
 }

@@ -37,7 +37,7 @@ l_byte* l_copy_l(const void* from, l_int len, void* to) {
 }
 
 l_byte* l_copy_from(l_strt s, void* to) {
-  return l_copy_l(s.start, s.len, to);
+  return l_copy_l(s.start, s.end - s.start, to);
 }
 
 static void* l_out_of_memory(l_int size, int init) {
@@ -243,7 +243,7 @@ void l_clear_file_error(l_filestream* self) {
 }
 
 l_int l_write_strt_to_file(l_filestream* self, l_strt s) {
-  return l_write_file(self, s.start, s.len);
+  return l_write_file(self, s.start, s.end - s.start);
 }
 
 l_int l_write_file(l_filestream* self, const void* s, l_int len) {
@@ -530,7 +530,7 @@ void l_core_test() {
 #endif
   /* struct/array init */
   l_assert(strt.start == 0);
-  l_assert(strt.len == 0);
+  l_assert(strt.end == 0);
   pstr->start = l_rstr(buffer);
   l_assert(*pstr->start == '0');
   l_assert(*pstr->start == *(pstr->start));

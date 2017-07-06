@@ -6,18 +6,16 @@
 #include "thatcore.h"
 
 int l_strt_contain(l_strt s, int ch) {
-  while (s.len-- > 0) {
-    if (s.start[s.len] == ch) return true;
+  while (s.start < s.end) {
+    if (*s.start++ == ch) return true;
   }
   return false;
 }
 
-int l_strt_equal(l_strt lhs, l_strt rhs) {
-  if (lhs.len != rhs.len) return false;
-  while (lhs.len-- > 0) {
-    if (lhs.start[lhs.len] != rhs.start[lhs.len]) {
-      return false;
-    }
+int l_strt_equal(l_strt l, l_strt r) {
+  if (l.end - l.start != r.end - r.start) return false;
+  while (l.start < l.end) {
+    if (*l.start++ != *r.start++) return false;
   }
   return true;
 }
@@ -107,27 +105,23 @@ void l_thread_flush_log(l_thread* self) {
 static void l_string_format_out(l_string* self, l_strt s) {
   if (self->b->flags & L_STRING_PRINT_LOG) {
     l_strbuf* b = self->b;
-    l_int cap = l_strbuf_capacity(b);
-    l_rune* bstr = l_strbuf_cstr(b);
-    l_rune* dest = 0;
-    const l_rune* end = 0;
+    l_int len = s.end - s.start;
+    if (len <= 0) return;
 
-    if (cap - b->size < s.len + 1) { /* 1 is for zero-terminated char */
+    if (l_string_remain(self) < len + 1) { /* 1 is for zero-terminated char */
       l_write_log_to_file(self);
-      if (cap - b->size < s.len + 1) {
-        l_loge_2("cap %d len %d", ld(cap), ld(s.len));
+
+      if (l_string_remain(self) < len + 1) {
+        l_thread* thread = (l_thread*)((l_byte*)self - offsetof(l_thread, log));
+        l_write_file(&thread->logfile, s.start, len);
+        l_logw_2("buffer too small %d len %d", ld(l_string_capacity(self)), ld(len));
         return;
       }
     }
 
-    dest = bstr + b->size;
-    end = s.start + s.len;
-    while (s.start < end) {
-      *dest++ = *s.start++;
-    }
-
-    *dest = 0;
-    b->size = dest - bstr;
+    l_copy_from(s, l_string_end(self));
+    b->size += len;
+    *(l_string_end(self)) = 0;
 
   } else {
     l_string_append(self, s);
@@ -136,37 +130,37 @@ static void l_string_format_out(l_string* self, l_strt s) {
 
 static void l_string_format_out_reverse(l_string* self, l_strt s) {
   l_strbuf* b = self->b;
-  l_rune* bstr = 0;
   l_rune* dest = 0;
-  const l_rune* end = 0;
+  l_int len = s.end - s.start;
+  if (len <= 0) return;
 
   if (self->b->flags & L_STRING_PRINT_LOG) {
-    l_int cap = l_strbuf_capacity(b);
-    if (cap - b->size < s.len + 1) { /* 1 is for zero-terminated char */
+
+    if (l_string_remain(self) < len + 1) {
       l_write_log_to_file(self);
-      if (cap - b->size < s.len + 1) {
-        l_loge_2("cap %d len %d", ld(cap), ld(s.len));
+
+      if (l_string_remain(self) < len + 1) {
+        l_thread* thread = (l_thread*)((l_byte*)self - offsetof(l_thread, log));
+        l_write_file(&thread->logfile, s.start, len);
+        l_logw_2("buffer too small %d len %d", ld(l_string_capacity(self)), ld(len));
         return;
       }
     }
+
   } else {
-    if (!l_string_ensure_remain(self, s.len + 1)) {
-      l_loge_1("len %d", ld(s.len));
+    if (!l_string_ensure_remain(self, len + 1)) {
+      l_loge_1("len %d", ld(len));
       return;
     }
   }
 
-  b = self->b; /* self->b may change, re-get */
-  bstr = l_strbuf_cstr(b);
-  dest = bstr + b->size;
-  end = s.start + s.len;
-
-  while (end-- > s.start) {
-    *dest++ = *end;
+  dest = l_string_end(self);
+  while (s.start < s.end--) {
+    *dest++ = *s.end;
   }
 
   *dest = 0;
-  b->size = dest - bstr;
+  b->size += len;
 }
 
 static void l_string_format_fill_and_out(l_string* self, l_rune* a, l_rune* p, l_umedit flags) {
@@ -205,12 +199,13 @@ static void l_string_format_fill_and_out(l_string* self, l_rune* a, l_rune* p, l
 
 static void l_string_format_string(l_string* self, l_strt s, l_umedit flags) {
   int width = ((flags & 0x7f00) >> 8);
-  if (s.len >= width) {
+  l_int len = s.end - s.start;
+  if (len >= width) {
     l_string_format_out(self, s);
   } else {
     l_rune a[128];
-    l_copy_l(s.start, s.len, a);
-    l_string_format_fill_and_out(self, a, a + s.len, flags);
+    memcpy(a, s.start, len);
+    l_string_format_fill_and_out(self, a, a + len, flags);
   }
 }
 
@@ -230,9 +225,84 @@ static void l_string_format_true(l_string* self, l_ulong a, l_umedit flags) {
   }
 }
 
+const l_rune l_rune_class_table[] = { /* 0010 0011 0101 0110 0111 1000 */
+  0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+  8,8,8,8,8,8,8,8, 8,8,8,8,8,8,8,8, 5,5,5,5,5,5,5,5, 5,5,8,8,8,8,8,8, /* (5) 0 ~ 9 */
+  8,6,6,6,6,6,6,2, 2,2,2,2,2,2,2,2, 2,2,2,2,2,2,2,2, 2,2,2,8,8,8,8,8, /* (6/2) A ~ Z */
+  8,7,7,7,7,7,7,3, 3,3,3,3,3,3,3,3, 3,3,3,3,3,3,3,3, 3,3,3,8,8,8,8,0, /* (7/3) a ~ z */
+  0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
+  0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0
+};
+
 static const l_rune* l_hex_runes[] = {
   l_rstr("0123456789abcdef"), l_rstr("0123456789ABCDEF")
 };
+
+l_int l_string_parse_dec(l_strt s) {
+  l_int times = 1;
+  l_int value = 0;
+  const l_rune* start = 0;
+  const l_rune* end = 0;
+  int negative = false;
+
+  while (s.start < s.end) {
+    if (*s.start >= '0' && *s.start <= '9') break;
+    if (*s.start == '-') negative = true;
+    ++s.start;
+  }
+
+  start = s.start;
+  while (s.start < s.end) {
+    if (*s.start < '0' || *s.start > '9') break;
+    ++s.start;
+  }
+
+  end = s.start;
+  while (start < end--) {
+    value += *end * times;
+    times *= 10;
+  }
+
+  return (negative ? -value : value);
+}
+
+l_int l_string_parse_hex(l_strt s) {
+  l_int times = 1;
+  l_int value = 0;
+  const l_rune* start = 0;
+  const l_rune* end = 0;
+  int negative = false;
+
+  while (s.start < s.end) {
+    if (l_check_digit_is_hex(*s.start)) break;
+    if (*s.start == '-') negative = true;
+    ++s.start;
+  }
+
+  if (*s.start == '0' && s.start + 1 < s.end && (*(s.start + 1) == 'x' || *(s.start + 1) == 'X')) {
+    s.start += 2;
+    if (s.start >= s.end || !l_check_digit_is_hex(*s.start)) {
+      return 0;
+    }
+  }
+
+  start = s.start;
+  while (s.start < s.end) {
+    if (!l_check_digit_is_hex(*s.start)) break;
+    ++s.start;
+  }
+
+  end = s.start;
+  while (start < end--) {
+    value += *end * times;
+    times *= 16;
+  }
+
+  return (negative ? -value : value);
+}
+
 
 static void l_string_format_ulong(l_string* self, l_ulong n, l_umedit flags) {
   /* 64-bit unsigned int max value 18446744073709552046 (20 runes) */
@@ -906,7 +976,7 @@ void l_string_set_map(l_stringmap* self, const l_rune** str, l_int numofstr, int
   }
 }
 
-l_stringmap l_string_new_map(int maxstrlen, const l_rune** str, l_int numofstr, int casesensitive) {
+l_stringmap l_string_new_map(l_int maxstrlen, const l_rune** str, l_int numofstr, int casesensitive) {
   l_stringmap map = {0};
   if (maxstrlen <= 0 || str == 0) return map;
   map.t = (l_runetable*)l_raw_malloc(sizeof(l_runetable) * maxstrlen);
@@ -970,7 +1040,7 @@ const l_rune* l_string_match_ex(const l_stringmap* map, l_strt s, l_int* strid, 
   l_umedit prevmatch = 0xFFFFFFFF, curmatch = 0;
   l_umedit matches = 0, headmatch = 0;
   l_runetable* t = 0;
-  l_int i = 0, end = s.len;
+  l_int i = 0, len = s.end - s.start;
   l_rune ch = 0;
   const l_rune* p = 0;
 
@@ -983,15 +1053,15 @@ const l_rune* l_string_match_ex(const l_stringmap* map, l_strt s, l_int* strid, 
   (c) curmatch = 0b0001; t->e['c'] = 0b1001; headmatch = 0b0001;
   */
 
-  if (s.len <= 0) {
+  if (len <= 0) {
     return l_string_too_short;
   }
 
-  if (map->size < s.len) {
-    end = map->size;
+  if (map->size < len) {
+    len = map->size;
   }
 
-  while (i < end) {
+  while (i < len) {
     t = ((l_runetable*)(map->t)) + i;
     ch = s.start[i];
 
@@ -1026,7 +1096,7 @@ const l_rune* l_string_match_ex(const l_stringmap* map, l_strt s, l_int* strid, 
 
 MatchSuccess:
   if (strid) *strid = l_power_of_two_bit_pos(headmatch);
-  if (mlen) *mlen = p - s.start;
+  if (matched_len) *matched_len = p - s.start;
   return p;
 }
 
@@ -1040,24 +1110,17 @@ const l_rune* l_string_match_ntimes(const l_stringmap* map, int n, l_strt s) {
   int i = 0;
   while (i++ < n) {
     if ((e = l_string_match(map, s)) == 0 || e == l_string_too_short) return 0;
-    s.len -= (e - s.start);
     s.start = e;
   }
   return e;
 }
 
-/* return >=s */
-const l_rune* l_string_match_repeat(const l_stringmap* map, l_strt　s) {
+const l_rune* l_string_match_repeat(const l_stringmap* map, l_strt s) {
   const l_rune* e = 0;
-  const l_rune* prev = s.start;
-
   while ((e = l_string_match(map, s)) != 0 && e != l_string_too_short) {
-    prev = e;
-    s.len -= (e - s.start);
     s.start = e;
   }
-
-  return prev;
+  return s.start;
 }
 
 /* return 0 - too short to match, otherwise success */
@@ -1065,10 +1128,8 @@ const l_rune* l_string_match_until(const l_stringmap* map, l_strt s, l_rune** la
   const l_rune* e = 0;
   while ((e = l_string_match(map, s)) == 0) { /* continue loop when unmatched */
     ++s.start;
-    --s.len;
   }
-
-  if (last_match_start) *last_match_start = s.start;
+  if (last_match_start) *last_match_start = (l_rune*)s.start;
   return (e == l_string_too_short ? 0 : e);
 }
 
@@ -1077,12 +1138,11 @@ const l_rune* l_string_skip_space_and_match_until(const l_stringmap* map, l_strt
   l_rune* last_match_start = 0;
 
   while ((e = l_string_match(l_string_space_map(), s)) != 0 && e != l_string_too_short) {
-    s.len -= (e - s.start);
     s.start = e; /* skip space */
   }
 
-  if (e == l_string_too_short) return 0; /* all chars are spaces, or even last space is not complete */
-  if (first_non_space_pos) *first_non_space_pos = e;
+  if (e == l_string_too_short) return 0; /* last space is not complete */
+  if (first_non_space_pos) *first_non_space_pos = (l_rune*)s.start;
   if (!(e = l_string_match_until(map, s, &last_match_start))) {
     return last_match_start;
   }
@@ -1093,14 +1153,33 @@ const l_rune* l_string_skip_space_and_match_until(const l_stringmap* map, l_strt
 const l_rune* l_string_skip_space_and_match(const l_stringmap* map, l_strt s, l_int* strid, l_int* matched_len) {
   const l_rune* e = 0;
   while ((e = l_string_match(l_string_space_map(), s)) != 0 && e != l_string_too_short) {
-    s.len -= (e - s.start);
     s.start = e; /* skip space */
   }
 
-  if (e == l_string_too_short) return 0; /* all chars are spaces, or even last space is not complete */
-  e = l_string_match_ex(map, s, len, strid, matched_len);
+  e = l_string_match_ex(map, s, strid, matched_len);
   if (e == 0 || e == l_string_too_short) return 0;
   return e;
+}
+
+const l_rune* l_string_trim_head(l_strt s) {
+  const l_rune* e = 0;
+  while ((e = l_string_match(l_string_space_map(), s)) != 0 && e != l_string_too_short) {
+    s.start = e; /* skip space */
+  }
+  return s.start;
+}
+
+const l_rune* l_string_skip_space_and_match_sub(l_strt sub, l_strt s) {
+  const l_rune* e = 0;
+  while ((e = l_string_match(l_string_space_map(), s)) != 0 && e != l_string_too_short) {
+    s.start = e; /* skip space */
+  }
+
+  if (s.end - s.start < sub.end - sub.start) return 0;
+  while (sub.start < sub.end) {
+    if (*sub.start++ != *s.start++) return 0;
+  }
+  return s.start;
 }
 
 void l_string_test() {
@@ -1135,35 +1214,35 @@ void l_string_test() {
   l_assert(l_right_most_bit(0x1111) == 0x0001);
 
   map = l_string_new_map(8, methods, 3, false);
-  s = l_string_match(&map, subject, 3);
+  s = l_string_match(&map, l_strt_l(subject, 3));
   l_logd_1("get - %s", ls(s));
-  s = l_string_match(&map, subject+1, 3);
+  s = l_string_match(&map, l_strt_l(subject+1, 3));
   l_assert(s == 0);
-  s = l_string_match(&map, subject+4, 3);
+  s = l_string_match(&map, l_strt_l(subject+4, 3));
   l_assert(s == l_string_too_short);
-  s = l_string_match(&map, subject+4, 4);
+  s = l_string_match(&map, l_strt_l(subject+4, 4));
   l_logd_1("head - %s", ls(s));
-  s = l_string_match(&map, subject+9, 3);
+  s = l_string_match(&map, l_strt_l(subject+9, 3));
   l_assert(s == l_string_too_short);
-  s = l_string_match(&map, subject+9, 5);
+  s = l_string_match(&map, l_strt_l(subject+9, 5));
   l_logd_1("post - %s", ls(s));
-  s = l_string_match(&map, subject+14, 3);
+  s = l_string_match(&map, l_strt_l(subject+14, 3));
   l_assert(s == 0);
 
   l_string_set_map(&map, orderedchice, 7, true);
-  s = l_string_match(&map, "mankind", 7);
+  s = l_string_match(&map, l_literal_strt("mankind"));
   l_assert(*s == 0);
-  s = l_string_match(&map, "mankin", 6);
+  s = l_string_match(&map, l_literal_strt("mankin"));
   l_assert(*s == 'k');
-  s = l_string_match(&map, "gotten", 6);
+  s = l_string_match(&map, l_literal_strt("gotten"));
   l_assert(*s == 't');
-  s = l_string_match(&map, "pon", 3);
+  s = l_string_match(&map, l_literal_strt("pon"));
   l_assert(s == 0);
-  s = l_string_match(&map, "con", 3);
+  s = l_string_match(&map, l_literal_strt("con"));
   l_assert(s == 0);
-  s = l_string_match(&map, "tiok", 4);
+  s = l_string_match(&map, l_literal_strt("tiok"));
   l_assert(s == 0);
-  s = l_string_match(&map, "tick", 4);
+  s = l_string_match(&map, l_literal_strt("tick"));
   l_assert(*s == 0);
 
   l_string_free_map(&map);

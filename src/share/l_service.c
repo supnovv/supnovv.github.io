@@ -6,9 +6,9 @@
 #define L_SERVICE_CLOSING  0x04
 
 void l_start_service(l_service* srvc) {
-  l_thread* thread = srvc->belong;
+  l_thread* thread = srvc->thread;
   if (!(srvc->wflgs & L_SERVICE_SAMETHRD)) {
-    srvc->belong = 0;
+    srvc->thread = 0;
   }
   l_send_message_ptr(thread, L_SERVICE_MASTER_ID, L_MESSAGE_START_SERVICE, srvc);
 }
@@ -50,7 +50,7 @@ void l_close_service(l_service* srvc) {
 }
 
 void l_close_event(l_service* srvc) {
-  l_thread* thread = srvc->belong;
+  l_thread* thread = srvc->thread;
   l_handle fd = -1;
 
   l_debug_assert(thread == l_thread_self());

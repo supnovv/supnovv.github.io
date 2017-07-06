@@ -13,7 +13,7 @@ typedef struct l_state {
 } l_state;
 
 l_inline l_thread* l_state_belong(l_state* s) {
-  return s->belong;
+  return s->thread;
 }
 
 l_extern lua_State* l_new_luastate();

@@ -224,26 +224,26 @@ l_inline void l_logger_func_n(const void* tag, const void* s, l_int n, const l_v
 
 typedef struct {
   const l_byte* start;
-  l_int len;
+  const l_byte* end;
 } l_strt;
 
 #define l_strt_c(s) l_strt_l((s), strlen((char*)(s)))
-
-l_inline l_strt l_strt_l(const void* s, l_int len) {
-  return ((l_strt){l_rstr(s), len});
-}
+#define l_literal_strt(s) l_strt_l("" s, (sizeof(s)/sizeof(char))-1)
+#define l_empty_strt() ((l_strt){0,0})
 
 l_inline l_strt l_strt_e(const void* s, const void* e) {
-  return l_strt_l(s, l_rstr(e) - l_rstr(s));
+  return (l_strt){l_rstr(s), l_rstr(e)};
+}
+
+l_inline l_strt l_strt_l(const void* s, l_int len) {
+  return (l_strt){l_rstr(s), l_rstr(s) + len};
 }
 
 l_inline l_strt l_strt_sft(const void* s, l_int from, l_int to) {
-  return l_strt_l(l_rstr(s) + from, to -from);
+  return l_strt_e(l_rstr(s) + from, l_rstr(s) + to);
 }
 
-#define l_empty_strt() ((l_strt){0,0})
-#define l_literal_strt(s) l_strt_l("" s, (sizeof(s)/sizeof(char))-1)
-l_extern int l_strt_equal(l_strt lhs, l_strt rhs);
+l_extern int l_strt_equal(l_strt l, l_strt r);
 l_extern int l_strt_contain(l_strt s, int ch);
 l_extern l_byte* l_copy_from(l_strt s, void* to);
 
@@ -394,7 +394,7 @@ l_inline l_byte* l_string_end(l_string* self) {
 }
 
 l_inline l_strt l_string_strt(l_string* self) {
-  return (l_strt){l_string_cstr(self), self->b->size};
+  return l_strt_l(l_string_start(self), self->b->size);
 }
 
 l_inline int l_string_is_empty(l_string* self) {
@@ -487,6 +487,38 @@ l_extern const l_rune* l_string_match_repeat(const l_stringmap* map, l_strt s);
 l_extern const l_rune* l_string_match_until(const l_stringmap* map, l_strt s, l_rune** last_match_start);
 l_extern const l_rune* l_string_skip_space_and_match_until(const l_stringmap* map, l_strt s, l_rune** first_non_space_pos);
 l_extern const l_rune* l_string_skip_space_and_match(const l_stringmap* map, l_strt s, l_int* strid, l_int* mlen);
+
+l_extern const l_rune* l_string_trim_head(l_strt s);
+l_extern const l_rune* l_string_skip_space_and_match_sub(l_strt sub, l_strt s);
+
+l_extern const l_rune l_rune_class_table[256];
+
+l_inline int l_check_rune_is_pritable(l_byte ch) {
+  return l_rune_class_table[ch];
+}
+
+l_inline int l_check_digit_is_dec(l_byte ch) {
+  return l_rune_class_table[ch] == 5;
+}
+
+l_inline int l_check_digit_is_hex(l_byte ch) {
+  return l_rune_class_table[ch] & 0x04;
+}
+
+l_inline int l_check_rune_is_letter(l_byte ch) {
+  return l_rune_class_table[ch] & 0x02;
+}
+
+l_inline int l_check_upper_letter(l_byte ch) {
+  return (l_rune_class_table[ch] & 0x03) == 2;
+}
+
+l_inline int l_check_lower_letter(l_byte ch) {
+  return (l_rune_class_table[ch] & 0x03) == 3;
+}
+
+l_extern l_int l_string_parse_dec(l_strt s);
+l_extern l_int l_string_parse_hex(l_strt s);
 
 /* linuxcore.c */
 
