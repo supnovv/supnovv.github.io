@@ -368,6 +368,7 @@ l_extern void l_thread_string_free(l_thread* thread, l_string* self);
 l_extern void l_string_free(l_string* self);
 l_extern void l_string_clear(l_string* self);
 l_extern void l_string_set(l_string* self, l_strt s);
+l_extern int l_string_ensure_capacity(l_string* self, l_int capacity);
 l_extern int l_string_ensure_remain(l_string* self, l_int remainsize);
 l_extern int l_string_append(l_string* self, l_strt s);
 l_extern int l_string_format_impl(l_string* self, const void* fmt, ...);

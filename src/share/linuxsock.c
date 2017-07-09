@@ -224,7 +224,7 @@ static int llsocketcreate(int domain, int type, int protocol, l_handle* out) {
   return true;
 }
 
-int l_socket_isopen(l_handle sock) {
+int l_socket_is_open(l_handle sock) {
   return (sock != -1);
 }
 
@@ -904,7 +904,7 @@ void l_socketconn_init(l_sockconn* self, l_strt ip, l_ushort port) {
 int l_socket_connect(l_sockconn* conn) {
   l_handle sock = conn->sock;
   l_sockaddr* addr = &(conn->remote);
-  if (!l_socket_isopen(sock)) {
+  if (!l_socket_is_open(sock)) {
     llsockaddr* sa = (llsockaddr*)addr;
     int domain = sa->addr.sa.sa_family;
     if (domain != AF_INET && domain != AF_INET6) {

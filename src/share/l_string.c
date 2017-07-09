@@ -993,7 +993,7 @@ void l_string_free_map(l_stringmap* self) {
   self->size = 0;
 }
 
-static const l_rune* const l_string_too_short = (const l_rune* const)(l_int)(-1);
+static const l_rune* const l_string_too_short = (const l_rune* const)(l_int)(1);
 
 static int l_power_of_two_bit_pos(l_umedit n) {
   switch (n) {

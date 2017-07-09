@@ -23,7 +23,7 @@ l_extern void l_socket_shutdown(l_handle sock, l_rune r_w_a);
 l_extern void l_socketconn_init(l_sockconn* self, l_strt ip, l_ushort port);
 
 l_extern int l_socket_connect(l_sockconn* conn);
-l_extern int l_socket_isopen(l_handle sock);
+l_extern int l_socket_is_open(l_handle sock);
 l_extern l_sockaddr l_socket_localaddr(l_handle sock);
 l_extern l_int l_socket_read(l_handle sock, void* out, l_int count, l_int* status);
 l_extern l_int l_socket_write(l_handle sock, const void* buf, l_int count, l_int* status);

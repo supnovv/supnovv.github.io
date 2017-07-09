@@ -355,6 +355,10 @@ void l_string_set(l_string* self, l_strt s) {
   *(l_strbuf_cstr(self->b) + len) = 0;
 }
 
+int l_string_ensure_capacity(l_string* self, l_int capacity) {
+  return l_strbuf_ensure_capacity(&self->b, capacity);
+}
+
 int l_string_ensure_remain(l_string* self, l_int remainsize) {
   return l_strbuf_ensure_remain(&self->b, remainsize);
 }

@@ -53,8 +53,8 @@ IONFOBJ = $(BUILD_DIR)l_ionfmgr$(O)
 SOCKOBJ = $(BUILD_DIR)linuxsock$(O)
 SRVCOBJ = $(BUILD_DIR)l_service$(O)
 MASTERO = $(BUILD_DIR)l_master$(O)
-#HTTPOBJ = $(BUILD_DIR)httpservice$(O)
-TESTOBJ = $(COREOBJ) $(STRINGO) $(MESSAGE) $(LUACOBJ) $(IONFOBJ) $(SOCKOBJ) $(SRVCOBJ) $(MASTERO) #$(HTTPOBJ)
+HTTPOBJ = $(BUILD_DIR)httpservice$(O)
+TESTOBJ = $(COREOBJ) $(STRINGO) $(MESSAGE) $(LUACOBJ) $(IONFOBJ) $(SOCKOBJ) $(SRVCOBJ) $(MASTERO) $(HTTPOBJ)
 ALLOBJS = $(AUTOOBJ) $(TESTOBJ)
 
 AUTOCONF = $(BUILD_DIR)autoconf$(E)
@@ -111,5 +111,5 @@ $(SRVCOBJ): l_service.c l_service.h
 $(STRINGO): l_string.c thatcore.h
 $(MASTERO): l_master.c l_master.h
 $(MESSAGE): l_message.c l_message.h
-#$(HTTPOBJ): httpservice.c httpservice.h
+$(HTTPOBJ): httpservice.c httpservice.h
 

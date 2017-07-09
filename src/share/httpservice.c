@@ -1,5 +1,8 @@
 #include "httpservice.h"
 #include "l_ionfmgr.h"
+#include "l_service.h"
+#include "l_socket.h"
+#include "l_message.h"
 
 #define L_HTTP_METHOD_MAX_LEN (7)
 #define L_NUM_OF_HTTP_METHODS (4)
@@ -29,37 +32,133 @@ static const l_rune* l_http_versions[] = {
   l_rstr("HTTP/0"), l_rstr("HTTP/1.0"), l_rstr("HTTP/1.1"), l_rstr("HTTP/2")
 };
 
-#define L_HTTP_S_SUCCESS (200)
-#define L_HTTP_S_CREATED (201)
-#define L_HTTP_S_ACCEPTED (202)
-#define L_HTTP_S_BAD_REQUEST (400)
-#define L_HTTP_S_UNAUTHORIZED (401)
-#define L_HTTP_S_FORBIDDEN (403)
-#define L_HTTP_S_NOT_FOUND (404)
-#define L_HTTP_S_METHOD_NOT_ALLOWED (405)
-#define L_HTTP_S_NOT_ACCEPTABLE (406)
-#define L_HTTP_S_REQUEST_TIMEOUT (408)
-#define L_HTTP_S_CONFLICT (409)
-#define L_HTTP_S_LENGTH_REQUIRED (411)
-#define L_HTTP_S_REQUEST_ENTITY_TOO_LARGE (413)
-#define L_HTTP_S_REQUEST_URI_TOO_LONG (414)
-#define L_HTTP_S_UNSUPPORTED_MEDIA_TYPE (415)
-#define L_HTTP_S_SERVER_ERROR (500)
-#define L_HTTP_S_NOT_IMPLEMENTED (501)
-#define L_HTTP_S_BAD_GATEWAY (502)
-#define L_HTTP_S_SERVICE_UNAVAILABLE (503)
-#define L_HTTP_S_VERSION_NOT_SUPPORT (505)
+typedef struct {
+  int code;
+  l_strt phrase;
+} l_http_status;
 
-#define HTTP_GIF_IMAGE (0x01) /* image/gif */
-#define HTTP_JPG_IMAGE (0x02) /* image/jpeg */
-#define HTTP_PNG_IMAGE (0x03) /* image/png */
-#define HTTP_BMP_IMAGE (0x04) /* image/bmp */
-#define HTTP_HTML_TEXT (0x05) /* text/html */
-#define HTTP_CSS_TEXT  (0x06) /* text/css */
-#define HTTP_PLAIN_TEXT (0x07) /* text/plain */
+enum l_http_status_enum {
+  L_HTTP_100_CONTINUE,
+  L_HTTP_101_SWITCHING_PROTOCOLS,
+  L_HTTP_200_OK,
+  L_HTTP_201_CREATED,
+  L_HTTP_202_ACCEPTED,
+  L_HTTP_203_NON_AUTHORITATIVE_INFORMATION,
+  L_HTTP_204_NO_CONTENT,
+  L_HTTP_205_RESET_CONTENT,
+  L_HTTP_206_PARTIAL_CONTENT,
+  L_HTTP_300_MULTIPLE_CHOICES,
+  L_HTTP_301_MOVED_PERMANENTLY,
+  L_HTTP_302_FOUND,
+  L_HTTP_303_SEE_OTHER,
+  L_HTTP_304_NOT_MODIFIED,
+  L_HTTP_305_USE_PROXY,
+  L_HTTP_307_TEMPORARY_REDIRECT,
+  L_HTTP_400_BAD_REQUEST,
+  L_HTTP_401_UNAUTHORIZED,
+  L_HTTP_402_PAYMENT_REQUIRED,
+  L_HTTP_403_FORBIDDEN,
+  L_HTTP_404_NOT_FOUND,
+  L_HTTP_405_METHOD_NOT_ALLOWED,
+  L_HTTP_406_NOT_ACCEPTABLE,
+  L_HTTP_407_PROXY_AUTHENTICATION_REQUIRED,
+  L_HTTP_408_REQUEST_TIMEOUT,
+  L_HTTP_409_CONFLICT,
+  L_HTTP_410_GONE,
+  L_HTTP_411_LENGTH_REQUIRED,
+  L_HTTP_412_PRECONDITION_FAILED,
+  L_HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+  L_HTTP_414_REQUEST_URI_TOO_LONG,
+  L_HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+  L_HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
+  L_HTTP_417_EXPECTATION_FAILED,
+  L_HTTP_500_INTERNAL_SERVER_ERROR,
+  L_HTTP_501_NOT_IMPLEMENTED,
+  L_HTTP_502_BAD_GATEWAY,
+  L_HTTP_503_SERVICE_UNAVAILABLE,
+  L_HTTP_504_GATEWAY_TIMEOUT,
+  L_HTTP_505_HTTP_VERSION_NOT_SUPPORTED
+};
+
+static const l_http_status l_status[] = { /* https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html */
+  {100, l_literal_strt("Continue")}, /* 1xx - informational code */
+  {101, l_literal_strt("Switching Protocols")},
+  {200, l_literal_strt("OK")}, /* 2xx - success code */
+  {201, l_literal_strt("Created")},
+ 　{202, l_literal_strt("Accepted")},
+  {203, l_literal_strt("Non-Authoritative Information")},
+  {204, l_literal_strt("No Content")},
+  {205, l_literal_strt("Reset Content")},
+  {206, l_literal_strt("Partial Content")},
+  {300, l_literal_strt("Multiple Choices")}, /* 3xx - redirection status */
+  {301, l_literal_strt("Moved Permanently")},
+  {302, l_literal_strt("Found")},
+  {303, l_literal_strt("See Other")},
+  {304, l_literal_strt("Not Modified")},
+  {305, l_literal_strt("Use Proxy")},
+  {307, l_literal_strt("Temporary Redirect")},
+  {400, l_literal_strt("Bad Request")}, /* 4xx - request error */
+  {401, l_literal_strt("Unauthorized")},
+  {402, l_literal_strt("Payment Required")},
+  {403, l_literal_strt("Forbidden")},
+  {404, l_literal_strt("Not Found")},
+  {405, l_literal_strt("Method Not Allowed")},
+  {406, l_literal_strt("Not Acceptable")},
+  {407, l_literal_strt("Proxy Authentication Required")},
+  {408, l_literal_strt("Request Timeout")},
+  {409, l_literal_strt("Conflict")},
+  {410, l_literal_strt("Gone")},
+  {411, l_literal_strt("Length Required")},
+  {412, l_literal_strt("Precondition Failed")},
+  {413, l_literal_strt("Request Entity Too Large")},
+  {414, l_literal_strt("Request-URI Too Long")},
+  {415, l_literal_strt("Unsupported Media Type")},
+  {416, l_literal_strt("Requested Range Not Satisfiable")},
+  {417, l_literal_strt("Expectation Failed")},
+  {500, l_literal_strt("Internal Server Error")}, /* 5xx - server error */
+  {501, l_literal_strt("Not Implemented")},
+  {502, l_literal_strt("Bad Gateway")},
+  {503, l_literal_strt("Service Unavailable")},
+  {504, l_literal_strt("Gateway Timeout")},
+  {505, l_literal_strt("HTTP Version Not Supported")}
+};
+
 #define HTTP_PDF_FILE (0x09) /* application/pdf */
 #define HTTP_JAVASCRIPT (0x10) /* application/x-javascript */
 #define HTTP_GZIP_FILE (0x12) /* application/x-gzip */
+
+enum l_http_mime_types_enum {
+  L_HTTP_MIME_HTML,
+  L_HTTP_MIME_PLAIN,
+  L_HTTP_MIME_CSS,
+  L_HTTP_MIME_GIF,
+  L_HTTP_MIME_JPEG,
+  L_HTTP_MIME_PNG,
+  L_HTTP_MIME_BMP,
+  L_HTTP_MIME_SVG,
+  L_HTTP_MIME_ICO,
+  L_HTTP_MIME_PDF,
+  L_HTTP_MIME_JS,
+  L_HTTP_MIME_GZIP,
+  L_HTTP_MIME_ZIP
+};
+
+static const l_strt l_mime_types[] = {
+  l_literal_strt("text/html"),
+  l_literal_strt("text/plain"),
+  l_literal_strt("text/css"),
+  l_literal_strt("image/gif"),
+  l_literal_strt("image/jpeg"),
+  l_literal_strt("image/png"),
+  l_literal_strt("image/bmp"),
+  l_literal_strt("image/svg+xml"),
+  l_literal_strt("image/x-icon"),
+  l_literal_strt("application/pdf"),
+  l_literal_strt("application/x-javascript"),
+  l_literal_strt("application/x-gzip"),
+  l_literal_strt("application/zip")
+};
+
 
 #define L_HTTP_HEADER_MAX_LEN (27)
 #define L_NUM_OF_COMMON_HEADERS (30)
@@ -274,7 +373,7 @@ l_stringmap* l_http_method_map() {
 }
 
 l_stringmap* l_http_version_map() {
-  l_stringmap* map = &l_httpver_map();
+  l_stringmap* map = &l_httpver_map;
   if (map->t) return map;
   *map = l_string_new_map(
       L_HTTP_VER_MAX_LEN,
@@ -488,8 +587,9 @@ typedef struct {
 static int l_http_read_length(l_http_read_common* comm, l_int len) {
   l_string* rxbuf = comm->buf;
   l_int count = 0, n = 0, status = 0;
+  l_rune* buff_start = 0;
 
-  comm->lstart = comm->lend /* move forward to last end position */
+  comm->lstart = comm->lend; /* move forward to last end position */
 
 ContinueCheckLength:
   if (l_string_size(rxbuf) - comm->lstart >= len) {
@@ -504,7 +604,7 @@ ContinueCheckLength:
   }
 
   buff_start = l_string_start(rxbuf);
-  count = l_string_reamin(rxbuf) - 1;
+  count = l_string_remain(rxbuf) - 1;
   n = l_socket_read(comm->sock, buff_start + l_string_size(rxbuf), count, &status);
   if (status < 0) return L_STATUS_EREAD;
 
@@ -516,7 +616,7 @@ ContinueCheckLength:
 static int l_http_read_line(l_http_read_common* comm) {
   l_string* rxbuf = comm->buf;
   l_rune* buff_start = 0;
-  l_rune* match_end = 0;
+  const l_rune* match_end = 0;
   l_rune* last_match_start = 0;
   l_int count = 0, n = 0, status = 0;
 
@@ -526,7 +626,7 @@ ContinueMatch:
 
   buff_start = l_string_start(rxbuf);
   match_end = l_string_match_until(l_string_newline_map(), l_strt_sft(buff_start, comm->mstart, l_string_size(rxbuf)), &last_match_start);
-  if (matched_end) { /* newline matched */
+  if (match_end) { /* newline matched */
     comm->lnewline = last_match_start - buff_start;
     comm->lend = match_end - buff_start;
     comm->mstart = comm->lend;
@@ -541,7 +641,7 @@ ContinueMatch:
   }
 
   buff_start = l_string_start(rxbuf);
-  count = l_string_reamin(rxbuf) - 1;
+  count = l_string_remain(rxbuf) - 1;
   n = l_socket_read(comm->sock, buff_start + l_string_size(rxbuf), count, &status);
   if (status < 0) return L_STATUS_EREAD;
 
@@ -550,11 +650,11 @@ ContinueMatch:
   goto ContinueMatch;
 }
 
-l_int l_http_match_header(l_stringmap* name, l_stre s, l_stre* value) {
-  l_rune* match_end = 0;
+l_int l_http_match_header(l_stringmap* name, l_strt s, l_strt* value) {
+  const l_rune* match_end = 0;
   l_int headid = 0;
 
-  if ((match_end = l_string_match_ex(name, s, &headid, 0)) == 0 || match_end == l_string_too_short) {
+  if ((match_end = l_string_match_ex(name, s, &headid, 0)) < s.start) {
     return L_STATUS_EMATCH;
   }
 
@@ -612,11 +712,10 @@ static int l_http_server_read_headers(l_state* state) {
   l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
   l_http_read_common* comm = &ssrx->comm;
   l_string* rxbuf = &ssrx->rxbuf;
-  l_rune* buff_start = 0;
-  l_rune* line_end = 0;
-  l_rune* match_end = 0;
-  l_stre headval;
-  l_strt cur_line;
+  const l_rune* buff_start = 0;
+  const l_rune* line_end = 0;
+  const l_rune* match_end = 0;
+  l_strt headval, cur_line;
   l_int headid = 0;
   int status = 0;
 
@@ -648,7 +747,7 @@ static int l_http_server_read_headers(l_state* state) {
       continue;
     }
 
-    if ((headid = l_http_match_header(l_http_request_map(), cur_line, &headval) >= 0) {
+    if ((headid = l_http_match_header(l_http_request_map(), cur_line, &headval) >= 0)) {
       ssrx->reqmasks |= (1 << headid);
       ssrx->reqhead[headid].start = headval.start - buff_start;
       ssrx->reqhead[headid].end = headval.end - buff_start;
@@ -662,7 +761,7 @@ static int l_http_server_read_headers(l_state* state) {
     return 0; /* these method don't have body */
   }
 
-  ssrx->body = comm->lend - buff_start;
+  ssrx->body = comm->lend;
 
   if (ssrx->comhead[L_HTTP_H_TRANSFER_ENCODING].start) {
     return l_http_read_chunked_body(state);
@@ -676,9 +775,9 @@ static int l_http_server_read_request(l_state* state) {
   l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
   l_http_read_common* comm = &ssrx->comm;
   l_string* rxbuf = &ssrx->rxbuf;
-  l_rune* buff_start = 0;
-  l_rune* line_end = 0;
-  l_rune* match_end = 0;
+  const l_rune* buff_start = 0;
+  const l_rune* line_end = 0;
+  const l_rune* match_end = 0;
   l_rune* first_non_space_pos = 0;
   l_int strid = 0;
   int status = 0;
@@ -731,14 +830,14 @@ static int l_http_server_receive_service_proc(l_service* srvc, l_message* msg) {
   }
 
   masks = ioev->masks;
-  if (masks & (L_EVENT_ERR | L_EVENT_HUP | L_EVENT_RDH)) {
+  if (masks & (L_IOEVENT_ERR | L_IOEVENT_HUP | L_IOEVENT_RDH)) {
     l_close_service(srvc);
     return 0;
   }
 
   if (ssrx->stage < L_HTTP_WRRES_STAGE) {
     int n = 0;
-    if (!(masks & L_EVENT_READ)) {
+    if (!(masks & L_IOEVENT_READ)) {
       return 0;
     }
     if ((n = l_service_resume(srvc, l_http_server_read_request)) != 0) {
@@ -747,7 +846,7 @@ static int l_http_server_receive_service_proc(l_service* srvc, l_message* msg) {
     }
     ssrx->stage = L_HTTP_WRRES_STAGE;
   } else {
-    if (!(masks & L_EVENT_WRITE)) {
+    if (!(masks & L_IOEVENT_WRITE)) {
       return 0;
     }
   }
@@ -776,7 +875,7 @@ static int l_http_server_service_proc(l_service* self, l_message* msg) {
   ssrx->comm.buf = &ssrx->rxbuf;
   ssrx->rxbuf = l_thread_create_limited_string(self->thread, ss->rxinitsize, ss->rxlimit);
 
-  l_start_receiver_service(&ssrx->head, ssrx->sock);
+  l_start_receiver_service(&ssrx->head, ssrx->comm.sock);
   return 0;
 }
 

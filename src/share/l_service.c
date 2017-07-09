@@ -16,7 +16,7 @@ void l_start_service(l_service* srvc) {
 static void ll_start_ioevent_service(l_service* srvc, l_handle sock, l_ushort masks, l_ushort flags) {
   l_ioevent* ioev = 0;
 
-  if (!l_socket_isopen(sock)) {
+  if (!l_socket_is_open(sock)) {
     l_logw_1("sock %d", ld(sock));
     return l_start_service(srvc);
   }
