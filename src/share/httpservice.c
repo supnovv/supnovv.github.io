@@ -11,11 +11,15 @@ enum l_http_methods_enum {
   L_HTTP_M_GET,
   L_HTTP_M_HEAD,
   L_HTTP_M_OPTIONS,
-  L_HTTP_M_POST
+  L_HTTP_M_POST,
+  L_HTTP_LAST_METHOD
 };
 
-static const l_rune* l_http_methods[] = {
-  l_rstr("GET"), l_rstr("HEAD"), l_rstr("OPTIONS"), l_rstr("POST")
+static const l_strt l_http_methods[] = {
+  l_literal_strt("GET"),
+  l_literal_strt("HEAD"),
+  l_literal_strt("OPTIONS"),
+  l_literal_strt("POST")
 };
 
 #define L_HTTP_VER_MAX_LEN (8)
@@ -28,8 +32,11 @@ enum l_http_versions_enum {
   L_HTTP_VER_2NN
 };
 
-static const l_rune* l_http_versions[] = {
-  l_rstr("HTTP/0"), l_rstr("HTTP/1.0"), l_rstr("HTTP/1.1"), l_rstr("HTTP/2")
+static const l_strt l_http_versions[] = {
+  l_literal_strt("HTTP/0"),
+  l_literal_strt("HTTP/1.0"),
+  l_literal_strt("HTTP/1.1"),
+  l_literal_strt("HTTP/2")
 };
 
 typedef struct {
@@ -77,7 +84,8 @@ enum l_http_status_enum {
   L_HTTP_502_BAD_GATEWAY,
   L_HTTP_503_SERVICE_UNAVAILABLE,
   L_HTTP_504_GATEWAY_TIMEOUT,
-  L_HTTP_505_HTTP_VERSION_NOT_SUPPORTED
+  L_HTTP_505_HTTP_VERSION_NOT_SUPPORTED,
+  L_HTTP_LAST_STATUS_CODE
 };
 
 static const l_http_status l_status[] = { /* https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html */
@@ -138,9 +146,11 @@ enum l_http_mime_types_enum {
   L_HTTP_MIME_SVG,
   L_HTTP_MIME_ICO,
   L_HTTP_MIME_PDF,
+  L_HTTP_MIME_JSON,
   L_HTTP_MIME_JS,
   L_HTTP_MIME_GZIP,
-  L_HTTP_MIME_ZIP
+  L_HTTP_MIME_ZIP,
+  L_HTTP_LAST_MIME_TYPE
 };
 
 static const l_strt l_mime_types[] = {
@@ -154,6 +164,7 @@ static const l_strt l_mime_types[] = {
   l_literal_strt("image/svg+xml"),
   l_literal_strt("image/x-icon"),
   l_literal_strt("application/pdf"),
+  l_literal_strt("application/json"),
   l_literal_strt("application/x-javascript"),
   l_literal_strt("application/x-gzip"),
   l_literal_strt("application/zip")
@@ -198,37 +209,37 @@ enum l_http_common_headers_enum {
   L_HTTP_H_X_FORWARDED_PROOTO
 };
 
-static const l_rune* l_http_common_headers[] = {
-  l_rstr("age"),
-  l_rstr("cache-control"),
-  l_rstr("connection"),
-  l_rstr("content-base"),
-  l_rstr("content-disposition"),
-  l_rstr("content-encoding"),
-  l_rstr("content-language"),
-  l_rstr("content-length"),
-  l_rstr("content-location"),
-  l_rstr("content-md5"),
-  l_rstr("content-range"),
-  l_rstr("content-type"),
-  l_rstr("date"),
-  l_rstr("etag"),
-  l_rstr("expires"),
-  l_rstr("keep-alive"),
-  l_rstr("last-modified"),
-  l_rstr("pragma"),
-  l_rstr("trailer"),
-  l_rstr("transfer-encoding"),
-  l_rstr("upgrade"),
-  l_rstr("via"),
-  l_rstr("warning"),
-  l_rstr("x-request-id"),
-  l_rstr("x-correlation-id"),
-  l_rstr("forwarded"),
-  l_rstr("max-forwards"),
-  l_rstr("x-forwarded-for"),
-  l_rstr("x-forwarded-host"),
-  l_rstr("x-forwarded-proto")
+static const l_strt l_http_common_headers[] = {
+  l_literal_strt("age"),
+  l_literal_strt("cache-control"),
+  l_literal_strt("connection"),
+  l_literal_strt("content-base"),
+  l_literal_strt("content-disposition"),
+  l_literal_strt("content-encoding"),
+  l_literal_strt("content-language"),
+  l_literal_strt("content-length"),
+  l_literal_strt("content-location"),
+  l_literal_strt("content-md5"),
+  l_literal_strt("content-range"),
+  l_literal_strt("content-type"),
+  l_literal_strt("date"),
+  l_literal_strt("etag"),
+  l_literal_strt("expires"),
+  l_literal_strt("keep-alive"),
+  l_literal_strt("last-modified"),
+  l_literal_strt("pragma"),
+  l_literal_strt("trailer"),
+  l_literal_strt("transfer-encoding"),
+  l_literal_strt("upgrade"),
+  l_literal_strt("via"),
+  l_literal_strt("warning"),
+  l_literal_strt("x-request-id"),
+  l_literal_strt("x-correlation-id"),
+  l_literal_strt("forwarded"),
+  l_literal_strt("max-forwards"),
+  l_literal_strt("x-forwarded-for"),
+  l_literal_strt("x-forwarded-host"),
+  l_literal_strt("x-forwarded-proto")
 };
 
 enum l_http_request_headers_enum {
@@ -265,38 +276,38 @@ enum l_http_request_headers_enum {
   L_HTTP_H_X_CSRF_TOKEN
 };
 
-static const l_rune* l_http_request_headers[] = {
-  l_rstr("accept"),
-  l_rstr("accept-charset"),
-  l_rstr("accept-encoding"),
-  l_rstr("accept-language"),
-  l_rstr("accept-datetime"),
-  l_rstr("authorization"),
-  l_rstr("cookie"),
-  l_rstr("cookie2"),
-  l_rstr("dnt"),
-  l_rstr("expect"),
-  l_rstr("from"),
-  l_rstr("host"),
-  l_rstr("if-match"),
-  l_rstr("if-modified-since"),
-  l_rstr("if-none-match"),
-  l_rstr("if-range"),
-  l_rstr("if-unmodified-since"),
-  l_rstr("origin"),
-  l_rstr("proxy-authorization"),
-  l_rstr("proxy-connection"),
-  l_rstr("range"),
-  l_rstr("referer"),
-  l_rstr("te"), /* client accept transfer encoding, TE: trailers, chunked */
-  l_rstr("ua-cpu"),
-  l_rstr("ua-disp"),
-  l_rstr("ua-os"),
-  l_rstr("user-agent"),
-  l_rstr("x-requested-with"),
-  l_rstr("x-http-method-override"),
-  l_rstr("x-uidh"),
-  l_rstr("x-csrf-token")
+static const l_strt l_http_request_headers[] = {
+  l_literal_strt("accept"),
+  l_literal_strt("accept-charset"),
+  l_literal_strt("accept-encoding"),
+  l_literal_strt("accept-language"),
+  l_literal_strt("accept-datetime"),
+  l_literal_strt("authorization"),
+  l_literal_strt("cookie"),
+  l_literal_strt("cookie2"),
+  l_literal_strt("dnt"),
+  l_literal_strt("expect"),
+  l_literal_strt("from"),
+  l_literal_strt("host"),
+  l_literal_strt("if-match"),
+  l_literal_strt("if-modified-since"),
+  l_literal_strt("if-none-match"),
+  l_literal_strt("if-range"),
+  l_literal_strt("if-unmodified-since"),
+  l_literal_strt("origin"),
+  l_literal_strt("proxy-authorization"),
+  l_literal_strt("proxy-connection"),
+  l_literal_strt("range"),
+  l_literal_strt("referer"),
+  l_literal_strt("te"), /* client accept transfer encoding, TE: trailers, chunked */
+  l_literal_strt("ua-cpu"),
+  l_literal_strt("ua-disp"),
+  l_literal_strt("ua-os"),
+  l_literal_strt("user-agent"),
+  l_literal_strt("x-requested-with"),
+  l_literal_strt("x-http-method-override"),
+  l_literal_strt("x-uidh"),
+  l_literal_strt("x-csrf-token")
 };
 
 enum l_http_response_headers_enum {
@@ -327,32 +338,32 @@ enum l_http_response_headers_enum {
   L_HTTP_H_X_UA_COMPATIBLE
 };
 
-static const l_rune* l_http_response_headers[] = {
-  l_rstr("access-control-allow-origin"),
-  l_rstr("accept-patch"),
-  l_rstr("accept-ranges"),
-  l_rstr("allow"),
-  l_rstr("alt-svc"),
-  l_rstr("link"),
-  l_rstr("location"),
-  l_rstr("p3p"),
-  l_rstr("proxy-authenticate"),
-  l_rstr("public-key-pins"),
-  l_rstr("refresh"),
-  l_rstr("retry-after"),
-  l_rstr("server"),
-  l_rstr("set-cookie"),
-  l_rstr("set-cookie2"),
-  l_rstr("status"),
-  l_rstr("strict-transport-security"),
-  l_rstr("tk"),
-  l_rstr("vary"),
-  l_rstr("www-authenticate"),
-  l_rstr("x-frame-options"),
-  l_rstr("x-xss-protection"),
-  l_rstr("x-content-type-options"),
-  l_rstr("x-powered-by"),
-  l_rstr("x-ua-compatible")
+static const l_strt l_http_response_headers[] = {
+  l_literal_strt("access-control-allow-origin"),
+  l_literal_strt("accept-patch"),
+  l_literal_strt("accept-ranges"),
+  l_literal_strt("allow"),
+  l_literal_strt("alt-svc"),
+  l_literal_strt("link"),
+  l_literal_strt("location"),
+  l_literal_strt("p3p"),
+  l_literal_strt("proxy-authenticate"),
+  l_literal_strt("public-key-pins"),
+  l_literal_strt("refresh"),
+  l_literal_strt("retry-after"),
+  l_literal_strt("server"),
+  l_literal_strt("set-cookie"),
+  l_literal_strt("set-cookie2"),
+  l_literal_strt("status"),
+  l_literal_strt("strict-transport-security"),
+  l_literal_strt("tk"),
+  l_literal_strt("vary"),
+  l_literal_strt("www-authenticate"),
+  l_literal_strt("x-frame-options"),
+  l_literal_strt("x-xss-protection"),
+  l_literal_strt("x-content-type-options"),
+  l_literal_strt("x-powered-by"),
+  l_literal_strt("x-ua-compatible")
 };
 
 static l_stringmap l_method_map;
@@ -539,12 +550,16 @@ HTTP/<major>.<minor> <status-code> <status-text>
 #define L_HTTP_BACKLOG (32)
 #define L_HTTP_RDREQ_STAGE (1)
 #define L_HTTP_WRRES_STAGE (2)
+#define L_HTTP_WRITE_STATUS (3)
+#define L_HTTP_WRITE_HEADER (4)
+#define L_HTTP_WRITE_BODY (5)
 
 typedef struct {
   l_service head;
   l_string ip;
   l_ushort port;
   l_handle sock;
+  l_int txinitsize;
   l_int rxinitsize;
   l_int rxlimit;
   int (*client_request_handler)(l_state*);
@@ -580,6 +595,8 @@ typedef struct {
   l_umedit reqmasks;
   l_startend comhead[32];
   l_startend reqhead[32];
+  l_string txbuf;
+  l_rune* txcur;
 } l_http_server_receive_service;
 
 #define L_HTTP_ESTIMATED_LINE_LENGTH (128)
@@ -874,6 +891,7 @@ static int l_http_server_service_proc(l_service* self, l_message* msg) {
   ssrx->comm.rxlimit = ss->rxlimit;
   ssrx->comm.buf = &ssrx->rxbuf;
   ssrx->rxbuf = l_thread_create_limited_string(self->thread, ss->rxinitsize, ss->rxlimit);
+  ssrx->txbuf = l_thread_create_string(self->thread, ss->txinitsize);
 
   l_start_receiver_service(&ssrx->head, ssrx->comm.sock);
   return 0;
@@ -891,6 +909,7 @@ int l_start_http_server(l_strt ip, l_ushort port, int (*client_request_handler)(
   ss->ip = l_create_string_from(ip);
   ss->port = port;
   ss->sock = l_socket_listen(&sa, L_HTTP_BACKLOG); /* TODO: use conf->backlog */
+  ss->txinitsize = 1024; /* TODO: use conf->txinitsize */
   ss->rxinitsize = 80; /* TODO: use conf->rxinitsize */
   ss->rxlimit = 1024*8; /* TODO: use conf->rxlimit */
   ss->client_request_handler = client_request_handler;
@@ -898,5 +917,180 @@ int l_start_http_server(l_strt ip, l_ushort port, int (*client_request_handler)(
   if (!l_socket_is_open(ss->sock)) return L_STATUS_ERROR;
   l_start_listener_service(&ss->head, ss->sock);
   return 0;
+}
+
+int l_http_write_status(l_state* state, int code) {
+  /* HTTP/1.1 200 OK<crlf>
+     <name>: <value><crlf>
+     ...
+     <name>: <value><crlf>
+     <crlf>
+     <entity-body>   */
+
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+  l_string* txbuf = &ssrx->txbuf;
+  int httpver = ssrx->httpver;
+
+  if (httpver == L_HTTP_VER_0NN) {
+    ssrx->stage = L_HTTP_WRITE_HEADER;
+    return true;
+  }
+
+  if (ssrx->stage >= L_HTTP_WRITE_STATUS) {
+    l_loge_1("status already written %d", ld(ssrx->stage));
+    return false;
+  }
+
+  if (code < 0 || code >= L_HTTP_LAST_STATUS_CODE) {
+    l_loge_1("invalid status code %d", ld(code));
+    return false;
+  }
+
+  if (httpver > L_HTTP_VER_11N) {
+    httpver = L_HTTP_VER_11N;
+  }
+
+  l_string_format_3(txbuf, "%w %d %w\r\n", lp(&l_http_versions[httpver]), ld(l_status[code].code), lp(&l_status[code].phrase));
+  ssrx->stage = L_HTTP_WRITE_STATUS;
+  return true;
+}
+
+int l_http_write_header(l_state* state, l_strt header) {
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+  l_string* txbuf = &ssrx->txbuf;
+
+  if (ssrx->httpver == L_HTTP_VER_0NN) {
+    ssrx->stage = L_HTTP_WRITE_HEADER;
+    return true;
+  }
+
+  if (ssrx->stage != L_HTTP_WRITE_STATUS && ssrx->stage != L_HTTP_WRITE_HEADER) {
+    l_loge_1("cannot write header in stage %d", ld(ssrx->stage));
+    return false;
+  }
+
+  l_string_format_1(txbuf, "%w\r\n", lp(&header));
+  ssrx->stage = L_HTTP_WRITE_HEADER;
+  return true;
+}
+
+int l_http_write_body(l_state* state, l_strt body, int mime) {
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+  l_string* txbuf = &ssrx->txbuf;
+  l_int len = body.end - body.start;
+
+  if (ssrx->stage != L_HTTP_WRITE_STATUS && ssrx->stage != L_HTTP_WRITE_HEADER) {
+    l_loge_1("cannot write body in stage %d", ld(ssrx->stage));
+    return false;
+  }
+
+  if (mime < 0 || mime >= L_HTTP_LAST_MIME_TYPE) {
+    l_loge_1("unsupported mime type %d", ld(mime));
+    return false;
+  }
+
+  if (len <= 0) {
+    l_logw_1("empty length %d", ld(len));
+    return true;
+  }
+
+  if (ssrx->httpver > L_HTTP_VER_0NN) {
+    l_string_format_2("Content-Type: %w\r\nContent-Length: %d\r\n\r\n", lp(&l_mime_types(mime)), ld(len));
+  }
+
+  l_string_append(txbuf, body);
+  ssrx->stage = L_HTTP_WRITE_BODY;
+  return true;
+}
+
+int l_http_write_file(l_state* state, l_strt filename, int mime) {
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+  l_string* txbuf = &ssrx->txbuf;
+  l_long filesize = 0;
+  l_filestream file;
+  l_int n = 0;
+
+  if (ssrx->stage != L_HTTP_WRITE_STATUS && ssrx->stage != L_HTTP_WRITE_HEADER) {
+    l_loge_1("cannot write body in stage %d", ld(ssrx->stage));
+    return false;
+  }
+
+  if (mime < 0 || mime >= L_HTTP_LAST_MIME_TYPE) {
+    l_loge_1("unsupported mime type %d", ld(mime));
+    return false;
+  }
+
+  file = l_open_read_unbuffered(filename.start);
+  if (file.stream == 0) return false;
+  if (!(filesize = l_file_size(filename.start))) return false;
+  if (!l_string_ensure_remain(txbuf, filesize + 1)) return false;
+
+  if (ssrx->httpver > L_HTTP_VER_0NN) {
+    l_string_format_2("Content-Type: %w\r\nContent-Length: %d\r\n\r\n", lp(&l_mime_types(mime)), ld(filesize));
+  }
+
+  n = l_read_file(&file, l_string_end(txbuf), filesize);
+  txbuf->b->size += n;
+  ssrx->stage = L_HTTP_WRITE_BODY;
+
+  if (n != filesize) {
+    l_loge_1("read size %d doesn't match to file size %d", ld(n), ld(filesize));
+    return false;
+  }
+
+  return true;
+}
+
+int l_http_write_css_file(l_state* state, l_strt filename) {
+  return l_http_write_file(state, filename, L_HTTP_MIME_CSS);
+}
+
+int l_http_write_js_file(l_state* state, l_strt filename) {
+  return l_http_write_file(state, filename, L_HTTP_MIME_JS);
+}
+
+int l_http_write_html_file(l_state* state, l_strt filename) {
+  return l_http_write_file(state, filename, L_HTTP_MIME_HTML);
+}
+
+int l_http_write_plain_file(l_state* state, l_strt filename) {
+  return l_http_write_file(state, filename, L_HTTP_MIME_PLAIN);
+}
+
+static int l_http_send_response_impl(l_state* state) {
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+  l_rune* txcur = ssrx->txcur;
+  l_rune* txend = l_string_end(ssrx->txbuf);
+  l_int count = txend - txcur, n = 0;
+  l_int status = 0;
+
+  if ((n = l_socket_write(ssrx->comm.sock, txcur, count, &status)) < 0) {
+    return L_STATUS_EWRITE;
+  }
+
+  ssrx->txcur += n;
+
+  if (n < count) {
+    return l_state_yield(state, l_http_send_response_impl);
+  }
+
+  return 0;
+}
+
+int l_http_send_response(l_state* state) {
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+  l_string* txbuf = &ssrx->txbuf;
+
+  if (l_string_is_empty(txbuf) || ssrx->stage < L_HTTP_WRITE_STATUS) {
+    l_loge_1("no content need to send %d", ld(ssrx->stage));
+    return false;
+  }
+
+  if (ssrx->httpver != L_HTTP_VER_0NN && ssrx->stage != L_HTTP_WRITE_BODY) {
+    l_string_append(txbuf, l_literal_strt("\r\n"));
+  }
+
+  ssrx->txcur = l_string_start(txbuf);
+  return l_http_send_response_impl(state);
 }
 

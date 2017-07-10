@@ -255,6 +255,7 @@ l_extern l_filestream l_open_read(const void* name);
 l_extern l_filestream l_open_write(const void* name);
 l_extern l_filestream l_open_append(const void* name);
 l_extern l_filestream l_open_read_write(const void* name);
+l_extern l_filestream l_open_read_unbuffered(const void* name);
 l_extern l_filestream l_open_write_unbuffered(const void* name);
 l_extern l_filestream l_open_append_unbuffered(const void* name);
 l_extern l_int l_write_strt_to_file(l_filestream* self, l_strt s);

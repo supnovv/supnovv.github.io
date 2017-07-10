@@ -290,7 +290,7 @@ static int l_strbuf_ensure_capacity(l_strbuf** self, l_int size) {
   l_int limit = (*self)->limit;
   if (limit && size > limit) return false;
   *self = (l_strbuf*)l_thread_ensure_bfsize(&(*self)->node, sizeof(l_strbuf) + size);
-  return true;
+  return (*self != 0);
 }
 
 static int l_strbuf_ensure_remain(l_strbuf** self, l_int remainsize) {
