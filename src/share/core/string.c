@@ -854,39 +854,39 @@ typedef struct { /* 4 * 256 * 2 = 2048 (2KB) */
   l_runeinfo a[256];
 } l_runetable;
 
-static const l_rune* l_blanks[] = {
-  l_rstr("\x09"), /* \t */
-  l_rstr("\x0b"), /* \v */
-  l_rstr("\x0c"), /* \f */
+static const l_strn l_blanks[] = {
+  l_literal_strn("\x09"), /* \t */
+  l_literal_strn("\x0b"), /* \v */
+  l_literal_strn("\x0c"), /* \f */
   /* Zs 'Separator, Space' Category - www.fileformat.info/info/unicode/category/Zs/list.htm */
-  l_rstr("\x20"), /* 0x20 space */
-  l_rstr("\xc2\xa0"), /* 0xA0 no-break space */
-  l_rstr("\xe1\x9a\x80"), /* 0x1680 ogham space mark */
-  l_rstr("\xe2\x80\xaf"), /* 0x202F narrow no-break space */
-  l_rstr("\xe2\x81\x9f"), /* 0x205F medium mathematical space */
-  l_rstr("\xe3\x80\x80"), /* 0x3000 ideographic space (chinese blank character) */
-  l_rstr("\xe2\x80\x80"), /* 0x2000 en quad */
-  l_rstr("\xe2\x80\x81"), /* 0x2001 em quad */
-  l_rstr("\xe2\x80\x82"), /* 0x2002 en space */
-  l_rstr("\xe2\x80\x83"), /* 0x2003 em space */
-  l_rstr("\xe2\x80\x84"), /* 0x2004 three-per-em space */
-  l_rstr("\xe2\x80\x85"), /* 0x2005 four-per-em space */
-  l_rstr("\xe2\x80\x86"), /* 0x2006 six-per-em space */
-  l_rstr("\xe2\x80\x87"), /* 0x2007 figure space */
-  l_rstr("\xe2\x80\x88"), /* 0x2008 punctuation space */
-  l_rstr("\xe2\x80\x89"), /* 0x2009 thin space */
-  l_rstr("\xe2\x80\x8a"), /* 0x200A hair space */
+  l_literal_strn("\x20"), /* 0x20 space */
+  l_literal_strn("\xc2\xa0"), /* 0xA0 no-break space */
+  l_literal_strn("\xe1\x9a\x80"), /* 0x1680 ogham space mark */
+  l_literal_strn("\xe2\x80\xaf"), /* 0x202F narrow no-break space */
+  l_literal_strn("\xe2\x81\x9f"), /* 0x205F medium mathematical space */
+  l_literal_strn("\xe3\x80\x80"), /* 0x3000 ideographic space (chinese blank character) */
+  l_literal_strn("\xe2\x80\x80"), /* 0x2000 en quad */
+  l_literal_strn("\xe2\x80\x81"), /* 0x2001 em quad */
+  l_literal_strn("\xe2\x80\x82"), /* 0x2002 en space */
+  l_literal_strn("\xe2\x80\x83"), /* 0x2003 em space */
+  l_literal_strn("\xe2\x80\x84"), /* 0x2004 three-per-em space */
+  l_literal_strn("\xe2\x80\x85"), /* 0x2005 four-per-em space */
+  l_literal_strn("\xe2\x80\x86"), /* 0x2006 six-per-em space */
+  l_literal_strn("\xe2\x80\x87"), /* 0x2007 figure space */
+  l_literal_strn("\xe2\x80\x88"), /* 0x2008 punctuation space */
+  l_literal_strn("\xe2\x80\x89"), /* 0x2009 thin space */
+  l_literal_strn("\xe2\x80\x8a"), /* 0x200A hair space */
   /* byte order marks */
-  l_rstr("\xfe\xff"),
-  l_rstr("\xff\xfe"),
-  l_rstr("\xef\xbb\xbf"),
+  l_literal_strn("\xfe\xff"),
+  l_literal_strn("\xff\xfe"),
+  l_literal_strn("\xef\xbb\xbf"),
   /* new lines */
-  l_rstr("\x0a\x0d"), /* \n\r */
-  l_rstr("\x0d\x0a"), /* \r\n */
-  l_rstr("\x0a"), /* \r */
-  l_rstr("\x0d"), /* \n */
-  l_rstr("\xe2\x80\xa8"), /* line separator 0x2028 00100000_00101000 -> 1110'0010_10'000000_10'101000 (0xE280A8) */
-  l_rstr("\xe2\x80\xa9")  /* paragraph separator 0x2029 00100000_00101001 */
+  l_literal_strn("\x0a\x0d"), /* \n\r */
+  l_literal_strn("\x0d\x0a"), /* \r\n */
+  l_literal_strn("\x0a"), /* \r */
+  l_literal_strn("\x0d"), /* \n */
+  l_literal_strn("\xe2\x80\xa8"), /* line separator 0x2028 00100000_00101000 -> 1110'0010_10'000000_10'101000 (0xE280A8) */
+  l_literal_strn("\xe2\x80\xa9")  /* paragraph separator 0x2029 00100000_00101001 */
 };
 
 static l_stringmap l_space_map; /* used to match a space */
@@ -929,7 +929,7 @@ const l_stringmap* l_string_blank_map() {
 [^chars] - the complement of [chars]
 */
 
-void l_string_set_map(l_stringmap* self, const l_rune** str, l_int numofstr, int casesensitive) {
+void l_string_set_map(l_stringmap* self, const l_strn* str, l_int numofstr, int casesensitive) {
   int stridx = 0, charidx = 0;
   const l_rune* s = 0;
   l_runetable* t = (l_runetable*)(self->t);
@@ -944,7 +944,7 @@ void l_string_set_map(l_stringmap* self, const l_rune** str, l_int numofstr, int
       break;
     }
 
-    s = str[stridx];
+    s = str[stridx].start;
     if (s == 0 || s[0] == 0) continue;
 
     charidx = 0;
@@ -976,7 +976,7 @@ void l_string_set_map(l_stringmap* self, const l_rune** str, l_int numofstr, int
   }
 }
 
-l_stringmap l_string_new_map(l_int maxstrlen, const l_rune** str, l_int numofstr, int casesensitive) {
+l_stringmap l_string_new_map(l_int maxstrlen, const l_strn* str, l_int numofstr, int casesensitive) {
   l_stringmap map = {0};
   if (maxstrlen <= 0 || str == 0) return map;
   map.t = (l_runetable*)l_raw_malloc(sizeof(l_runetable) * maxstrlen);
@@ -1183,9 +1183,9 @@ const l_rune* l_string_skip_space_and_match_sub(l_strt sub, l_strt s) {
 }
 
 void l_string_test() {
-  const l_rune* methods[] = {l_rstr("GET"), l_rstr("HEAD"), l_rstr("POST")};
-  const l_rune* orderedchice[] = {l_rstr("mankind"), l_rstr("man"), l_rstr("got"),
-      l_rstr("gotten"), l_rstr("pick"), l_rstr("tick"), l_rstr("cook")};
+  const l_strn methods[] = {l_literal_strn("GET"), l_literal_strn("HEAD"), l_literal_strn("POST")};
+  const l_strn orderedchice[] = {l_literal_strn("mankind"), l_literal_strn("man"), l_literal_strn("got"),
+      l_literal_strn("gotten"), l_literal_strn("pick"), l_literal_strn("tick"), l_literal_strn("cook")};
   const l_rune subject[] = "gEtoHEAdopOStogeoend";
   const l_rune* s = 0;
   l_stringmap map;

@@ -155,6 +155,13 @@ l_filestream l_open_read_write(const void* name) {
   return llopenfile(name, "rb+");
 }
 
+l_filestream l_open_read_unbuffered(const void* name) {
+  l_filestream fs = llopenfile(name, "rb");
+  if (!fs.stream) return fs;
+  setbuf((FILE*)fs.stream, 0);
+  return fs;
+}
+
 l_filestream l_open_write_unbuffered(const void* name) {
   l_filestream fs = llopenfile(name, "wb");
   if (!fs.stream) return fs;

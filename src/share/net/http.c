@@ -15,11 +15,11 @@ enum l_http_methods_enum {
   L_HTTP_LAST_METHOD
 };
 
-static const l_strt l_http_methods[] = {
-  l_literal_strt("GET"),
-  l_literal_strt("HEAD"),
-  l_literal_strt("OPTIONS"),
-  l_literal_strt("POST")
+static const l_strn l_http_methods[] = {
+  l_literal_strn("GET"),
+  l_literal_strn("HEAD"),
+  l_literal_strn("OPTIONS"),
+  l_literal_strn("POST")
 };
 
 #define L_HTTP_VER_MAX_LEN (8)
@@ -32,16 +32,16 @@ enum l_http_versions_enum {
   L_HTTP_VER_2NN
 };
 
-static const l_strt l_http_versions[] = {
-  l_literal_strt("HTTP/0"),
-  l_literal_strt("HTTP/1.0"),
-  l_literal_strt("HTTP/1.1"),
-  l_literal_strt("HTTP/2")
+static const l_strn l_http_versions[] = {
+  l_literal_strn("HTTP/0"),
+  l_literal_strn("HTTP/1.0"),
+  l_literal_strn("HTTP/1.1"),
+  l_literal_strn("HTTP/2")
 };
 
 typedef struct {
   int code;
-  l_strt phrase;
+  l_strn phrase;
 } l_http_status;
 
 enum l_http_status_enum {
@@ -89,46 +89,46 @@ enum l_http_status_enum {
 };
 
 static const l_http_status l_status[] = { /* https://www.w3.org/Protocols/rfc2616/rfc2616-sec10.html */
-  {100, l_literal_strt("Continue")}, /* 1xx - informational code */
-  {101, l_literal_strt("Switching Protocols")},
-  {200, l_literal_strt("OK")}, /* 2xx - success code */
-  {201, l_literal_strt("Created")},
- 　{202, l_literal_strt("Accepted")},
-  {203, l_literal_strt("Non-Authoritative Information")},
-  {204, l_literal_strt("No Content")},
-  {205, l_literal_strt("Reset Content")},
-  {206, l_literal_strt("Partial Content")},
-  {300, l_literal_strt("Multiple Choices")}, /* 3xx - redirection status */
-  {301, l_literal_strt("Moved Permanently")},
-  {302, l_literal_strt("Found")},
-  {303, l_literal_strt("See Other")},
-  {304, l_literal_strt("Not Modified")},
-  {305, l_literal_strt("Use Proxy")},
-  {307, l_literal_strt("Temporary Redirect")},
-  {400, l_literal_strt("Bad Request")}, /* 4xx - request error */
-  {401, l_literal_strt("Unauthorized")},
-  {402, l_literal_strt("Payment Required")},
-  {403, l_literal_strt("Forbidden")},
-  {404, l_literal_strt("Not Found")},
-  {405, l_literal_strt("Method Not Allowed")},
-  {406, l_literal_strt("Not Acceptable")},
-  {407, l_literal_strt("Proxy Authentication Required")},
-  {408, l_literal_strt("Request Timeout")},
-  {409, l_literal_strt("Conflict")},
-  {410, l_literal_strt("Gone")},
-  {411, l_literal_strt("Length Required")},
-  {412, l_literal_strt("Precondition Failed")},
-  {413, l_literal_strt("Request Entity Too Large")},
-  {414, l_literal_strt("Request-URI Too Long")},
-  {415, l_literal_strt("Unsupported Media Type")},
-  {416, l_literal_strt("Requested Range Not Satisfiable")},
-  {417, l_literal_strt("Expectation Failed")},
-  {500, l_literal_strt("Internal Server Error")}, /* 5xx - server error */
-  {501, l_literal_strt("Not Implemented")},
-  {502, l_literal_strt("Bad Gateway")},
-  {503, l_literal_strt("Service Unavailable")},
-  {504, l_literal_strt("Gateway Timeout")},
-  {505, l_literal_strt("HTTP Version Not Supported")}
+  {100, l_literal_strn("Continue")}, /* 1xx - informational code */
+  {101, l_literal_strn("Switching Protocols")},
+  {200, l_literal_strn("OK")}, /* 2xx - success code */
+  {201, l_literal_strn("Created")},
+  {202, l_literal_strn("Accepted")},
+  {203, l_literal_strn("Non-Authoritative Information")},
+  {204, l_literal_strn("No Content")},
+  {205, l_literal_strn("Reset Content")},
+  {206, l_literal_strn("Partial Content")},
+  {300, l_literal_strn("Multiple Choices")}, /* 3xx - redirection status */
+  {301, l_literal_strn("Moved Permanently")},
+  {302, l_literal_strn("Found")},
+  {303, l_literal_strn("See Other")},
+  {304, l_literal_strn("Not Modified")},
+  {305, l_literal_strn("Use Proxy")},
+  {307, l_literal_strn("Temporary Redirect")},
+  {400, l_literal_strn("Bad Request")}, /* 4xx - request error */
+  {401, l_literal_strn("Unauthorized")},
+  {402, l_literal_strn("Payment Required")},
+  {403, l_literal_strn("Forbidden")},
+  {404, l_literal_strn("Not Found")},
+  {405, l_literal_strn("Method Not Allowed")},
+  {406, l_literal_strn("Not Acceptable")},
+  {407, l_literal_strn("Proxy Authentication Required")},
+  {408, l_literal_strn("Request Timeout")},
+  {409, l_literal_strn("Conflict")},
+  {410, l_literal_strn("Gone")},
+  {411, l_literal_strn("Length Required")},
+  {412, l_literal_strn("Precondition Failed")},
+  {413, l_literal_strn("Request Entity Too Large")},
+  {414, l_literal_strn("Request-URI Too Long")},
+  {415, l_literal_strn("Unsupported Media Type")},
+  {416, l_literal_strn("Requested Range Not Satisfiable")},
+  {417, l_literal_strn("Expectation Failed")},
+  {500, l_literal_strn("Internal Server Error")}, /* 5xx - server error */
+  {501, l_literal_strn("Not Implemented")},
+  {502, l_literal_strn("Bad Gateway")},
+  {503, l_literal_strn("Service Unavailable")},
+  {504, l_literal_strn("Gateway Timeout")},
+  {505, l_literal_strn("HTTP Version Not Supported")}
 };
 
 #define HTTP_PDF_FILE (0x09) /* application/pdf */
@@ -153,21 +153,21 @@ enum l_http_mime_types_enum {
   L_HTTP_LAST_MIME_TYPE
 };
 
-static const l_strt l_mime_types[] = {
-  l_literal_strt("text/html"),
-  l_literal_strt("text/plain"),
-  l_literal_strt("text/css"),
-  l_literal_strt("image/gif"),
-  l_literal_strt("image/jpeg"),
-  l_literal_strt("image/png"),
-  l_literal_strt("image/bmp"),
-  l_literal_strt("image/svg+xml"),
-  l_literal_strt("image/x-icon"),
-  l_literal_strt("application/pdf"),
-  l_literal_strt("application/json"),
-  l_literal_strt("application/x-javascript"),
-  l_literal_strt("application/x-gzip"),
-  l_literal_strt("application/zip")
+static const l_strn l_mime_types[] = {
+  l_literal_strn("text/html"),
+  l_literal_strn("text/plain"),
+  l_literal_strn("text/css"),
+  l_literal_strn("image/gif"),
+  l_literal_strn("image/jpeg"),
+  l_literal_strn("image/png"),
+  l_literal_strn("image/bmp"),
+  l_literal_strn("image/svg+xml"),
+  l_literal_strn("image/x-icon"),
+  l_literal_strn("application/pdf"),
+  l_literal_strn("application/json"),
+  l_literal_strn("application/x-javascript"),
+  l_literal_strn("application/x-gzip"),
+  l_literal_strn("application/zip")
 };
 
 
@@ -209,37 +209,37 @@ enum l_http_common_headers_enum {
   L_HTTP_H_X_FORWARDED_PROOTO
 };
 
-static const l_strt l_http_common_headers[] = {
-  l_literal_strt("age"),
-  l_literal_strt("cache-control"),
-  l_literal_strt("connection"),
-  l_literal_strt("content-base"),
-  l_literal_strt("content-disposition"),
-  l_literal_strt("content-encoding"),
-  l_literal_strt("content-language"),
-  l_literal_strt("content-length"),
-  l_literal_strt("content-location"),
-  l_literal_strt("content-md5"),
-  l_literal_strt("content-range"),
-  l_literal_strt("content-type"),
-  l_literal_strt("date"),
-  l_literal_strt("etag"),
-  l_literal_strt("expires"),
-  l_literal_strt("keep-alive"),
-  l_literal_strt("last-modified"),
-  l_literal_strt("pragma"),
-  l_literal_strt("trailer"),
-  l_literal_strt("transfer-encoding"),
-  l_literal_strt("upgrade"),
-  l_literal_strt("via"),
-  l_literal_strt("warning"),
-  l_literal_strt("x-request-id"),
-  l_literal_strt("x-correlation-id"),
-  l_literal_strt("forwarded"),
-  l_literal_strt("max-forwards"),
-  l_literal_strt("x-forwarded-for"),
-  l_literal_strt("x-forwarded-host"),
-  l_literal_strt("x-forwarded-proto")
+static const l_strn l_http_common_headers[] = {
+  l_literal_strn("age"),
+  l_literal_strn("cache-control"),
+  l_literal_strn("connection"),
+  l_literal_strn("content-base"),
+  l_literal_strn("content-disposition"),
+  l_literal_strn("content-encoding"),
+  l_literal_strn("content-language"),
+  l_literal_strn("content-length"),
+  l_literal_strn("content-location"),
+  l_literal_strn("content-md5"),
+  l_literal_strn("content-range"),
+  l_literal_strn("content-type"),
+  l_literal_strn("date"),
+  l_literal_strn("etag"),
+  l_literal_strn("expires"),
+  l_literal_strn("keep-alive"),
+  l_literal_strn("last-modified"),
+  l_literal_strn("pragma"),
+  l_literal_strn("trailer"),
+  l_literal_strn("transfer-encoding"),
+  l_literal_strn("upgrade"),
+  l_literal_strn("via"),
+  l_literal_strn("warning"),
+  l_literal_strn("x-request-id"),
+  l_literal_strn("x-correlation-id"),
+  l_literal_strn("forwarded"),
+  l_literal_strn("max-forwards"),
+  l_literal_strn("x-forwarded-for"),
+  l_literal_strn("x-forwarded-host"),
+  l_literal_strn("x-forwarded-proto")
 };
 
 enum l_http_request_headers_enum {
@@ -276,38 +276,38 @@ enum l_http_request_headers_enum {
   L_HTTP_H_X_CSRF_TOKEN
 };
 
-static const l_strt l_http_request_headers[] = {
-  l_literal_strt("accept"),
-  l_literal_strt("accept-charset"),
-  l_literal_strt("accept-encoding"),
-  l_literal_strt("accept-language"),
-  l_literal_strt("accept-datetime"),
-  l_literal_strt("authorization"),
-  l_literal_strt("cookie"),
-  l_literal_strt("cookie2"),
-  l_literal_strt("dnt"),
-  l_literal_strt("expect"),
-  l_literal_strt("from"),
-  l_literal_strt("host"),
-  l_literal_strt("if-match"),
-  l_literal_strt("if-modified-since"),
-  l_literal_strt("if-none-match"),
-  l_literal_strt("if-range"),
-  l_literal_strt("if-unmodified-since"),
-  l_literal_strt("origin"),
-  l_literal_strt("proxy-authorization"),
-  l_literal_strt("proxy-connection"),
-  l_literal_strt("range"),
-  l_literal_strt("referer"),
-  l_literal_strt("te"), /* client accept transfer encoding, TE: trailers, chunked */
-  l_literal_strt("ua-cpu"),
-  l_literal_strt("ua-disp"),
-  l_literal_strt("ua-os"),
-  l_literal_strt("user-agent"),
-  l_literal_strt("x-requested-with"),
-  l_literal_strt("x-http-method-override"),
-  l_literal_strt("x-uidh"),
-  l_literal_strt("x-csrf-token")
+static const l_strn l_http_request_headers[] = {
+  l_literal_strn("accept"),
+  l_literal_strn("accept-charset"),
+  l_literal_strn("accept-encoding"),
+  l_literal_strn("accept-language"),
+  l_literal_strn("accept-datetime"),
+  l_literal_strn("authorization"),
+  l_literal_strn("cookie"),
+  l_literal_strn("cookie2"),
+  l_literal_strn("dnt"),
+  l_literal_strn("expect"),
+  l_literal_strn("from"),
+  l_literal_strn("host"),
+  l_literal_strn("if-match"),
+  l_literal_strn("if-modified-since"),
+  l_literal_strn("if-none-match"),
+  l_literal_strn("if-range"),
+  l_literal_strn("if-unmodified-since"),
+  l_literal_strn("origin"),
+  l_literal_strn("proxy-authorization"),
+  l_literal_strn("proxy-connection"),
+  l_literal_strn("range"),
+  l_literal_strn("referer"),
+  l_literal_strn("te"), /* client accept transfer encoding, TE: trailers, chunked */
+  l_literal_strn("ua-cpu"),
+  l_literal_strn("ua-disp"),
+  l_literal_strn("ua-os"),
+  l_literal_strn("user-agent"),
+  l_literal_strn("x-requested-with"),
+  l_literal_strn("x-http-method-override"),
+  l_literal_strn("x-uidh"),
+  l_literal_strn("x-csrf-token")
 };
 
 enum l_http_response_headers_enum {
@@ -338,32 +338,32 @@ enum l_http_response_headers_enum {
   L_HTTP_H_X_UA_COMPATIBLE
 };
 
-static const l_strt l_http_response_headers[] = {
-  l_literal_strt("access-control-allow-origin"),
-  l_literal_strt("accept-patch"),
-  l_literal_strt("accept-ranges"),
-  l_literal_strt("allow"),
-  l_literal_strt("alt-svc"),
-  l_literal_strt("link"),
-  l_literal_strt("location"),
-  l_literal_strt("p3p"),
-  l_literal_strt("proxy-authenticate"),
-  l_literal_strt("public-key-pins"),
-  l_literal_strt("refresh"),
-  l_literal_strt("retry-after"),
-  l_literal_strt("server"),
-  l_literal_strt("set-cookie"),
-  l_literal_strt("set-cookie2"),
-  l_literal_strt("status"),
-  l_literal_strt("strict-transport-security"),
-  l_literal_strt("tk"),
-  l_literal_strt("vary"),
-  l_literal_strt("www-authenticate"),
-  l_literal_strt("x-frame-options"),
-  l_literal_strt("x-xss-protection"),
-  l_literal_strt("x-content-type-options"),
-  l_literal_strt("x-powered-by"),
-  l_literal_strt("x-ua-compatible")
+static const l_strn l_http_response_headers[] = {
+  l_literal_strn("access-control-allow-origin"),
+  l_literal_strn("accept-patch"),
+  l_literal_strn("accept-ranges"),
+  l_literal_strn("allow"),
+  l_literal_strn("alt-svc"),
+  l_literal_strn("link"),
+  l_literal_strn("location"),
+  l_literal_strn("p3p"),
+  l_literal_strn("proxy-authenticate"),
+  l_literal_strn("public-key-pins"),
+  l_literal_strn("refresh"),
+  l_literal_strn("retry-after"),
+  l_literal_strn("server"),
+  l_literal_strn("set-cookie"),
+  l_literal_strn("set-cookie2"),
+  l_literal_strn("status"),
+  l_literal_strn("strict-transport-security"),
+  l_literal_strn("tk"),
+  l_literal_strn("vary"),
+  l_literal_strn("www-authenticate"),
+  l_literal_strn("x-frame-options"),
+  l_literal_strn("x-xss-protection"),
+  l_literal_strn("x-content-type-options"),
+  l_literal_strn("x-powered-by"),
+  l_literal_strn("x-ua-compatible")
 };
 
 static l_stringmap l_method_map;
@@ -995,7 +995,7 @@ int l_http_write_body(l_state* state, l_strt body, int mime) {
   }
 
   if (ssrx->httpver > L_HTTP_VER_0NN) {
-    l_string_format_2("Content-Type: %w\r\nContent-Length: %d\r\n\r\n", lp(&l_mime_types(mime)), ld(len));
+    l_string_format_2(txbuf, "Content-Type: %w\r\nContent-Length: %d\r\n\r\n", lp(&l_mime_types[mime]), ld(len));
   }
 
   l_string_append(txbuf, body);
@@ -1026,7 +1026,7 @@ int l_http_write_file(l_state* state, l_strt filename, int mime) {
   if (!l_string_ensure_remain(txbuf, filesize + 1)) return false;
 
   if (ssrx->httpver > L_HTTP_VER_0NN) {
-    l_string_format_2("Content-Type: %w\r\nContent-Length: %d\r\n\r\n", lp(&l_mime_types(mime)), ld(filesize));
+    l_string_format_2(txbuf, "Content-Type: %w\r\nContent-Length: %d\r\n\r\n", lp(&l_mime_types[mime]), ld(filesize));
   }
 
   n = l_read_file(&file, l_string_end(txbuf), filesize);
@@ -1034,7 +1034,7 @@ int l_http_write_file(l_state* state, l_strt filename, int mime) {
   ssrx->stage = L_HTTP_WRITE_BODY;
 
   if (n != filesize) {
-    l_loge_1("read size %d doesn't match to file size %d", ld(n), ld(filesize));
+    l_loge_2("read size %d doesn't match to file size %d", ld(n), ld(filesize));
     return false;
   }
 
@@ -1060,7 +1060,7 @@ int l_http_write_plain_file(l_state* state, l_strt filename) {
 static int l_http_send_response_impl(l_state* state) {
   l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
   l_rune* txcur = ssrx->txcur;
-  l_rune* txend = l_string_end(ssrx->txbuf);
+  l_rune* txend = l_string_end(&ssrx->txbuf);
   l_int count = txend - txcur, n = 0;
   l_int status = 0;
 
