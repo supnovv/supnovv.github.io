@@ -14,4 +14,7 @@ windows: ms.PHONY
 clean: ms.PHONY
 	$(MAKE) clean -f $(?B)platform.mk
 
+test: ms.PHONY
+	$(MAKE) test -f $(?B)platform.mk
+
 ms.PHONY:
