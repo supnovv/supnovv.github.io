@@ -1,7 +1,7 @@
 #ifndef l_core_lib_h
 #define l_core_lib_h
-#include "l_prefix.h"
 #include "autoconf.h"
+#include "core/prefix.h"
 
 #undef l_inline
 #define l_inline static

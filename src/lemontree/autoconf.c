@@ -1,12 +1,12 @@
 #define L_CORE_AUTO_CONFIG
-#include "l_prefix.h"
-#include "plationf.h"
-#include "platsock.h"
+#include "core/prefix.h"
+#include "osi/plationf.h"
+#include "osi/platsock.h"
 
 #if defined(L_PLAT_WINDOWS)
-#include "winpref.h"
+#include "osi/winpref.h"
 #else
-#include "linuxpref.h"
+#include "osi/linuxpref.h"
 int l_mutex_size = sizeof(pthread_mutex_t);
 int l_rwlock_size = sizeof(pthread_rwlock_t);
 int l_condv_size = sizeof(pthread_cond_t);
