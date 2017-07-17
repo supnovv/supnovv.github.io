@@ -18,3 +18,4 @@ test: ms.PHONY
 	$(MAKE) test -f $(?B)platform.mk
 
 ms.PHONY:
+

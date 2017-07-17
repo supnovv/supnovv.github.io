@@ -1,9 +1,9 @@
-#ifndef l_plationf_lib_h
-#define l_plationf_lib_h
-#include "l_prefix.h"
+#ifndef lucy_plationf_h
+#define lucy_plationf_h
+#include "core/prefix.h"
 
 #if defined(L_PLAT_LINUX)
-#include "linuxpref.h"
+#include "osi/linuxpref.h"
 #include <sys/epoll.h>
 
 #define L_EPOLL_MAX_EVENTS 64
@@ -30,7 +30,7 @@ typedef struct {
 /** BSD Kqueue **/
 
 #elif !defined(L_PLAT_WINDOWS)
-#include "linuxpref.h"
+#include "osi/linuxpref.h"
 #include <poll.h>
 /** Linux Poll **/
 
@@ -38,5 +38,5 @@ typedef struct {
 /** Windows IO **/
 
 #endif
-#endif /* l_plationf_lib_h */
+#endif /* lucy_plationf_h */
 

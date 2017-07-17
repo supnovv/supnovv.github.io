@@ -1,6 +1,6 @@
-#include "winpref.h"
+#include "osi/winpref.h"
 #define L_WINDOWS_IMPL
-#include "thatcore.h"
+#include "lucycore.h"
 static void printlasterror() {
   #define ERRSTRSZ 1024
   TCHAR bf[ERRSTRSZ+1] = {0};

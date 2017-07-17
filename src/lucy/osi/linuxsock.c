@@ -1,6 +1,6 @@
-#include "linuxpref.h"
-#include "platsock.h"
-#include "l_socket.h"
+#include "osi/linuxpref.h"
+#include "osi/platsock.h"
+#include "net/socket.h"
 
 #define L_SOCKET_BACKLOG  (32)
 #define L_SOCKET_IPSTRLEN (48)

@@ -1,11 +1,11 @@
-#ifndef l_platsock_lib_h
-#define l_platsock_lib_h
-#include "l_prefix.h"
+#ifndef lucy_platsock_h
+#define lucy_platsock_h
+#include "core/prefix.h"
 
 #if defined(L_PLAT_WINDOWS)
 /** Windows Socket **/
 #else
-#include "linuxpref.h"
+#include "osi/linuxpref.h"
 /** POSIX Socket **/
 
 /** Socket addresses **
@@ -42,5 +42,5 @@ typedef struct {
 #endif
 
 #endif
-#endif /* l_platsock_lib_h */
+#endif /* lucy_platsock_h */
 

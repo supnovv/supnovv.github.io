@@ -1,5 +1,5 @@
-#include "linuxpref.h"
-#include "thatcore.h"
+#include "osi/linuxpref.h"
+#include "lucycore.h"
 
 /** The software clock, HZ, and jiffies **
 The accuracy of various time related system calls is limited
@@ -718,6 +718,14 @@ int l_raw_thread_join(l_thrid* thrid) {
   }
   return (int)(l_int)exitcode;
 }
+
+#if defined(L_PLAT_LINUX)
+#include "linuxionf.c"
+#elif defined(L_PLAT_APPLE) || defined(L_PLAT_BSD)
+#include "bsdkqueue.c"
+#else
+#include "linuxpoll.c"
+#endif
 
 void l_plat_test() {
   l_assert(sizeof(l_mutex) >= sizeof(pthread_mutex_t));

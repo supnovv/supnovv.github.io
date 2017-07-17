@@ -1,5 +1,5 @@
-#ifndef l_prefix_lib_h
-#define l_prefix_lib_h
+#ifndef lucy_prefix_h
+#define lucy_prefix_h
 
 /** Compiler detection **/
 
@@ -78,4 +78,4 @@ typedef union {
   void* pval;
 } l_eight;
 
-#endif /* l_prefix_lib_h */
+#endif /* lucy_prefix_h */

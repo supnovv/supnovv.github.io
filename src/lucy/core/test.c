@@ -1,8 +1,5 @@
-#include "thatcore.h"
-#include "l_socket.h"
-#include "l_service.h"
-#include "l_state.h"
-#include "l_master.h"
+#include "lucycore.h"
+#include "net/socket.h"
 
 int l_test_start() {
   l_core_test();

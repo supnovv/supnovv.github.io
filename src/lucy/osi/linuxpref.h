@@ -1,5 +1,5 @@
-#ifndef l_linuxcore_lib_h
-#define l_linuxcore_lib_h
+#ifndef lucy_linuxcore_h
+#define lucy_linuxcore_h
 #define _POSIX_C_SOURCE 200809L
 #include <unistd.h>
 #include <signal.h>
@@ -16,4 +16,4 @@
 #include <dirent.h>
 #include <time.h>
 #include <errno.h>
-#endif /* l_linuxcore_lib_h */
+#endif /* lucy_linuxcore_h */

@@ -1,6 +1,6 @@
-#include "linuxpref.h"
-#include "plationf.h"
-#include "l_ionfmgr.h"
+#include "osi/linuxpref.h"
+#include "osi/plationf.h"
+#include "lucycore.h"
 
 /** eventfd - create a file descriptor for event notification **
 #include <sys/eventfd.h>

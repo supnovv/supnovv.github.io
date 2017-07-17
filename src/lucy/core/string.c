@@ -3,7 +3,7 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <float.h>
-#include "thatcore.h"
+#include "lucycore.h"
 
 int l_strt_contain(l_strt s, int ch) {
   while (s.start < s.end) {

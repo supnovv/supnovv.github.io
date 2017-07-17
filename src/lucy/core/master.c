@@ -1,10 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "thatcore.h"
-#include "l_master.h"
-#include "l_message.h"
-#include "l_service.h"
+#include "lucycore.h"
 
 #define L_MIN_SERVICE_ID (1024*1024)
 #define L_SERVICE_SAMETHRD 0x01

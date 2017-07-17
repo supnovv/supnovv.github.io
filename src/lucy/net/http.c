@@ -1,8 +1,5 @@
-#include "httpservice.h"
-#include "l_ionfmgr.h"
-#include "l_service.h"
-#include "l_socket.h"
-#include "l_message.h"
+#include "net/http.h"
+#include "net/socket.h"
 
 #define L_HTTP_METHOD_MAX_LEN (7)
 #define L_NUM_OF_HTTP_METHODS (4)

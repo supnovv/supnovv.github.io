@@ -1,6 +1,6 @@
-#ifndef l_socket_lib_h
-#define l_socket_lib_h
-#include "thatcore.h"
+#ifndef lucy_net_socket_h
+#define lucy_net_socket_h
+#include "lucycore.h"
 
 typedef struct {
   L_PLAT_IMPL_SIZE(L_SOCKADDR_SIZE);
@@ -31,5 +31,5 @@ l_extern l_int l_socket_write(l_handle sock, const void* buf, l_int count, l_int
 l_extern void l_socket_test();
 l_extern void l_plat_sock_test();
 
-#endif /* l_socket_lib_h */
+#endif /* lucy_net_socket_h */
 
