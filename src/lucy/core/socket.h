@@ -1,5 +1,5 @@
-#ifndef lucy_net_socket_h
-#define lucy_net_socket_h
+#ifndef lucy_socket_h
+#define lucy_socket_h
 #include "lucycore.h"
 
 typedef struct {
@@ -31,5 +31,5 @@ l_extern l_int l_socket_write(l_handle sock, const void* buf, l_int count, l_int
 l_extern void l_socket_test();
 l_extern void l_plat_sock_test();
 
-#endif /* lucy_net_socket_h */
+#endif /* lucy_socket_h */
 

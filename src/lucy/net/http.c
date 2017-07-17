@@ -1,5 +1,4 @@
 #include "net/http.h"
-#include "net/socket.h"
 
 #define L_HTTP_METHOD_MAX_LEN (7)
 #define L_NUM_OF_HTTP_METHODS (4)

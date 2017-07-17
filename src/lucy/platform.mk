@@ -2,7 +2,7 @@ PLAT = none
 PLATS = linux macosx
 
 DEBUG =
-MYINC =
+MYINC = -I./
 MACRO =
 LDPATH =
 LDLIBS = -llua -lm
@@ -42,8 +42,8 @@ AUTOOBJ = autoconf$(O)
 COREOBJ = core/base$(O) core/string$(O) core/state$(O) core/service$(O) core/master$(O) osi/linuxcore$(O)
 SOCKOBJ = osi/linuxsock$(O)
 HTTPOBJ = net/http$(O)
-TESTOBJ = core/test$(O)
-ALLOBJS = $(AUTOOBJ) $(COREOBJ) $(SOCKOBJ) $(HTTPOBJ) $(TESTOBJ)
+TESTOBJ = core/test$(O) $(COREOBJ) $(SOCKOBJ) $(HTTPOBJ)
+ALLOBJS = $(AUTOOBJ) $(TESTOBJ)
 
 AUTOCONF = autoconf$(E)
 CORETEST = core/test$(E)
@@ -73,13 +73,13 @@ $(AUTOCONF): $(AUTOOBJ)
 	$(LINK) $(AUTOOBJ)
 	./$@
 
-$(CORETEST): $(ALLOBJS)
-	$(LINK) $(ALLOBJS) $(LDLIBS)
+$(CORETEST): $(TESTOBJ)
+	$(LINK) $(TESTOBJ) $(LDLIBS)
 	./$@
 
 # luaconf.h:581:2: #error "Compiler does not support 'long long'. Use option '-DLUA_32BITS' or '-DLUA_C89_NUMBERS'
 # it is caused by LLONG_MAX is not defined in C89 (C99 stuff)
-core/state.o: core/state.c lemon.h
+core/state.o: core/state.c lucycore.h
 	$(CC) -std=c99 $(CMPL_OPTIONS) $<
 
 %.$(O): %.c
@@ -89,6 +89,6 @@ $(AUTOOBJ): autoconf.c core/prefix.h osi/plationf.h osi/platsock.h
 $(COREIND): autoconf.h lucycore.h core/prefix.h osi/plationf.h osi/platsock.h osi/linuxpref.h
 $(PLATSRC): osi/linuxcore.c osi/linuxionf.c osi/linuxpoll.c
 $(COREOBJ): core/base.c core/string.c core/state.c core/service.c core/master.c $(PLATSRC) $(COREIND) 
-$(SOCKOBJ): osi/linuxsock.c net/socket.h $(COREIND)
+$(SOCKOBJ): osi/linuxsock.c $(COREIND)
 $(HTTPOBJ): net/http.c net/http.h $(COREIND)
 

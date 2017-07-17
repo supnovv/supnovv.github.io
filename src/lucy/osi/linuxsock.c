@@ -1,6 +1,6 @@
 #include "osi/linuxpref.h"
 #include "osi/platsock.h"
-#include "net/socket.h"
+#include "lucycore.h"
 
 #define L_SOCKET_BACKLOG  (32)
 #define L_SOCKET_IPSTRLEN (48)

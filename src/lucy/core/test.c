@@ -1,5 +1,4 @@
 #include "lucycore.h"
-#include "net/socket.h"
 
 int l_test_start() {
   l_core_test();

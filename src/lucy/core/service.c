@@ -1,5 +1,4 @@
 #include "lucycore.h"
-#include "net/socket.h"
 
 #define L_SERVICE_SAMETHRD 0x01
 #define L_SERVICE_IO_EVENT 0x02
