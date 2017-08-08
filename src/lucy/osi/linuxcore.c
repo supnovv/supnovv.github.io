@@ -437,6 +437,24 @@ const l_rune* l_read_dir(l_dirstream* d) {
   return l_rstr(entry->d_name);
 }
 
+int l_print_current_dir(void* stream, int (*write)(void* stream, const void* str)) {
+  /** getcwd, get_current_dir_name - get current working directory
+  #include <unistd.h>
+  char *get_current_dir_name(void);
+  it will malloc(3) an array big enough to hold the absolute pathname of the current
+  working directory. if the environment variable PWD is set, and its value is correct,
+  then that value will be returned. the caller should free(3) the returned buffer. */
+  char* curdir = get_current_dir_name();
+  int count = 0;
+  if (curdir == 0) {
+    l_loge_1("get_current_dir_name %s", lserror(errno));
+    return 0;
+  }
+  count = write(stream, curdir);
+  free(curdir);
+  return count;
+}
+
 void l_thrkey_init(l_thrkey* self) {
   /** pthread_key_create - thread-specific data key creation **
   #include <pthread.h>

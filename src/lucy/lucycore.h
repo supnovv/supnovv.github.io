@@ -255,6 +255,7 @@ l_specif l_fileattr l_file_attr(const void* name);
 l_specif l_dirstream l_open_dir(const void* name);
 l_specif void l_close_dir(l_dirstream* d);
 l_specif const l_rune* l_read_dir(l_dirstream* d);
+l_specif int l_print_current_dir(void* stream, int (*write)(void* stream, const void* str));
 
 typedef struct {
   L_PLAT_IMPL_SIZE(L_MUTEX_SIZE);

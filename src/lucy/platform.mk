@@ -5,7 +5,7 @@ DEBUG =
 MYINC = -I./
 MACRO =
 LDPATH =
-LDLIBS = -llua -lm
+LDLIBS = -llua -lm -ldl
 SHARED =
 
 CC = gcc

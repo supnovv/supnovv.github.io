@@ -53,6 +53,27 @@ static int l_write_line(FILE* self, const void* fmt, ...) {
   return sz;
 }
 
+static int l_write_current_dir(FILE* self, const void* fmt) {
+  /** getcwd, get_current_dir_name - get current working directory
+  #include <unistd.h>
+  char *get_current_dir_name(void);
+  it will malloc(3) an array big enough to hold the absolute pathname of the current
+  working directory. if the environment variable PWD is set, and its value is correct,
+  then that value will be returned. the caller should free(3) the returned buffer. */
+#if defined(L_PLAT_WINDOWS)
+#else
+  char* curdir = get_current_dir_name();
+  int count = 0;
+  if (curdir == 0) {
+    l_log_e("get_current_dir_name %s", strerror(errno));
+    return 0;
+  }
+  count = l_write_line(self, fmt, curdir, "/");
+  free(curdir);
+  return count;
+#endif
+}
+
 typedef union {
   unsigned char c[sizeof(unsigned long)];
   unsigned long i;
@@ -64,6 +85,9 @@ int main(void) {
   if (!file) { l_log_e("fopen autoconf.h %s", strerror(errno)); return 1; }
   l_write_line(file, "#ifndef l_autoconf_lib_h%s#define l_autoconf_lib_h", L_NEWLINE);
   l_write_line(file, "#define _CRT_SECURE_NO_WARNINGS%s", L_NEWLINE);
+
+  l_write_line(file, "#undef L_ROOT_DIR");
+  l_write_current_dir(file, "#define L_ROOT_DIR \"%s%s\"" L_NEWLINE);
 
   l_write_line(file, "/* platform bits */");
   l_write_line(file, "#undef L_PLAT_32BIT");

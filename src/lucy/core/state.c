@@ -1,4 +1,4 @@
-#include "lua.h"
+#include "lualib.h"
 #include "lauxlib.h"
 #include "lucycore.h"
 
@@ -8,11 +8,101 @@ Several functions in the standard library do that: table.sort can call order
 function; string.gsub can call a replacement function; pcall and xpcall call
 functions in protected mode. */
 
+static void lucy_poperr(lua_State* L, const void* log) {
+  if (log != 0) l_loge_2("%s - %s", ls(log), ls(lua_tostring(L, /* stack index */ -1)));
+  lua_pop(L, /* number of elements */ 1); /* pop error object */
+}
+
+static int lucy_loadfile(lua_State* L, const void* file) {
+  if (luaL_loadfile(L, (const char*)file) != LUA_OK) {
+    lucy_poperr(L, "lua_loadfile");
+    return false;
+  }
+  return true;
+}
+
+static int lucy_pcall(lua_State* L, int nresults) {
+  if (lua_pcall(L, /* nargs */ 0, nresults, /* msgh */ 0) != LUA_OK) {
+    lucy_poperr(L, "lua_pcall");
+    return false;
+  }
+  return true;
+}
+
+/* execute file and nresults pushed onto stack if success */
+static int lucy_dofile(lua_State* L, const void* file, int nresults) {
+  if (!lucy_loadfile(L, file)) return false;
+  if (!lucy_pcall(L, nresults < 0 ? 0 : nresults)) return false;
+  return true;
+}
+
+static int lucy_setfuncenv(lua_State* L, const void* tablename) {
+  int funcindex = lua_gettop(L);
+  lua_getglobal(L, (const char*)tablename); /* push a table as a upvalue */
+  lua_setupvalue(L, funcindex, /* upvalue index - _ENV is the first upvalue */ 1); /* pop the table */
+  return true;
+}
+
+static int lucy_settablefield(lua_State* L, const void* keyname) {
+  int tableindex = lua_gettop(L) - 1;
+  lua_setfield(L, tableindex, (const char*)keyname); /* pop the top value */
+  return true;
+}
+
+static void lucy_emptystack(lua_State* L) {
+  lua_pop(L, lua_gettop(L));
+}
+
+static void l_init_luastate(lua_State* L) {
+  const char* libname = "LUCY_GLOBAL_TABLE";
+
+  /* open all standard lua libraries first */
+  luaL_openlibs(L);
+
+  lua_newtable(L); /* push a empty table */
+  lua_pushliteral(L, L_ROOT_DIR); /* push a string */
+  lucy_settablefield(L, "rootdir"); /* pop the string */
+  lua_setglobal(L, libname); /* pop the table */
+
+  if (!lucy_dofile(L, L_ROOT_DIR "conf/init.lua", 0)) {
+    l_loge_s("execute init.lua failed");
+    return;
+  }
+
+  if (!lucy_loadfile(L, L_ROOT_DIR "conf/conf.lua")) { /* push loaded function */
+    l_loge_s("load conf.lua failed");
+    return;
+  }
+
+  if (!lucy_setfuncenv(L, libname)) {
+    l_loge_s("set conf.lua _ENV failed ");
+    return;
+  }
+
+  if (!lucy_pcall(L, 0)) { /* pop the function */
+    l_loge_s("execute conf.lua failed");
+    return;
+  }
+
+#if 0
+  lua_getglobal(L, libname); /* push the table */
+  if (!lucy_dofile(L, L_ROOT_DIR "core/base.lua", 1)) { /* push one result */
+    l_loge_s("open base.lua failed");
+    lua_pop(L, 1); /* pop the table */
+    return;
+  }
+  lucy_settablefield(L, "base"); /* pop the reult */
+  lua_pop(L, 1); /* pop the table */
+#endif
+}
+
 lua_State* l_new_luastate() {
   lua_State* L = luaL_newstate();
   if (L == 0) {
     l_loge_s("luaL_newstate failed");
+    return 0;
   }
+  l_init_luastate(L);
   return L;
 }
 
