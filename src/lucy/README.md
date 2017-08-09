@@ -538,6 +538,147 @@ Lua
 * 而调用 luaL_newstate 或 lua_newstate 会创建不同的 LUA 状态，新的 LUA 状态会是完全独立的不共享任何数据
 * 这意味着不同的 LUA 状态不能直接进行通信，必须借助 C 代码，也意味着只有那些能用 C 表示的数据才能直接传递（如字符串和数字），其他数据如表必须先序列化
 * 在提供多线程的系统中，一个有趣的设计是为每个线程创建一个独立的 LUA 状态，这样每个线程相互独立且可拥有多个协程
+加载运行LUA代码
+* the unit of compilation of lua is called a chunk, syntactically, a chunk is simply a block.
+* lua handles a chunk as the body of an anonymous function with a variable number of arguments
+* as such, chunks can define local variables, receive arguments, and return values
+* moreover, such anonymous function is compiled as in the scope of an external local variable called _ENV
+* the resulting function always has _ENV as its only upvalue, even if it does not use that variable
+* a chunk can be stored in a file or in a string inside the host program
+* to execute a chunk, lua first loads it, precompiling the chunk's code into instructions for a virtual machine
+* and then lua executes the compiled code with an interpreter for the virtual machine
+* chunks can also be precompiled into binary form; see program luac and function string.dump for details
+* programs in source and compiled forms are interchangeable, lua automatically detects the file type and acts accordingly
+---
+int lua_load(lua_State* L, lua_Reader reader, void* data, const char* chunkname, const char* mode);
+* loads a lua chunk without running it, if there are no errors, lua_load pushes the compiled chunk as
+* a lua function on top of the stack. otherwise, it pushes an error message.
+* the return value: LUA_OK - no errors, LUA_ERRSYNTAX, LUA_ERRMEM, LUA_ERRGCMM - error while running a __gc metamethod
+* the lua_load function uses a user-supplied reader function to read the chunk,
+* the data argument is an opaque value passed to the reader function
+* the chunkname argument gives a name to the chunk, which is used for error messages and in debug information
+* lua_load automatically detects whether the chunk is text or binary and loads it accordingly
+* the string mode works as in function load, with the addition that a NULL value is equivalent to the string "bt"
+* lua_load uses the stack internally, so the reader function must always leave the stack unmodified when returning
+* if the resulting function has upvalues, its first upvalue is set to the value of the global environment LUA_RIDX_GLOBALS
+* when loading main chunks, this upvalue will be the _ENV variable. other upvalues are initialized with nil
+---
+typedef const char* (*lua_Reader)(lua_State* L, void* data, size_t* size);
+* the reader function used by lua_load, every time it needs another piece of the chunk,
+* lua_load calls the reader, passing along its data parameter
+* the reader must return a pointer to a block of memory with a new piece of the chunk and set size to the block size
+* the block must exist until the reader function is called again
+* to signal the end of the chunk, the reader must return NULL or set size to zero
+* the reader function may return pieces of any size greater than zero
+---
+int luaL_loadbuffer(lua_State* L, const char* buff, size_t sz, const char* name);
+* equivalent to luaL_loadbufferx with mode equal to NULL
+---
+int luaL_loadbufferx(lua_State* L, const char* buff, size_t sz, const char* name, const char* mode);
+* loads a buffer as a lua chunk, this function uses lua_load to load the chunk in the buffer pointed to by buff with the size
+* this function returns the same results as lua_load. the chunk name is used for debug formation and error message.
+* the string mode works as in function lua_load.
+---
+int luaL_loadfile(lua_State* L, const char* filename);
+* equivalent to luaL_loadfilex with mode equal to NULL
+int luaL_loadfilex(lua_State* L, const char* filename, const char* mode);
+* loads a file as a lua chunk, this function uses lua_load to load the chunk in the file named filename
+* if filename is NULL, then it loads from the standard input. the first line in the file is ignored if it starts with a #.
+* the string mode works as in function lua_load. this function returns the same results as lua_load,
+* but it has an extra error code LUA_ERRFILE for file-related errors
+* as lua_load, this function only loads the chunk; it does not run it
+---
+int luaL_loadstring(lua_State* L, const char* s);
+* loads a string as a lua chunk, this function uses lua_load to load the chunk in the zero-terminated string.
+* this function returns the same results as lua_load, as lua_load, it only loads the chunk, doesn't run it.
+---
+int lua_dump(lua_State* L, lua_Writer writer, void* data, int strip);  # dump function to binary chunk
+* dumps a function as a binary chunk. receives a lua function on the top of the stack and produces a binary chunk that,
+* if loaded again, results in a function equivalent to the one dumped. as it produces parts of the chunk,
+* lua_dump calls function writer with the given data to write them.
+* if strip is true, the binary representation may not include all debug infromation about the function, to save space
+* the value returned is the error code returned by the last call to the writer; 0 means no errors.
+* this function does not pop the lua function from the stack.
+---
+string.dump(function [, strip])
+* returns a string containing a binary representation (a binary chunk) of the given function
+* so that a later load on this string returns a copy of the function (but with new upvalues)
+* if strip is a true value, the binary representation may not include all debug information about the function to save space
+* functions with upvalues have only their number of upvalues saved
+* when (re)loaded, those upvalues receive fresh instances containing nil
+* you can use the debug library to serialize and reload the upvalues of a function in a way adequate to your needs 
+---
+typedef int (*lua_Writer)(lua_State* L, const void* p, size_t sz, void* ud);
+* the type of writer function used by lua_dump. every time it produces another piece of chunk,
+* lua_dump calls the writer, passing along the buffer to be written, its size, and the data parameter supplied to lua_dump
+* the writer returns an error code; 0 means no errors; any other value means an error and stops lua_dump from calling the writer again
+---
+int luaL_dostring(lua_String* L, const char* str);
+* loads and runs the given string. it is defined as the following macro:
+* (luaL_loadstring(L, str) || lua_pcall(L, 0, LUA_MULTRET, 0))
+* it returns false if there are no errors or true in case of errors
+---
+int luaL_dofile(lua_State* L, const char* filename);
+* loads and runs the given file, it is defined as the following macro:
+* (luaL_loadfile(L, filename) || lua_pcall(L, 0, LUA_MULTRET, 0))
+* it returns false if there are no errors or true in case of errors.
+---
+void lua_call(lua_State* L, int nargs, int nresults);
+* calls a function. to call a function you must use the following protocol: first, the function to be called
+* is pushed onto the stack; then, the arguments to the function are pushed in direct order; that is, the first
+* argument is pushed first. finally you call lua_call; nargs is the number of arguments that you pushed onto the stack
+* all arguments and function value are poped from the stack when the function is called
+* the function results are pushed onto the stack when the function returns
+* the number of results is adjusted to nresults, unless nresults is LUA_MULTRET
+* in this case, all results from the function are pushed; lua takes care that the returned values fit into the stack space
+* but it does not ensure any extra space in the stack
+* the function results are pushed onto the stack in direct order (the first result is pushed first)
+* so that after the call the last result is on the top of the stack
+* any error inside the called function is propagated upwards (with a longjmp)
+---
+int lua_pcall(lua_State* L, int nargs, int nresults, int msgh);
+* calls a function in protected mode. both nargs and nresults have the same meaning as in lua_call.
+* if there are no errors during the call, lua_pcall behaves exactly like lua_call
+* however, if ther is any error, lua_pcall catches it, pushes a single value on the stack (the error object),
+* and returns an error code. like lua_call, lua_pcall always removes the function and its arguments form the stack.
+* if msgh is 0, then the error object returned on the stack is exactly the original error object
+* otherwise, msgh is the stack index of a message handler (this index cannot be a pseudo-index)
+* in case of runtime errors, this function will be called with the error object and
+* its return value will be the object returned on the stack by lua_pcall
+* typically, the message handler is used to add more debug information to the error object, such as a stack traceback
+* such information cannot be gathered after the return of lua_pcall, since by then the stack has unwound
+* the lua_pcall function returns: LUA_OK(0) - success, LUA_ERRRUN, LUA_ERRMEM, LUA_ERRERR - error whild running the msgh, LUA_ERRGCMM
+使C代码能够在LUA中调用
+void lua_register(lua_State* L, const char* name, lua_CFunction f);
+* sets the C function as the new value of global name. it is defined as a macro:
+* #define lua_register(L, n, f) (lua_pushcfunction(L, f), lua_setglobal(L, n))
+---
+const char* lua_pushstring(lua_State* L, const char* s);
+const char* lua_pushliteral(lua_State* L, const char* s);
+* pushes the zero-terminated string onto the stack
+* lua makes (or reuses) an internal of the given string
+* so the memory at s can be freed or reused immediately after the function returns
+* returns a pointer to the internal copy of the string
+* if s is NULL, pushes nil and returns NULL
+---
+const char* lua_pushlstring(lua_State* L, const char* s, size_t len);
+* pushes the string onto the stack
+* lua makes (or reuses) an internal copy of the given string,
+* so the memory at s can be freed or reused immediately after the function returns
+* the string can contain any binary data, including embedded zeros
+* returns a pointer to the internal copy of the string
+---
+const char* lua_pushfstring(lua_State* L, const char* fmt, ...);
+const char* lua_pushvfstring(lua_State* L, const char* fmt, va_list argp);
+* pushes onto the stack a formatted string and returns a pointer to this string
+* it is similar to the ISO C function sprintf, but has some important differences:
+* you do not have to allocate space for the result, the result is a lua string and lua takes core of memory allocation
+* the conversion specifiers are quite restricted. there are no flags, widths, or precisions
+* the conversion specifiers can only be '%%', '%s', '%f' lua_Number, '%I' lua_Integer, '%p', '%d', '%c', '%U' long int as a UTF-8 byte squence
+* unlike other push functions, this function checks for the stack space it needs, including the slot for its result
+---
+void lua_setglobal(lua_State* L, const char* name);
+* pops a value from the stack and sets it as the new value of global name
 ```
 
 LUA字符串
