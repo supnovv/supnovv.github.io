@@ -53,6 +53,66 @@ static void lucy_emptystack(lua_State* L) {
   lua_pop(L, lua_gettop(L));
 }
 
+static int lucy_loadconf(lua_State* L, int n, va_list vl) {
+  const char* libname = "LUCY_GLOBAL_TABLE";
+  const char* keyname = 0;
+  if (n <= 0) return false;
+  lua_getglobal(L, libname); /* push the table */
+  while (n-- > 0) {
+    keyname = va_arg(vl, const char*);
+    if (keyname == 0) {
+      l_loge_s("getfield invalid keyname");
+      return false;
+    }
+    if (!lua_istable(L, -1)) {
+      l_loge_1("getfield %s on !table", ls(keyname));
+      return false;
+    }
+    lua_getfield(L, /* table index */ -1, keyname); /* push the field value */
+  }
+  return true;
+}
+
+l_int lucy_intconf(lua_State* L, int n, ...) {
+  int startelems = 0;
+  l_int result = 0;
+  va_list vl;
+  va_start(vl, n);
+  startelems = lua_gettop(L);
+
+  if (!lucy_loadconf(L, n, vl)) {
+    lua_pop(L, lua_gettop(L) - startelems);
+    l_logw_s("load int conf failed");
+    return 0;
+  }
+
+  result = lua_tointeger(L, -1);
+  lua_pop(L, lua_gettop(L) - startelems);
+  return result;
+}
+
+int lucy_strconf(lua_State* L, int (*func)(void* stream, const void* str), void* stream, int n, ...) {
+  int startelems = 0;
+  const char* result = 0;
+  va_list vl;
+  va_start(vl, n);
+  startelems = lua_gettop(L);
+
+  if (!lucy_loadconf(L, n, vl)) {
+    lua_pop(L, lua_gettop(L) - startelems);
+    l_logw_s("load str conf failed");
+    return false;
+  }
+
+  result = lua_tostring(L, -1);
+  if (!result) {
+    l_loge_s("get str conf failed");
+    return false;
+  }
+
+  return func(stream, result);
+}
+
 static void l_init_luastate(lua_State* L) {
   const char* libname = "LUCY_GLOBAL_TABLE";
 
@@ -386,5 +446,10 @@ void l_luac_test() {
   l_assert(l_state_resume(&co) == 0);
   l_state_free(&co);
   l_assert(sizeof(lua_KContext) >= sizeof(void*));
+
+  l_assert(lucy_intconf(L, 2, "test", "a") == 10);
+  l_assert(lucy_intconf(L, 3, "test", "t", "b") == 20);
+  l_assert(lucy_intconf(L, 3, "test", "t", "c") == 30);
+  l_assert(lucy_intconf(L, 2, "test", "d") == 40);
 }
 
