@@ -897,8 +897,6 @@ int l_start_http_server(l_strt ip, l_ushort port, int (*client_request_handler)(
   l_sockaddr sa;
   l_http_server_service* ss = 0;
 
-  /* TODO: read config here */
-
   if (!l_sockaddr_init(&sa, ip, port)) return L_STATUS_ERROR;
 
   ss = (l_http_server_service*)l_create_service(0, sizeof(l_http_server_service), l_http_server_service_proc, false);

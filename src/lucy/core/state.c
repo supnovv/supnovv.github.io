@@ -53,34 +53,67 @@ static void lucy_emptystack(lua_State* L) {
   lua_pop(L, lua_gettop(L));
 }
 
-static int lucy_loadconf(lua_State* L, int n, va_list vl) {
+#define L_MAX_CONF_NAME_LEN 80
+
+static int lucy_loadconf(lua_State* L, const l_byte* name) {
   const char* libname = "LUCY_GLOBAL_TABLE";
-  const char* keyname = 0;
-  if (n <= 0) return false;
-  lua_getglobal(L, libname); /* push the table */
-  while (n-- > 0) {
-    keyname = va_arg(vl, const char*);
-    if (keyname == 0) {
-      l_loge_s("getfield invalid keyname");
-      return false;
-    }
-    if (!lua_istable(L, -1)) {
-      l_loge_1("getfield %s on !table", ls(keyname));
-      return false;
-    }
-    lua_getfield(L, /* table index */ -1, keyname); /* push the field value */
+  l_byte keyname[L_MAX_CONF_NAME_LEN+1] = {0};
+  l_byte* keyend = 0;
+  l_int len = 0;
+
+  if (!name || name[0] == 0) {
+    return false;
   }
+
+  lua_getglobal(L, libname); /* push the table */
+
+  for (; ;) {
+    keyend = keyname;
+    len = 0;
+
+    while (*name) {
+      if (*name == '.') {
+        name += 1;
+        break;
+      }
+      *keyend++ = *name++;
+      len = keyend - keyname;
+      if (len == L_MAX_CONF_NAME_LEN) {
+        l_loge_s("loadconf keyname too long");
+        len = 0; /* set invalid len value */
+        break;
+      }
+    }
+
+    *keyend = 0; /* zero-terminated char */
+
+    if (len == 0) {
+      l_loge_s("loadconf invalid keyname");
+      return false;
+    }
+
+    if (!lua_istable(L, -1)) {
+      l_loge_1("loadconf %s from not a table", ls(keyname));
+      return false;
+    }
+
+    lua_getfield(L, /* table index */ -1, (const char*)keyname); /* push the field value */
+
+    if (*name == 0) {
+      break;
+    }
+  }
+
   return true;
 }
 
-l_int lucy_intconf(lua_State* L, int n, ...) {
+l_int lucy_intconf(lua_State* L, const void* name) {
   int startelems = 0;
   l_int result = 0;
-  va_list vl;
-  va_start(vl, n);
+
   startelems = lua_gettop(L);
 
-  if (!lucy_loadconf(L, n, vl)) {
+  if (!lucy_loadconf(L, (const l_byte*)name)) {
     lua_pop(L, lua_gettop(L) - startelems);
     l_logw_s("load int conf failed");
     return 0;
@@ -91,26 +124,25 @@ l_int lucy_intconf(lua_State* L, int n, ...) {
   return result;
 }
 
-int lucy_strconf(lua_State* L, int (*func)(void* stream, const void* str), void* stream, int n, ...) {
+int lucy_strconf(lua_State* L, int (*func)(void* stream, l_strt str), void* stream, const void* name) {
   int startelems = 0;
   const char* result = 0;
-  va_list vl;
-  va_start(vl, n);
+  size_t len = 0;
+
   startelems = lua_gettop(L);
 
-  if (!lucy_loadconf(L, n, vl)) {
+  if (!lucy_loadconf(L, (const l_byte*)name)) {
     lua_pop(L, lua_gettop(L) - startelems);
     l_logw_s("load str conf failed");
     return false;
   }
 
-  result = lua_tostring(L, -1);
+  result = lua_tolstring(L, -1, &len);
   if (!result) {
-    l_loge_s("get str conf failed");
     return false;
   }
 
-  return func(stream, result);
+  return func(stream, l_strt_e(result, result + len));
 }
 
 static void l_init_luastate(lua_State* L) {
@@ -447,9 +479,9 @@ void l_luac_test() {
   l_state_free(&co);
   l_assert(sizeof(lua_KContext) >= sizeof(void*));
 
-  l_assert(lucy_intconf(L, 2, "test", "a") == 10);
-  l_assert(lucy_intconf(L, 3, "test", "t", "b") == 20);
-  l_assert(lucy_intconf(L, 3, "test", "t", "c") == 30);
-  l_assert(lucy_intconf(L, 2, "test", "d") == 40);
+  l_assert(lucy_intconf(L, "test.a") == 10);
+  l_assert(lucy_intconf(L, "test.t.b") == 20);
+  l_assert(lucy_intconf(L, "test.t.c") == 30);
+  l_assert(lucy_intconf(L, "test.d") == 40);
 }
 

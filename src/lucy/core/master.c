@@ -373,29 +373,36 @@ int l_string_append(l_string* self, l_strt s) {
 
 typedef struct {
   int workers;
-  int backlog;
   int service_table_size;
   l_int log_buffer_size;
-  l_int thread_frmem_max_size;
+  l_int thread_max_free_memory;
   l_rune logfile[FILENAME_MAX+1];
   l_rune* prefixend;
+  lua_State* L;
 } l_config;
 
+static int l_set_logfile_prefix(void* pconf, l_strt name) {
+  l_config* conf = (l_config*)pconf;
+  l_int len = name.end - name.start;
+  if (len <= 0 || len > FILENAME_MAX) {
+    return false;
+  }
+  l_copy_l(name.start, len, conf->logfile);
+  conf->logfile[len] = 0;
+  conf->prefixend = conf->logfile + len;
+  return true;
+}
+
 l_config* l_create_config() {
-  lua_State* L = 0;
   l_config* conf = (l_config*)l_raw_calloc(sizeof(l_config));
-  conf->workers = 1;
-  conf->service_table_size = 10; /* 2^10 = 1024 */
-  conf->log_buffer_size = 1024*8;
-  conf->thread_frmem_max_size = 1024;
-  l_copy_l("trace", 6, conf->logfile);
-  conf->prefixend = conf->logfile + 5;
-  /* TODO: read config file */
-  L = l_new_luastate();
-  l_close_luastate(L);
+  conf->L = l_new_luastate();
 
-  if (conf->workers < 1) conf->workers = 1;
+  conf->workers = lucy_intconf(conf->L, "workers");
+  if (conf->workers < 1) {
+    conf->workers = 1;
+  }
 
+  conf->log_buffer_size = lucy_intconf(conf->L, "log_buffer_size");
   if (conf->log_buffer_size < BUFSIZ) {
     conf->log_buffer_size = BUFSIZ;
   }
@@ -403,6 +410,22 @@ l_config* l_create_config() {
     conf->log_buffer_size = l_max_rdwr_size - BUFSIZ - 1;
   }
   conf->log_buffer_size = (((conf->log_buffer_size - 1) / BUFSIZ) + 1) * BUFSIZ;
+
+  conf->service_table_size = lucy_intconf(conf->L, "service_table_size");
+  if (conf->service_table_size < 10) {
+    conf->service_table_size = 10;
+  }
+
+  conf->thread_max_free_memory = lucy_intconf(conf->L, "thread_max_free_memory");
+  if (conf->thread_max_free_memory < 1024) {
+    conf->thread_max_free_memory = 1024;
+  }
+
+  if (!lucy_strconf(conf->L, l_set_logfile_prefix, conf, "logfile_prefix")) {
+    /* if get from config file failed, set the default name prefix */
+    l_set_logfile_prefix(conf, l_literal_strt("trace"));
+  }
+
   return conf;
 }
 
@@ -446,7 +469,7 @@ static void l_threadpool_release(l_thread* thread) {
 }
 
 extern l_rune* l_string_print_ulong(l_ulong n, l_rune* p);
-static void l_thread_init(l_thread* t, l_config* conf) {
+static void l_thread_init_impl(l_thread* t, l_config* conf) {
   l_thrblock* b = 0;
   l_rune* suffix = 0;
   b = (l_thrblock*)t->block;
@@ -469,7 +492,7 @@ static void l_thread_init(l_thread* t, l_config* conf) {
   t->frbq = &b->fq;
   l_zero_l(t->frbq, sizeof(l_freebq));
   l_squeue_init(&b->fq.queue);
-  b->fq.limit = conf->thread_frmem_max_size;
+  b->fq.limit = conf->thread_max_free_memory;
 
   t->log = l_create_string(conf->log_buffer_size);
 
@@ -479,7 +502,7 @@ static void l_thread_init(l_thread* t, l_config* conf) {
     t->logfile.stream = stderr;
   } else {
     suffix = conf->prefixend;
-    *suffix++ = '.';
+    *suffix++ = '_';
     suffix = l_string_print_ulong(t->index, suffix);
     suffix = l_copy_l(".txt", 4, suffix);
     *suffix = 0;
@@ -487,8 +510,18 @@ static void l_thread_init(l_thread* t, l_config* conf) {
     l_write_strt_to_file(&t->logfile, l_literal_strt("--------" L_NEWLINE));
   }
 
-  t->L = l_new_luastate();
   t->weight = t->msgwait = 0;
+}
+
+static void l_master_thread_init(l_thread* t, l_config* conf) {
+  l_thread_init_impl(t, conf);
+  t->L = conf->L;
+  conf->L = 0;
+}
+
+static void l_worker_thread_init(l_thread* t, l_config* conf) {
+  l_thread_init_impl(t, conf);
+  t->L = l_new_luastate();
 }
 
 static void l_thread_free(l_thread* t) {
@@ -560,7 +593,7 @@ int l_thread_join(l_thread* self) {
   return l_raw_thread_join(&self->id);
 }
 
-static void l_master_init() {
+static l_config* l_master_init() {
   int i = 0;
   l_config* conf = 0;
   l_thread* master = 0;
@@ -573,7 +606,7 @@ static void l_master_init() {
   master->block = l_raw_malloc(sizeof(l_thrblock));
 
   conf = l_create_config();
-  l_thread_init(master, conf);
+  l_master_thread_init(master, conf);
 
   L_thread_ptr = master;
   l_thrkey_set_data(&L_thread_key, master);
@@ -587,7 +620,7 @@ static void l_master_init() {
     thread = L_worker_threads + i;
     thread->block = l_raw_malloc(sizeof(l_thrblock));
     thread->index = i + 1; /* worker index should not 0 */
-    l_thread_init(thread, conf);
+    l_worker_thread_init(thread, conf);
     l_priorq_push(&L_thread_prq, &thread->node);
   }
 
@@ -603,7 +636,7 @@ static void l_master_init() {
   L_svid_seed = L_MIN_SERVICE_ID;
   l_srvctable_init(&L_srvc_table, conf->service_table_size);
 
-  l_free_config(conf);
+  return conf;
 }
 
 static void l_master_clean_all() {
@@ -1086,10 +1119,12 @@ int startmainthread(int (*start)()) {
 
 int startmainthreadcv(int (*start)(), int argc, char** argv) {
   int i = 0;
+  l_config* conf = 0;
+  l_strt fileprefix;
   l_thread* master = 0;
   l_thrkey_init(&L_thread_key);
 
-  l_master_init();
+  conf = l_master_init();
 
   master = l_thread_master();
   master->id = l_raw_thread_self();
@@ -1097,6 +1132,12 @@ int startmainthreadcv(int (*start)(), int argc, char** argv) {
   l_master_parse_command_line(argc, argv);
 
   l_logm_s("master initialized");
+
+  fileprefix = l_strt_e(conf->logfile, conf->prefixend);
+  l_logm_5("workers %d log_buffer_size %d service_table_size 2^%d thread_max_free_memory %d logfile_prefix %w",
+    ld(conf->workers), ld(conf->log_buffer_size), ld(conf->service_table_size), ld(conf->thread_max_free_memory), lp(&fileprefix));
+
+  l_free_config(conf);
 
   for (i = 0; i < L_num_workers; ++i) {
     l_thread_start(L_worker_threads + i, l_worker_start);
