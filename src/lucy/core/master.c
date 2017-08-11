@@ -7,6 +7,7 @@
 #define L_SERVICE_SAMETHRD 0x01
 #define L_SERVICE_IO_EVENT 0x02
 #define L_SERVICE_CLOSING  0x04
+#define L_SERVICE_STARTED  0x08
 #define L_MASTER_EXIT 0x01
 
 typedef struct {
@@ -243,10 +244,11 @@ static l_umedit l_master_gen_service_id() {
   return svid;
 }
 
-l_service* l_create_service(l_thread* thread, l_int size, int (*entry)(l_service*, l_message*), int insamethread) {
+
+static l_service* l_create_service_impl(l_int size, int (*entry)(l_service*, l_message*), int samethread) {
   l_service* srvc = 0;
+  l_thread* thread = l_thread_self();
   if (size < (l_int)sizeof(l_service)) return 0;
-  if (!thread) thread = l_thread_self();
   srvc = l_thread_alloc_buffer(thread, size);
   srvc->svid = l_master_gen_service_id();
   srvc->ioev = 0;
@@ -254,12 +256,29 @@ l_service* l_create_service(l_thread* thread, l_int size, int (*entry)(l_service
   srvc->co = 0;
   srvc->entry = entry;
   srvc->stop_rx_msg = 0;
-  if (insamethread) {
+  if (samethread) {
     srvc->mflgs = srvc->wflgs = L_SERVICE_SAMETHRD;
   } else {
     srvc->mflgs = srvc->wflgs = 0;
   }
   return srvc;
+}
+
+l_service* l_create_service(l_int size, int (*entry)(l_service*, l_message*)) {
+  return l_create_service_impl(size, entry, false);
+}
+
+l_service* l_create_service_to_run_in_this_thread(l_int size, int (*entry)(l_service*, l_message*)) {
+  return l_create_service_impl(size, entry, true);
+}
+
+int l_free_unstarted_service(l_service* srvc) {
+  if (srvc->wflgs | L_SERVICE_STARTED) {
+    l_loge_s("free service failed - already started");
+    return false;
+  }
+  l_thread_free_buffer(l_thread_self(), &srvc->node);
+  return true;
 }
 
 int l_service_resume(l_service* self, int (*func)(l_state*)) {
@@ -460,6 +479,12 @@ static l_thread* l_threadpool_acquire() {
   thread->weight += 1;
   l_priorq_push(&L_thread_prq, &thread->node);
   return thread;
+}
+
+static void l_threadpool_acquire_specific(l_thread* thread) {
+  thread->weight += 1;
+  l_priorq_remove(&L_thread_prq, &thread->node);
+  l_priorq_push(&L_thread_prq, &thread->node);
 }
 
 static void l_threadpool_release(l_thread* thread) {
@@ -788,7 +813,9 @@ static int l_master_messages_handle(l_squeue* frmq) {
     case L_MESSAGE_START_SERVICE: {
         l_service* srvc = (l_service*)((l_message_ptr*)msg)->ptr;
         /* attach thread first */
-        if (!srvc->thread) {
+        if (srvc->thread) {
+          l_threadpool_acquire_specific(srvc->thread);
+        } else {
           srvc->thread = l_threadpool_acquire();
         }
 
@@ -911,7 +938,7 @@ static int l_master_loop(int (*start)()) {
   l_squeue_init(&rxmq);
   l_squeue_init(&frmq);
 
-  srvc = l_create_service(master, sizeof(l_service), l_bootstrap_service_proc, false);
+  srvc = l_create_service(sizeof(l_service), l_bootstrap_service_proc);
   srvc->svid = L_SERVICE_BOOTSTRAP;
   l_start_service(srvc); /* start bootstrap service */
   l_master_messages_handle(&frmq); /* let bootstrap service startup */
@@ -1134,8 +1161,8 @@ int startmainthreadcv(int (*start)(), int argc, char** argv) {
   l_logm_s("master initialized");
 
   fileprefix = l_strt_e(conf->logfile, conf->prefixend);
-  l_logm_5("workers %d log_buffer_size %d service_table_size 2^%d thread_max_free_memory %d logfile_prefix %w",
-    ld(conf->workers), ld(conf->log_buffer_size), ld(conf->service_table_size), ld(conf->thread_max_free_memory), lp(&fileprefix));
+  l_logm_5("workers %d log_buffer_size %d service_table_size 2^%d thread_max_free_memory %d logfile_prefix %strt",
+    ld(conf->workers), ld(conf->log_buffer_size), ld(conf->service_table_size), ld(conf->thread_max_free_memory), lstrt(&fileprefix));
 
   l_free_config(conf);
 

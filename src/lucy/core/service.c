@@ -3,12 +3,14 @@
 #define L_SERVICE_SAMETHRD 0x01
 #define L_SERVICE_IO_EVENT 0x02
 #define L_SERVICE_CLOSING  0x04
+#define L_SERVICE_STARTED  0x08
 
 void l_start_service(l_service* srvc) {
   l_thread* thread = srvc->thread;
   if (!(srvc->wflgs & L_SERVICE_SAMETHRD)) {
     srvc->thread = 0;
   }
+  srvc->wflgs |= L_SERVICE_STARTED;
   l_send_message_ptr(thread, L_SERVICE_MASTER_ID, L_MESSAGE_START_SERVICE, srvc);
 }
 

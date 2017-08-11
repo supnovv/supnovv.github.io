@@ -61,6 +61,11 @@ typedef union {
 #define ls(s) lp(s)
 #define lserror(n) lp(strerror(n))
 #define lstring(s) lp(l_string_cstr(s))
+#define lc(a) ld(a)
+#define lt(a) ld(a)
+#define lb(a) lu(a)
+#define lo(a) lu(a)
+#define lx(a) lu(a)
 
 l_inline l_value lp(const void* p) {
   l_value a; a.p = p; return a;
@@ -146,6 +151,14 @@ typedef struct {
   l_int n;
 } l_strn;
 
+l_inline l_value lstrt(const l_strt* s) {
+  return lp(s);
+}
+
+l_inline l_value lstrn(const l_strn* s) {
+  return lp(s);
+}
+
 #define l_literal_strn(s) ((l_strn){l_rstr("" s), sizeof(s) / sizeof(char) - 1})
 #define l_literal_strt(s) l_strt_l(l_rstr("" s), sizeof(s) / sizeof(char) - 1)
 #define l_empty_strt() ((l_strt){0,0})
@@ -161,6 +174,14 @@ l_inline l_strt l_strt_l(const void* s, l_int len) {
 
 l_inline l_strt l_strt_sft(const void* s, l_int from, l_int to) {
   return l_strt_e(l_rstr(s) + from, l_rstr(s) + to);
+}
+
+l_inline l_strt l_strn_to_strt(const l_strn* s) {
+  return l_strt_l(s->start, s->n);
+}
+
+l_inline int l_strt_is_empty(const l_strt* s) {
+  return !(s->start != 0 && s->start < s->end);
 }
 
 l_extern int l_strt_equal(l_strt l, l_strt r);

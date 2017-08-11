@@ -551,17 +551,18 @@ static const l_rune* l_string_format_a_value(l_string* self, const l_rune* start
   l_umedit flags = 0; /* start pointer to '%' and next rune is not a '%' */
   const l_rune* cur = start;
   /**
-   * s - const void*  // ?x print as hex, ?w treat as l_strt*
-   * f - double
-   * u - l_ulong
-   * d - l_long
-   * w - l_strt*
-   * c - print as char
-   * t - print 1 or 0
-   * p - print as pointer
-   * b - bin
-   * o - oct
-   * x - hex
+   * s - const void*          ls(a) lp(a)
+   * f - double               lf(a)
+   * u - l_ulong              lu(a)
+   * d - l_long               ld(a)
+   * strt - l_strt*           lstrt(a)
+   * strn - l_strn*           lstrn(a)
+   * c - print as char        lc(a) ld(a)
+   * t - print 1 or 0         lt(a) ld(a)
+   * p - print as pointer     lp(a)
+   * b - bin                  lb(a) lu(a)
+   * o - oct                  lo(a) lu(a)
+   * x - hex                  lx(a) lu(a)
    * formats:
    * base - (b)in (o)ct (h)ex
    * sign - ( )pace (+) (z) dont print 0b 0o 0x prefix
@@ -623,6 +624,14 @@ static const l_rune* l_string_format_a_value(l_string* self, const l_rune* start
       flags |= L_FORMAT_UPPER;
       /* fallthrough */
     case 's':
+      if (end - cur >= 4 && *(cur+1) == 't' && *(cur+2) == 'r' && (*(cur+3) == 't' || *(cur+3) == 'n')) {
+        if (*(cur+3) == 't') {
+          l_string_format_string(self, *((l_strt*)a.p), flags);
+        } else {
+          l_string_format_string(self, l_strn_to_strt((l_strn*)a.p), flags);
+        }
+        return cur + 4;
+      }
       l_string_format_string(self, l_strt_c(a.p), flags);
       return cur + 1;
 
@@ -636,10 +645,6 @@ static const l_rune* l_string_format_a_value(l_string* self, const l_rune* start
 
     case 'd': case 'D':
       l_string_format_long(self, a.d, flags);
-      return cur + 1;
-
-    case 'w': case 'W':
-      l_string_format_string(self, *((l_strt*)a.p), flags);
       return cur + 1;
 
     case 'C':

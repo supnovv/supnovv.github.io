@@ -42,6 +42,10 @@ int l_sockaddr_init(l_sockaddr* self, l_strt ip, l_ushort port) {
     sa->addr.in6.sin6_port = htons(port);
     return true;
   }
+  if (l_strt_is_empty(&ip)) {
+    l_logw_s("empty ip provided, try to use 0.0.0.0");
+    ip = l_literal_strt("0.0.0.0");
+  }
   if ((n = inet_pton(AF_INET, (const char*)ip.start, &(sa->addr.in.sin_addr))) != 1) {
     goto errorlabel;
   }
@@ -51,7 +55,7 @@ int l_sockaddr_init(l_sockaddr* self, l_strt ip, l_ushort port) {
   return true;
 errorlabel:
   if (n == 0) {
-    l_loge_s("inet_pton invalid ip");
+    l_loge_1("inet_pton invalid ip %strt", lstrt(&ip));
   } else {
     l_loge_1("inet_pton %s", lserror(errno));
   }

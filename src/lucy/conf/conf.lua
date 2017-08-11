@@ -11,9 +11,12 @@ workers = 1
 -- logfile_prefix = "stdout"
 
 http_default = {
-  backlog = 0;
-  ip = "";
+  ip = "127.0.0.1";
   port = 80;
-  rxlimit = 1024*8;
+  backlog = 0;
+  tx_init_size = 0;
+  rx_init_size = 0;
+  rx_limit = 1024*8;
+  lua_module = "";
 }
 

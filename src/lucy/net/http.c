@@ -555,15 +555,17 @@ typedef struct {
   l_string ip;
   l_ushort port;
   l_handle sock;
-  l_int txinitsize;
-  l_int rxinitsize;
-  l_int rxlimit;
+  int backlog;
+  l_int tx_init_size;
+  l_int rx_init_size;
+  l_int rx_limit;
+  l_string lua_module;
   int (*client_request_handler)(l_state*);
 } l_http_server_service;
 
 typedef struct {
   l_handle sock;
-  l_int rxlimit;
+  l_int rx_limit;
   l_string* buf;
   l_int lstart; /* line start */
   l_int lnewline; /* newline pos */
@@ -767,7 +769,7 @@ static int l_http_server_read_headers(l_state* state) {
       continue;
     }
 
-    l_logw_1("unknown or invalid header %w", lp(&cur_line));
+    l_logw_1("unknown or invalid header %strt", lstrt(&cur_line));
   }
 
   if (ssrx->method < L_HTTP_M_POST) {
@@ -879,36 +881,89 @@ static int l_http_server_service_proc(l_service* self, l_message* msg) {
     return L_STATUS_EINVAL;
   }
 
-  ssrx = (l_http_server_receive_service*)l_create_service(self->thread, sizeof(l_http_server_receive_service), l_http_server_receive_service_proc, false);
+  ssrx = (l_http_server_receive_service*)l_create_service(sizeof(l_http_server_receive_service), l_http_server_receive_service_proc);
   l_zero_l(l_rstr(ssrx) + sizeof(l_service), sizeof(l_http_server_receive_service) - sizeof(l_service));
   ssrx->server = ss;
   ssrx->remote = connind->remote;
   ssrx->comm.sock = connind->fd;
-  ssrx->comm.rxlimit = ss->rxlimit;
+  ssrx->comm.rx_limit = ss->rx_limit;
   ssrx->comm.buf = &ssrx->rxbuf;
-  ssrx->rxbuf = l_thread_create_limited_string(self->thread, ss->rxinitsize, ss->rxlimit);
-  ssrx->txbuf = l_thread_create_string(self->thread, ss->txinitsize);
+  ssrx->rxbuf = l_thread_create_limited_string(self->thread, ss->rx_init_size, ss->rx_limit);
+  ssrx->txbuf = l_thread_create_string(self->thread, ss->tx_init_size);
 
   l_start_receiver_service(&ssrx->head, ssrx->comm.sock);
   return 0;
 }
 
-int l_start_http_server(l_strt ip, l_ushort port, int (*client_request_handler)(l_state*)) {
+static int l_http_server_service_get_ip(void* self, l_strt str) {
+  l_http_server_service* ss = (l_http_server_service*) self;
+  if (l_strt_is_empty(&str)) return false;
+  ss->ip = l_create_string_from(str);
+  return true;
+}
+
+static int l_http_server_service_get_module(void* self, l_strt str) {
+  l_http_server_service* ss = (l_http_server_service*) self;
+  if (l_strt_is_empty(&str)) return false;
+  ss->lua_module = l_create_string_from(str);
+  return true;
+}
+
+int l_start_http_server(const void* http_conf_name, int (*client_request_handler)(l_state*)) {
   l_sockaddr sa;
   l_http_server_service* ss = 0;
+  lua_State* L = l_get_luastate();
 
-  if (!l_sockaddr_init(&sa, ip, port)) return L_STATUS_ERROR;
+  ss = (l_http_server_service*)l_create_service(sizeof(l_http_server_service), l_http_server_service_proc);
 
-  ss = (l_http_server_service*)l_create_service(0, sizeof(l_http_server_service), l_http_server_service_proc, false);
-  ss->ip = l_create_string_from(ip);
-  ss->port = port;
-  ss->sock = l_socket_listen(&sa, L_HTTP_BACKLOG); /* TODO: use conf->backlog */
-  ss->txinitsize = 1024; /* TODO: use conf->txinitsize */
-  ss->rxinitsize = 80; /* TODO: use conf->rxinitsize */
-  ss->rxlimit = 1024*8; /* TODO: use conf->rxlimit */
-  ss->client_request_handler = client_request_handler;
+  if (!http_conf_name) {
+    http_conf_name = "http_default";
+  }
 
-  if (!l_socket_is_open(ss->sock)) return L_STATUS_ERROR;
+  if (!lucy_strconf_n(L, l_http_server_service_get_ip, ss, 2, http_conf_name, "ip")) {
+    ss->ip = l_create_string_from(l_literal_strt("0.0.0.0"));
+  }
+
+  if ((ss->port = lucy_intconf_n(L, 2, http_conf_name, "port")) == 0) {
+    ss->port = 80;
+  }
+
+  if ((ss->backlog = lucy_intconf_n(L, 2, http_conf_name, "backlog")) < L_HTTP_BACKLOG) {
+    ss->backlog = L_HTTP_BACKLOG;
+  }
+
+  if ((ss->tx_init_size = lucy_intconf_n(L, 2, http_conf_name, "tx_init_size")) == 0) {
+    ss->tx_init_size = 1024;
+  }
+
+  if ((ss->rx_init_size = lucy_intconf_n(L, 2, http_conf_name, "rx_init_size")) == 0) {
+    ss->rx_init_size = 128;
+  }
+
+  if ((ss->rx_limit = lucy_intconf_n(L, 2, http_conf_name, "rx_limit")) == 0) {
+    ss->rx_limit = 1024*8;
+  }
+
+  ss->client_request_handler = 0;
+  if (!lucy_strconf_n(L, l_http_server_service_get_module, ss, 2, http_conf_name, "lua_module")) {
+    ss->client_request_handler = client_request_handler;
+  }
+
+  if (!l_sockaddr_init(&sa, l_string_strt(&ss->ip), ss->port)) {
+    l_free_unstarted_service(&ss->head);
+    return L_STATUS_ERROR;
+  }
+
+  ss->sock = l_socket_listen(&sa, ss->backlog);
+  if (!l_socket_is_open(ss->sock)) {
+    l_free_unstarted_service(&ss->head);
+    return L_STATUS_ERROR;
+  }
+
+  l_logm_8("start http server: %s ip %s port %d backlog %d tx_init_size %d rx_init_size %d rx_limit %d module %s",
+    ls(http_conf_name), ls(l_string_cstr(&ss->ip)), ld(ss->port), ld(ss->backlog), ld(ss->tx_init_size),
+    ld(ss->rx_init_size), ld(ss->rx_limit), l_string_is_empty(&ss->lua_module) ? ls("n/a") : ls(l_string_cstr(&ss->lua_module)));
+
   l_start_listener_service(&ss->head, ss->sock);
   return 0;
 }
@@ -944,7 +999,7 @@ int l_http_write_status(l_state* state, int code) {
     httpver = L_HTTP_VER_11N;
   }
 
-  l_string_format_3(txbuf, "%w %d %w\r\n", lp(&l_http_versions[httpver]), ld(l_status[code].code), lp(&l_status[code].phrase));
+  l_string_format_3(txbuf, "%strn %d %strn\r\n", lstrn(&l_http_versions[httpver]), ld(l_status[code].code), lstrn(&l_status[code].phrase));
   ssrx->stage = L_HTTP_WRITE_STATUS;
   return true;
 }
@@ -963,7 +1018,7 @@ int l_http_write_header(l_state* state, l_strt header) {
     return false;
   }
 
-  l_string_format_1(txbuf, "%w\r\n", lp(&header));
+  l_string_format_1(txbuf, "%strt\r\n", lstrt(&header));
   ssrx->stage = L_HTTP_WRITE_HEADER;
   return true;
 }
@@ -989,7 +1044,7 @@ int l_http_write_body(l_state* state, l_strt body, int mime) {
   }
 
   if (ssrx->httpver > L_HTTP_VER_0NN) {
-    l_string_format_2(txbuf, "Content-Type: %w\r\nContent-Length: %d\r\n\r\n", lp(&l_mime_types[mime]), ld(len));
+    l_string_format_2(txbuf, "Content-Type: %strn\r\nContent-Length: %d\r\n\r\n", lstrn(&l_mime_types[mime]), ld(len));
   }
 
   l_string_append(txbuf, body);
@@ -1020,7 +1075,7 @@ int l_http_write_file(l_state* state, l_strt filename, int mime) {
   if (!l_string_ensure_remain(txbuf, filesize + 1)) return false;
 
   if (ssrx->httpver > L_HTTP_VER_0NN) {
-    l_string_format_2(txbuf, "Content-Type: %w\r\nContent-Length: %d\r\n\r\n", lp(&l_mime_types[mime]), ld(filesize));
+    l_string_format_2(txbuf, "Content-Type: %strn\r\nContent-Length: %d\r\n\r\n", lstrn(&l_mime_types[mime]), ld(filesize));
   }
 
   n = l_read_file(&file, l_string_end(txbuf), filesize);

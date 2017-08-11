@@ -145,6 +145,71 @@ int lucy_strconf(lua_State* L, int (*func)(void* stream, l_strt str), void* stre
   return func(stream, l_strt_e(result, result + len));
 }
 
+static int lucy_loadconf_n(lua_State* L, int n, va_list vl) {
+  const char* libname = "LUCY_GLOBAL_TABLE";
+  const char* keyname = 0;
+  if (n <= 0) return false;
+  lua_getglobal(L, libname); /* push the table */
+  while (n-- > 0) {
+    keyname = va_arg(vl, const char*);
+    if (keyname == 0) {
+      l_loge_s("loadconf invalid keyname");
+      return false;
+    }
+    if (!lua_istable(L, -1)) {
+      l_loge_1("loadconf %s from not a table", ls(keyname));
+      return false;
+    }
+    lua_getfield(L, /* table index */ -1, keyname); /* push the field value */
+  }
+  return true;
+}
+
+l_int lucy_intconf_n(lua_State* L, int n, ...) {
+  int startelems = 0;
+  l_int result = 0;
+  va_list vl;
+  va_start(vl, n);
+  startelems = lua_gettop(L);
+
+  if (!lucy_loadconf_n(L, n, vl)) {
+    lua_pop(L, lua_gettop(L) - startelems);
+    l_logw_s("load int conf failed");
+    va_end(vl);
+    return 0;
+  }
+
+  result = lua_tointeger(L, -1);
+  lua_pop(L, lua_gettop(L) - startelems);
+  va_end(vl);
+  return result;
+}
+
+int lucy_strconf_n(lua_State* L, int (*func)(void* stream, l_strt str), void* stream, int n, ...) {
+  int startelems = 0;
+  const char* result = 0;
+  size_t len = 0;
+  va_list vl;
+  va_start(vl, n);
+  startelems = lua_gettop(L);
+
+  if (!lucy_loadconf_n(L, n, vl)) {
+    lua_pop(L, lua_gettop(L) - startelems);
+    l_logw_s("load str conf failed");
+    va_end(vl);
+    return false;
+  }
+
+  va_end(vl);
+
+  result = lua_tolstring(L, -1, &len);
+  if (!result) {
+    return false;
+  }
+
+  return func(stream, l_strt_e(result, result + len));
+}
+
 static void l_init_luastate(lua_State* L) {
   const char* libname = "LUCY_GLOBAL_TABLE";
 

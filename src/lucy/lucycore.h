@@ -346,6 +346,10 @@ l_inline l_thread* l_thread_self() {
 #endif
 }
 
+l_inline lua_State* l_get_luastate() {
+  return l_thread_self()->L;
+}
+
 l_extern l_thread* l_thread_master();
 l_extern int l_thread_start(l_thread* self, int (*start)());
 l_extern int l_thread_join(l_thread* self);
@@ -497,7 +501,9 @@ typedef struct l_service {
   int (*entry)(l_service*, l_message*); /* only accessed by a worker */
 } l_service;
 
-l_extern l_service* l_create_service(l_thread* thread, l_int size, int (*entry)(l_service*, l_message*), int samethread);
+l_extern l_service* l_create_service(l_int size, int (*entry)(l_service*, l_message*));
+l_extern l_service* l_create_service_to_run_in_this_thread(l_int size, int (*entry)(l_service*, l_message*));
+l_extern int l_free_unstarted_service(l_service* srvc);
 l_extern void l_start_service(l_service* srvc);
 l_extern void l_start_listener_service(l_service* srvc, l_handle sock);
 l_extern void l_start_initiator_service(l_service* srvc, l_handle sock);

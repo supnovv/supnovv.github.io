@@ -16,7 +16,9 @@ l_inline l_thread* l_state_belong(l_state* s) {
 }
 
 l_extern l_int lucy_intconf(lua_State* L, const void* name);
+l_extern l_int lucy_intconf_n(lua_State* L, int n, ...);
 l_extern int lucy_strconf(lua_State* L, int (*func)(void* stream, l_strt str), void* stream, const void* name);
+l_extern int lucy_strconf_n(lua_State* L, int (*func)(void* stream, l_strt str), void* stream, int n, ...);
 
 l_extern lua_State* l_new_luastate();
 l_extern void l_close_luastate(lua_State* L);
