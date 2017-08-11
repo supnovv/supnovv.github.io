@@ -79,10 +79,6 @@ void l_close_event(l_service* srvc) {
   l_send_service_message(thread, L_SERVICE_MASTER_ID, L_MESSAGE_CLOSE_EVENTFD, srvc->svid, fd);
 }
 
-int l_service_yield(l_service* self, int (*kfunc)(l_state*)) {
-  return l_state_yield(self->co, kfunc);
-}
-
 void l_send_message(l_thread* thread, l_umedit destid, l_message* msg) {
   msg->srvc = 0;
   msg->dstid = destid;

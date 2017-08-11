@@ -833,6 +833,21 @@ static int l_http_server_read_request(l_state* state) {
   return l_http_server_read_headers(state);
 }
 
+#define L_HTTP_DISCARD_BUFFER_SIZE 1024
+
+static void l_http_server_discard_data(l_http_server_receive_service* ssrx) {
+  l_int n = 0;
+  l_int status = 0;
+  l_byte buffer[L_HTTP_DISCARD_BUFFER_SIZE+1];
+ContinueRead:
+  n = l_socket_read(ssrx->comm.sock, buffer, L_HTTP_DISCARD_BUFFER_SIZE, &status);
+  if (status < 0) return; /* status >=0 success, <0 L_STATUS_ERROR */
+  if (n == L_HTTP_DISCARD_BUFFER_SIZE) {
+    goto ContinueRead;
+  }
+  return;
+}
+
 static int l_http_server_receive_service_proc(l_service* srvc, l_message* msg) {
   l_ioevent_message* ioev = (l_ioevent_message*)msg;
   l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
@@ -840,7 +855,7 @@ static int l_http_server_receive_service_proc(l_service* srvc, l_message* msg) {
   int n = 0;
 
   if (msg->type != L_MESSAGE_IOEVENT) {
-    l_logw_1("http_server_receive_service_proc msg %d", ld(msg->type));
+    l_loge_1("http_server_receive_service_proc msg %d", ld(msg->type));
     return L_STATUS_EINVAL;
   }
 
@@ -861,13 +876,29 @@ static int l_http_server_receive_service_proc(l_service* srvc, l_message* msg) {
     }
     ssrx->stage = L_HTTP_WRRES_STAGE;
   } else {
+    if (masks & L_IOEVENT_READ) {
+      /* read event received at writing response stage, read it out and discard */
+      l_loge_s("read and discard data at WRRES_STAGE");
+      l_http_server_discard_data(ssrx);
+    }
     if (!(masks & L_IOEVENT_WRITE)) {
       return 0;
     }
   }
 
-  n = l_service_resume(srvc, ssrx->server->client_request_handler);
-  if (n < 0) l_close_service(srvc);
+  if (!l_string_is_empty(&ssrx->server->lua_module)) {
+  } else {
+    if ((n = l_service_resume(srvc, ssrx->server->client_request_handler)) != 0) {
+      if (n < 0) l_close_service(srvc);
+      return 0;
+    }
+  }
+
+  /* current request handled finished, prepare for next request or disconnect */
+  ssrx->stage = L_HTTP_RDREQ_STAGE;
+  if (ssrx->httpver <= L_HTTP_VER_10N) {
+    l_close_service(srvc);
+  }
   return 0;
 }
 
@@ -909,6 +940,13 @@ static int l_http_server_service_get_module(void* self, l_strt str) {
   return true;
 }
 
+#define L_HTTP_DEFAULT_PORT 80
+#define L_HTTP_DEFAULT_TX_INIT_SIZE 1024
+#define L_HTTP_DEFAULT_RX_INIT_SIZE 128
+#define L_HTTP_DEFAULT_RX_LIMIT 1024*8
+
+/* TODO: 如何释放特定service中的资源 */
+
 int l_start_http_server(const void* http_conf_name, int (*client_request_handler)(l_state*)) {
   l_sockaddr sa;
   l_http_server_service* ss = 0;
@@ -925,27 +963,28 @@ int l_start_http_server(const void* http_conf_name, int (*client_request_handler
   }
 
   if ((ss->port = lucy_intconf_n(L, 2, http_conf_name, "port")) == 0) {
-    ss->port = 80;
+    ss->port = L_HTTP_DEFAULT_PORT;
   }
 
   if ((ss->backlog = lucy_intconf_n(L, 2, http_conf_name, "backlog")) < L_HTTP_BACKLOG) {
     ss->backlog = L_HTTP_BACKLOG;
   }
 
-  if ((ss->tx_init_size = lucy_intconf_n(L, 2, http_conf_name, "tx_init_size")) == 0) {
-    ss->tx_init_size = 1024;
+  if ((ss->tx_init_size = lucy_intconf_n(L, 2, http_conf_name, "tx_init_size")) < L_HTTP_DEFAULT_TX_INIT_SIZE) {
+    ss->tx_init_size = L_HTTP_DEFAULT_TX_INIT_SIZE;
   }
 
-  if ((ss->rx_init_size = lucy_intconf_n(L, 2, http_conf_name, "rx_init_size")) == 0) {
-    ss->rx_init_size = 128;
+  if ((ss->rx_init_size = lucy_intconf_n(L, 2, http_conf_name, "rx_init_size")) < L_HTTP_DEFAULT_RX_INIT_SIZE) {
+    ss->rx_init_size = L_HTTP_DEFAULT_RX_INIT_SIZE;
   }
 
-  if ((ss->rx_limit = lucy_intconf_n(L, 2, http_conf_name, "rx_limit")) == 0) {
-    ss->rx_limit = 1024*8;
+  if ((ss->rx_limit = lucy_intconf_n(L, 2, http_conf_name, "rx_limit")) < L_HTTP_DEFAULT_RX_LIMIT) {
+    ss->rx_limit = L_HTTP_DEFAULT_RX_LIMIT;
   }
 
   ss->client_request_handler = 0;
   if (!lucy_strconf_n(L, l_http_server_service_get_module, ss, 2, http_conf_name, "lua_module")) {
+    ss->lua_module = l_empty_string();
     ss->client_request_handler = client_request_handler;
   }
 

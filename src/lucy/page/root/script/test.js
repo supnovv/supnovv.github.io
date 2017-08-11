@@ -463,7 +463,7 @@ J.ready(function(){
     assertEq(count, 3, "a2 childBack");
     a2.forNext(function(ei, i) {
       count = i;
-      assertEq(ei.hasClass(".jsdebug-c1.jsdebug-c3"), true, "a2 forNext");  
+      assertEq(ei.hasClass(".jsdebug-c1.jsdebug-c3"), true, "a2 forNext");
     });
     assertEq(count+1, 1, "a2 forNext count");
     a2.forPrev(function(ei, i) {
@@ -679,7 +679,7 @@ J.ready(function(){
     assertEq(count, 3, "inmem a2 childBack");
     a2.forNext(function(ei, i) {
       count = i;
-      assertEq(ei.hasClass(".jsdebug-c1.jsdebug-c3"), true, "inmem a2 forNext");  
+      assertEq(ei.hasClass(".jsdebug-c1.jsdebug-c3"), true, "inmem a2 forNext");
     });
     assertEq(count+1, 1, "inmem a2 forNext count");
     a2.forPrev(function(ei, i) {

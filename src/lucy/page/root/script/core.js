@@ -643,7 +643,7 @@
     if (s[0] != "[") s = [s];
     else s = ssplit(s, "[]");
     if (s.length == 0) return a;
-    var i = 0, opidx = 0, name = "", op = "", value = "";  
+    var i = 0, opidx = 0, name = "", op = "", value = "";
     for (; i < s.length; ++i) {
       opidx = sidx(s[i], "~=");
       if (opidx == -1) opidx = sidx(s[i], "^=");
@@ -1020,7 +1020,7 @@
     return this.nodeType() == 11;
   }
   Elem.prototype.isDocNode = function() {
-    return this.nodeType() == 9; 
+    return this.nodeType() == 9;
   }
   Elem.prototype.isDOCTYPE = function() {
     return this.nodeType() == 10;

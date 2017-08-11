@@ -201,6 +201,7 @@ typedef struct {
 } l_string;
 
 typedef struct l_thread l_thread;
+l_extern l_string l_empty_string();
 l_extern l_string l_create_string(l_int initsize);
 l_extern l_string l_create_string_from(l_strt from);
 l_extern l_string l_create_limited_string(l_int initsize, l_int maxlimit);

@@ -294,6 +294,21 @@ int l_service_resume(l_service* self, int (*func)(l_state*)) {
   return l_state_resume(self->co);
 }
 
+int l_service_yield(l_service* self, int (*kfunc)(l_state*)) {
+  return l_state_yield(self->co, kfunc);
+}
+
+int l_service_is_yield(l_service* self) {
+  return l_state_is_yield(self->co);
+}
+
+void l_service_free_state(l_service* srvc) {
+  if (!srvc->co) return;
+  l_state_free(srvc->co);
+  l_thread_free_buffer(srvc->thread, &srvc->co->node);
+  srvc->co = 0;
+}
+
 static l_byte* l_strbuf_cstr(l_strbuf* self) {
   return (l_byte*)(self + 1);
 }
@@ -1110,11 +1125,7 @@ static int l_worker_start() {
         continue;
       }
 
-      if (srvc->co) {
-        l_state_free(srvc->co);
-        l_thread_free_buffer(thread, &srvc->co->node);
-        srvc->co = 0;
-      }
+      l_service_free_state(srvc);
 
       l_thread_lock(thread);
       srvc->stop_rx_msg = 1;

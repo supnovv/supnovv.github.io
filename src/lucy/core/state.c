@@ -137,6 +137,8 @@ int lucy_strconf(lua_State* L, int (*func)(void* stream, l_strt str), void* stre
     return false;
   }
 
+  /* const char* lua_tolstring(lua_State* L, int index, size_t* len);
+   * The Lua value must be a string or a number; otherwise, the function returns NULL. */
   result = lua_tolstring(L, -1, &len);
   if (!result) {
     return false;
@@ -386,6 +388,10 @@ int l_state_resume(l_state* co) {
 
   l_loge_s("coroutine cannot be resumed");
   return L_STATUS_LUAERR;
+}
+
+int l_state_is_yield(l_state* co) {
+  return lua_status(co->co) == LUA_YIELD;
 }
 
 static int llstatekfunc(lua_State* co, int status, lua_KContext ctx) {

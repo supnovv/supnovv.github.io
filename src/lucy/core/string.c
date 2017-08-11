@@ -36,6 +36,10 @@ l_string l_thread_create_string_from(l_thread* thread, l_strt from) {
   return l_thread_create_limited_string_from(thread, from, 0);
 }
 
+l_string l_empty_string() {
+  return l_create_string(0);
+}
+
 l_string l_create_string(l_int initsize) {
   return l_thread_create_string(0, initsize);
 }
