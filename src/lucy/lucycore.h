@@ -497,12 +497,17 @@ typedef struct l_service {
   l_byte wflgs; /* only accessed by a worker */
   l_umedit svid; /* only set once when init, so can freely access it */
   l_thread* thread; /* only set once when init, so can freely access it */
-  l_state* co; /* only accessed by a worker */
-  int (*entry)(l_service*, l_message*); /* only accessed by a worker */
+  int (*entry)(l_service*, l_message*); /* service entry function */
+  void (*destroy)(l_service*); /* destroy function for child structure's fields if necessary */
+  /* coroutine */
+  lua_State* co;
+  int (*func)(l_service*);
+  int (*kfunc)(l_service*);
+  int coref;
 } l_service;
 
-l_extern l_service* l_create_service(l_int size, int (*entry)(l_service*, l_message*));
-l_extern l_service* l_create_service_to_run_in_this_thread(l_int size, int (*entry)(l_service*, l_message*));
+l_extern l_service* l_create_service(l_int size, int (*entry)(l_service*, l_message*), void (*destroy)(l_service*));
+l_extern l_service* l_create_service_in_same_thread(l_int size, int (*entry)(l_service*, l_message*), void (*destroy)(l_service*));
 l_extern int l_free_unstarted_service(l_service* srvc);
 l_extern void l_start_service(l_service* srvc);
 l_extern void l_start_listener_service(l_service* srvc, l_handle sock);
@@ -510,8 +515,6 @@ l_extern void l_start_initiator_service(l_service* srvc, l_handle sock);
 l_extern void l_start_receiver_service(l_service* srvc, l_handle sock);
 l_extern void l_close_service(l_service* srvc);
 l_extern void l_close_event(l_service* srvc);
-l_extern int l_service_resume(l_service* self, int (*func)(l_state*));
-l_extern int l_service_yield(l_service* self, int (*kfunc)(l_state*));
 
 
 l_extern int startmainthread(int (*start)());

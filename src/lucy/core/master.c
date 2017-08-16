@@ -245,31 +245,35 @@ static l_umedit l_master_gen_service_id() {
 }
 
 
-static l_service* l_create_service_impl(l_int size, int (*entry)(l_service*, l_message*), int samethread) {
+static l_service* l_create_service_impl(l_int size, int (*entry)(l_service*, l_message*), void (*destroy)(l_service*), int samethread) {
   l_service* srvc = 0;
   l_thread* thread = l_thread_self();
-  if (size < (l_int)sizeof(l_service)) return 0;
+
+  if (size < (l_int)sizeof(l_service)) {
+    l_loge_1("create service with invalid size %d", ld(size));
+    return 0;
+  }
+
   srvc = l_thread_alloc_buffer(thread, size);
+  l_zero_l(srvc, size);
+
   srvc->svid = l_master_gen_service_id();
-  srvc->ioev = 0;
   srvc->thread = thread;
-  srvc->co = 0;
   srvc->entry = entry;
-  srvc->stop_rx_msg = 0;
+  srvc->destroy = destroy;
   if (samethread) {
     srvc->mflgs = srvc->wflgs = L_SERVICE_SAMETHRD;
-  } else {
-    srvc->mflgs = srvc->wflgs = 0;
   }
+
   return srvc;
 }
 
-l_service* l_create_service(l_int size, int (*entry)(l_service*, l_message*)) {
-  return l_create_service_impl(size, entry, false);
+l_service* l_create_service(l_int size, int (*entry)(l_service*, l_message*), void (*destroy)(l_service*)) {
+  return l_create_service_impl(size, entry, destroy, false);
 }
 
-l_service* l_create_service_to_run_in_this_thread(l_int size, int (*entry)(l_service*, l_message*)) {
-  return l_create_service_impl(size, entry, true);
+l_service* l_create_service_in_same_thread(l_int size, int (*entry)(l_service*, l_message*), void (*destroy)(l_service*)) {
+  return l_create_service_impl(size, entry, destroy, true);
 }
 
 int l_free_unstarted_service(l_service* srvc) {
@@ -279,34 +283,6 @@ int l_free_unstarted_service(l_service* srvc) {
   }
   l_thread_free_buffer(l_thread_self(), &srvc->node);
   return true;
-}
-
-int l_service_resume(l_service* self, int (*func)(l_state*)) {
-  if (self->co == 0) {
-    l_thread* thread = self->thread;
-    l_debug_assert(thread == l_thread_self());
-    self->co = l_thread_alloc_buffer(thread, sizeof(l_state));
-    l_state_init(self->co, thread, self, func);
-  } else {
-    self->co->srvc = self;
-    self->co->func = func;
-  }
-  return l_state_resume(self->co);
-}
-
-int l_service_yield(l_service* self, int (*kfunc)(l_state*)) {
-  return l_state_yield(self->co, kfunc);
-}
-
-int l_service_is_yield(l_service* self) {
-  return l_state_is_yield(self->co);
-}
-
-void l_service_free_state(l_service* srvc) {
-  if (!srvc->co) return;
-  l_state_free(srvc->co);
-  l_thread_free_buffer(srvc->thread, &srvc->co->node);
-  srvc->co = 0;
 }
 
 static l_byte* l_strbuf_cstr(l_strbuf* self) {
@@ -953,7 +929,7 @@ static int l_master_loop(int (*start)()) {
   l_squeue_init(&rxmq);
   l_squeue_init(&frmq);
 
-  srvc = l_create_service(sizeof(l_service), l_bootstrap_service_proc);
+  srvc = l_create_service(sizeof(l_service), l_bootstrap_service_proc, 0);
   srvc->svid = L_SERVICE_BOOTSTRAP;
   l_start_service(srvc); /* start bootstrap service */
   l_master_messages_handle(&frmq); /* let bootstrap service startup */

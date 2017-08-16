@@ -1,3 +1,4 @@
+#include <stddef.h>
 #include "net/http.h"
 
 #define L_HTTP_METHOD_MAX_LEN (7)
@@ -560,7 +561,7 @@ typedef struct {
   l_int rx_init_size;
   l_int rx_limit;
   l_string lua_module;
-  int (*client_request_handler)(l_state*);
+  int (*client_request_handler)(l_service*);
 } l_http_server_service;
 
 typedef struct {
@@ -684,7 +685,7 @@ l_int l_http_match_header(l_stringmap* name, l_strt s, l_strt* value) {
   return headid;
 }
 
-static int l_http_read_chunked_body(l_state* state) {
+static int l_http_read_chunked_body(l_service* srvc) {
   /* Transfer-Encoding: chunked<CRLF>
      Trailer: Content-MD5<CRLF>
      <CRLF>
@@ -694,14 +695,14 @@ static int l_http_read_chunked_body(l_state* state) {
      ab<CRLF>
      0<CRLF>
      Content-MD5:gjqei54p26tjisgj3p4utjgrj53<CRLF> */
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
-  (void)state;
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
+  (void)srvc;
   (void)ssrx;
   return 0;
 }
 
-static int l_http_read_body(l_state* state) {
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+static int l_http_read_body(l_service* srvc) {
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
   l_http_read_common* comm = &ssrx->comm;
   int status = 0;
 
@@ -712,19 +713,19 @@ static int l_http_read_body(l_state* state) {
   }
 
   if (status == L_STATUS_WAITMORE) {
-    return l_state_yield(state, l_http_read_body);
+    return l_service_yield(srvc, l_http_read_body);
   }
 
   return 0;
 }
 
-static int l_http_server_read_headers(l_state* state) {
+static int l_http_server_read_headers(l_service* srvc) {
   /* <name>: <value><crlf>
      ...
      <name>: <value><crlf>
      <crlf>
      <entity-body>  */
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
   l_http_read_common* comm = &ssrx->comm;
   l_string* rxbuf = &ssrx->rxbuf;
   const l_rune* buff_start = 0;
@@ -740,7 +741,7 @@ static int l_http_server_read_headers(l_state* state) {
     }
 
     if (status == L_STATUS_WAITMORE) {
-      return l_state_yield(state, l_http_server_read_headers);
+      return l_service_yield(srvc, l_http_server_read_headers);
     }
 
     buff_start = l_string_start(rxbuf);
@@ -779,15 +780,15 @@ static int l_http_server_read_headers(l_state* state) {
   ssrx->body = comm->lend;
 
   if (ssrx->comhead[L_HTTP_H_TRANSFER_ENCODING].start) {
-    return l_http_read_chunked_body(state);
+    return l_http_read_chunked_body(srvc);
   }
 
-  return l_http_read_body(state);
+  return l_http_read_body(srvc);
 }
 
-static int l_http_server_read_request(l_state* state) {
+static int l_http_server_read_request(l_service* srvc) {
   /* <method> <request-url> HTTP/<major>.<minor><crlf> #CarriageReturn(CR) 13 '\r' #LineFeed(LF) 10 '\n' */
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
   l_http_read_common* comm = &ssrx->comm;
   l_string* rxbuf = &ssrx->rxbuf;
   const l_rune* buff_start = 0;
@@ -802,7 +803,7 @@ static int l_http_server_read_request(l_state* state) {
   }
 
   if (status == L_STATUS_WAITMORE) {
-    return l_state_yield(state, l_http_server_read_request);
+    return l_service_yield(srvc, l_http_server_read_request);
   }
 
   /* a line is read, parse <method> first */
@@ -830,7 +831,7 @@ static int l_http_server_read_request(l_state* state) {
   ssrx->httpver = strid;
 
   /* start to parse headers */
-  return l_http_server_read_headers(state);
+  return l_http_server_read_headers(srvc);
 }
 
 #define L_HTTP_DISCARD_BUFFER_SIZE 1024
@@ -846,6 +847,30 @@ ContinueRead:
     goto ContinueRead;
   }
   return;
+}
+
+static int l_http_server_load_lua_module(lua_State* L) {
+#if 0
+  size_t len = 0;
+  const char* top_arg = lua_tolstring(L, -1, &len);
+  l_strt module_name;
+  l_string load;
+
+  if (module_name == 0) {
+    l_loge_s("get module name failed");
+    return 0;
+  }
+
+  module_name = l_strt_e(top_arg, top_arg + len);
+  load = l_create_string(256);
+  l_string_format_1(&load, "local func = require \"%strt\"\n"
+    "local request = LUCY_GLOBAL_TABLE.http_request_arguments_table\n"
+    "local response = LUCY_GLOBAL_TABLE.http_response_results_table\n"
+    "response.code, response.headers, response.body = \n"
+    "func(request.method, request.httpver, request.headers, request.body)\n", lstrt(&module_name));
+#endif
+  (void)L;
+  return 0;
 }
 
 static int l_http_server_receive_service_proc(l_service* srvc, l_message* msg) {
@@ -870,11 +895,12 @@ static int l_http_server_receive_service_proc(l_service* srvc, l_message* msg) {
     if (!(masks & L_IOEVENT_READ)) {
       return 0;
     }
-    if ((n = l_service_resume(srvc, l_http_server_read_request)) != 0) {
+    if ((n = l_service_resume(srvc)) != 0) {
       if (n < 0) l_close_service(srvc);
       return 0;
     }
     ssrx->stage = L_HTTP_WRRES_STAGE;
+    l_service_set_resume(srvc, ssrx->server->client_request_handler);
   } else {
     if (masks & L_IOEVENT_READ) {
       /* read event received at writing response stage, read it out and discard */
@@ -887,8 +913,13 @@ static int l_http_server_receive_service_proc(l_service* srvc, l_message* msg) {
   }
 
   if (!l_string_is_empty(&ssrx->server->lua_module)) {
+    /* void luaL_requiref(lua_State* L, const char* modname, lua_CFunction openf, int global);
+    if modname is not already present in package.loaded, calls function openf with string modname as
+    an argument and sets the call result in package.loaded[modname], as if that function has been
+    called through require. if global is true, also stores the module into global modnmae.
+    leaves a copy of the module on the stack. */
   } else {
-    if ((n = l_service_resume(srvc, ssrx->server->client_request_handler)) != 0) {
+    if ((n = l_service_resume(srvc)) != 0) {
       if (n < 0) l_close_service(srvc);
       return 0;
     }
@@ -912,8 +943,8 @@ static int l_http_server_service_proc(l_service* self, l_message* msg) {
     return L_STATUS_EINVAL;
   }
 
-  ssrx = (l_http_server_receive_service*)l_create_service(sizeof(l_http_server_receive_service), l_http_server_receive_service_proc);
-  l_zero_l(l_rstr(ssrx) + sizeof(l_service), sizeof(l_http_server_receive_service) - sizeof(l_service));
+  /* TODO: implement destroy function */
+  ssrx = (l_http_server_receive_service*)l_create_service(sizeof(l_http_server_receive_service), l_http_server_receive_service_proc, 0);
   ssrx->server = ss;
   ssrx->remote = connind->remote;
   ssrx->comm.sock = connind->fd;
@@ -922,6 +953,7 @@ static int l_http_server_service_proc(l_service* self, l_message* msg) {
   ssrx->rxbuf = l_thread_create_limited_string(self->thread, ss->rx_init_size, ss->rx_limit);
   ssrx->txbuf = l_thread_create_string(self->thread, ss->tx_init_size);
 
+  l_service_set_resume(&ssrx->head, l_http_server_read_request);
   l_start_receiver_service(&ssrx->head, ssrx->comm.sock);
   return 0;
 }
@@ -947,12 +979,13 @@ static int l_http_server_service_get_module(void* self, l_strt str) {
 
 /* TODO: 如何释放特定service中的资源 */
 
-int l_start_http_server(const void* http_conf_name, int (*client_request_handler)(l_state*)) {
+int l_start_http_server(const void* http_conf_name, int (*client_request_handler)(l_service*)) {
   l_sockaddr sa;
   l_http_server_service* ss = 0;
   lua_State* L = l_get_luastate();
 
-  ss = (l_http_server_service*)l_create_service(sizeof(l_http_server_service), l_http_server_service_proc);
+  /* TODO: implement destroy function */
+  ss = (l_http_server_service*)l_create_service(sizeof(l_http_server_service), l_http_server_service_proc, 0);
 
   if (!http_conf_name) {
     http_conf_name = "http_default";
@@ -1007,7 +1040,7 @@ int l_start_http_server(const void* http_conf_name, int (*client_request_handler
   return 0;
 }
 
-int l_http_write_status(l_state* state, int code) {
+int l_http_write_status(l_service* srvc, int code) {
   /* HTTP/1.1 200 OK<crlf>
      <name>: <value><crlf>
      ...
@@ -1015,7 +1048,7 @@ int l_http_write_status(l_state* state, int code) {
      <crlf>
      <entity-body>   */
 
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
   l_string* txbuf = &ssrx->txbuf;
   int httpver = ssrx->httpver;
 
@@ -1043,8 +1076,8 @@ int l_http_write_status(l_state* state, int code) {
   return true;
 }
 
-int l_http_write_header(l_state* state, l_strt header) {
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+int l_http_write_header(l_service* srvc, l_strt header) {
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
   l_string* txbuf = &ssrx->txbuf;
 
   if (ssrx->httpver == L_HTTP_VER_0NN) {
@@ -1062,8 +1095,8 @@ int l_http_write_header(l_state* state, l_strt header) {
   return true;
 }
 
-int l_http_write_body(l_state* state, l_strt body, int mime) {
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+int l_http_write_body(l_service* srvc, l_strt body, int mime) {
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
   l_string* txbuf = &ssrx->txbuf;
   l_int len = body.end - body.start;
 
@@ -1091,8 +1124,8 @@ int l_http_write_body(l_state* state, l_strt body, int mime) {
   return true;
 }
 
-int l_http_write_file(l_state* state, l_strt filename, int mime) {
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+int l_http_write_file(l_service* srvc, l_strt filename, int mime) {
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
   l_string* txbuf = &ssrx->txbuf;
   l_long filesize = 0;
   l_filestream file;
@@ -1129,24 +1162,24 @@ int l_http_write_file(l_state* state, l_strt filename, int mime) {
   return true;
 }
 
-int l_http_write_css_file(l_state* state, l_strt filename) {
-  return l_http_write_file(state, filename, L_HTTP_MIME_CSS);
+int l_http_write_css_file(l_service* srvc, l_strt filename) {
+  return l_http_write_file(srvc, filename, L_HTTP_MIME_CSS);
 }
 
-int l_http_write_js_file(l_state* state, l_strt filename) {
-  return l_http_write_file(state, filename, L_HTTP_MIME_JS);
+int l_http_write_js_file(l_service* srvc, l_strt filename) {
+  return l_http_write_file(srvc, filename, L_HTTP_MIME_JS);
 }
 
-int l_http_write_html_file(l_state* state, l_strt filename) {
-  return l_http_write_file(state, filename, L_HTTP_MIME_HTML);
+int l_http_write_html_file(l_service* srvc, l_strt filename) {
+  return l_http_write_file(srvc, filename, L_HTTP_MIME_HTML);
 }
 
-int l_http_write_plain_file(l_state* state, l_strt filename) {
-  return l_http_write_file(state, filename, L_HTTP_MIME_PLAIN);
+int l_http_write_plain_file(l_service* srvc, l_strt filename) {
+  return l_http_write_file(srvc, filename, L_HTTP_MIME_PLAIN);
 }
 
-static int l_http_send_response_impl(l_state* state) {
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+static int l_http_send_response_impl(l_service* srvc) {
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
   l_rune* txcur = ssrx->txcur;
   l_rune* txend = l_string_end(&ssrx->txbuf);
   l_int count = txend - txcur, n = 0;
@@ -1159,14 +1192,14 @@ static int l_http_send_response_impl(l_state* state) {
   ssrx->txcur += n;
 
   if (n < count) {
-    return l_state_yield(state, l_http_send_response_impl);
+    return l_service_yield(srvc, l_http_send_response_impl);
   }
 
   return 0;
 }
 
-int l_http_send_response(l_state* state) {
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)state->srvc;
+int l_http_send_response(l_service* srvc) {
+  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
   l_string* txbuf = &ssrx->txbuf;
 
   if (l_string_is_empty(txbuf) || ssrx->stage < L_HTTP_WRITE_STATUS) {
@@ -1179,6 +1212,6 @@ int l_http_send_response(l_state* state) {
   }
 
   ssrx->txcur = l_string_start(txbuf);
-  return l_http_send_response_impl(state);
+  return l_http_send_response_impl(srvc);
 }
 
