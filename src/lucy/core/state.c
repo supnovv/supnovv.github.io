@@ -2,20 +2,122 @@
 #include "lauxlib.h"
 #include "lucycore.h"
 
-/** Continuations **
-Through lua_pcall and lua_call, a C function called from Lua can call Lua back.
-Several functions in the standard library do that: table.sort can call order
-function; string.gsub can call a replacement function; pcall and xpcall call
-functions in protected mode. */
+/**
+ * # Continuations
+ *
+ * Through lua_pcall and lua_call, a C function called from Lua can call Lua back.
+ * Several functions in the standard library do that: table.sort can call order function;
+ * string.gsub can call a replacement function; pcall and xpcall call functions in
+ * protected mode. If we remember that the main Lua code was itself called from C (the
+ * host program), we have a call sequence like C (host) calls Lua (script) that calls C
+ * (library) that calls Lua (callback).
+ *
+ * Usually, Lua handles these sequences of calls without problems; after all, this integration
+ * with C is a hallmark of the language. There is one situation, however, where this
+ * interlacement can cause difficulties: coroutines.
+ *
+ * Each coroutine in Lua has its own stack, which keeps information about the pending calls of
+ * the coroutine. Specifically, the stack stores the return address, the parameters, and the
+ * local variables of each call. For calls to Lua functions, the interpreter needs only this
+ * stack, which we call the soft stack. For calls to C functions, however, the interpreter must
+ * use the C stack, too. After all, the return address and the local variables of a C function
+ * live in the C stack.
+ *
+ * It is easy for the interpreter to have multiple soft stacks, but the runtime of ISO C has
+ * only one internal stack. Therefore, coroutines in Lua cannot suspend the execution of a C
+ * function: if there is a C function in the call path from a resume to its respective yield,
+ * Lua cannot save the stage of that C function to restore it in the next resume.
+ *
+ * Consider the next example, in Lua 5.1:
+ * ```
+ * co = coroutine.wrap(function() print(pcall(coroutine.yield)) end)
+ * co() -- false - attempt to yield across metamethod/C-call boundary
+ * ```
+ * The function pcall is a C function; therefore, Lua 5.1 cannot suspend it, because there is
+ * no way in ISO C to suspend a C function and resume it later.
+ *
+ * Lua 5.2 and later versions ameliorated that difficulty with continuations. Lua 5.2 implements
+ * yields using long jumps, in the same way that it implements errors. A long jump simply throws
+ * away any information about C function in the C stack, so it is impossible to resume those
+ * functions. However, a C function foo can specify a continuation function foo_k, which is
+ * another C function to be called when it is time to resume foo. That is, when the interpreter
+ * detects that it should resume foo, but that a long jump threw away the entry for foo in the
+ * C stack, it calls foo_k instead.
+ *
+ * To make things a little more concrete, let us see the implementation of pcall as an example.
+ * In Lua5.1, this function had the following code:
+ * ```
+ * static int luaB_pcall(lua_State* L) {
+ *   int status;
+ *   luaL_checkany(L, 1); // at least one parameter
+ *   status = lua_pcall(L, lua_gettop(L) - 1, LUA_MULTRET, 0);
+ *   lua_pushboolean(L, (status == LUA_OK));
+ *   lua_insert(L, 1); // status is first result
+ *   return lua_gettop(L); // return status + all results
+ * }
+ * ```
+ *
+ * If the function being called through lua_pcall yielded, it would be impossible to resume
+ * luaB_pcall later. Therefore, the interpreter raised an error whenever we attempted to yield
+ * inside a protected call. Lua 5.3 implements pcall roughtly like below. There are three
+ * important differences from the Lua 5.1 version: first, the new version replaces the call to
+ * lua_pcall by a call to lua_pcallk; second, it puts everything done after that call in a new
+ * auxiliary function finishpcall; third, the status returned by lua_pcallk can be LUA_YIELD,
+ * besides LUA_OK or an error.
+ * ```
+ * static int finishpcall(lua_State* L, int status, intptr_t ctx) {
+ *   (void)ctx; // unused parameter
+ *   status = (status != LUA_OK && status != LUA_YIELD);
+ *   lua_pushboolean(L, (status == 0));
+ *   lua_insert(L, 1); // status is first result
+ *   return lua_gettop(L); // return status + all results
+ * }
+ * static int luaB_pcall(lua_State* L) {
+ *   int status;
+ *   luaL_checkany(L, 1);
+ *   status = lua_pcallk(L, lua_gettop(L) - 1, LUA_MULTRET, 0, 0, finishpcall);
+ *   retrun finishpcall(L, status, 0);
+ * }
+ * ```
+ *
+ * If there are no yields, lua_pcallk works exactly like lua_pcall. If there is a yield,
+ * however, then things are quite different. If a function called by the original lua_pcall
+ * tries to yield, Lua 5.3 raises an error, like Lua 5.1. But when a function called by the
+ * new lua_pcallk yields, there is no error: Lua does a long jump and discards the entry
+ * for luaB_pcall from the C stack, but keeps in the soft stack of the coroutine a reference
+ * to the continuation function given to lua_pcallk (finishpcall, in our example). Later,
+ * when the interpreter detects that it should return to luaB_pcall (which is impossible),
+ * it instead call the continuation function.
+ *
+ * The continuation function finishpcall can also be called when there is an error. Unlike
+ * the original luaB_pcall, finishpcall cannot get the value returned by lua_pcallk. So,
+ * it gets this value as an extra parameter, status. When there are no errors, status is
+ * LUA_YIELD instead of LUA_OK, so that the continuation function can check how it is
+ * being called. In case of errors, status is the original error code.
+ *
+ * Besides the status of the call, the continuation function also receives a context. The
+ * fifth parameter to lua_pcallk is an arbitrary integer that is passed as the last paramter
+ * to the continuation function. (The type of this paramter, intptr_t, allows pointers to be
+ * passed as context, too.) This value allows the original function to pass some arbitrary
+ * information directly to its continuation. (Our example does not use this facility.)
+ *
+ * The continuation system of Lua 5.3 is an ingenious mechanism to support yields, but it is
+ * not a panacea. Some C functions would need to pass too much context to their continuations.
+ * Example include table.sort, which uses the C stack for recursion, adn string.gsub, which
+ * must keep track of captures and a buffer for its partial result. Although it is possible
+ * to rewrite them in a "yieldable" way, the gains do not seem to be worth the extra complexity
+ * and performance losses.
+ *
+ */
 
-static void lucy_poperr(lua_State* L, const void* log) {
+static void lucy_perror(lua_State* L, const void* log) {
   if (log != 0) l_loge_2("%s - %s", ls(log), ls(lua_tostring(L, /* stack index */ -1)));
   lua_pop(L, /* number of elements */ 1); /* pop error object */
 }
 
 static int lucy_loadfile(lua_State* L, const void* file) {
   if (luaL_loadfile(L, (const char*)file) != LUA_OK) {
-    lucy_poperr(L, "lua_loadfile");
+    lucy_perror(L, "lua_loadfile");
     return false;
   }
   return true;
@@ -23,7 +125,7 @@ static int lucy_loadfile(lua_State* L, const void* file) {
 
 static int lucy_pcall(lua_State* L, int nresults) {
   if (lua_pcall(L, /* nargs */ 0, nresults, /* msgh */ 0) != LUA_OK) {
-    lucy_poperr(L, "lua_pcall");
+    lucy_perror(L, "lua_pcall");
     return false;
   }
   return true;

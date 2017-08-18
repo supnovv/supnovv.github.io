@@ -229,15 +229,32 @@ static void l_string_format_true(l_string* self, l_ulong a, l_umedit flags) {
   }
 }
 
-const l_rune l_rune_class_table[] = { /* 0010 0011 0101 0110 0111 1000 */
-  0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-  8,8,8,8,8,8,8,8, 8,8,8,8,8,8,8,8, 5,5,5,5,5,5,5,5, 5,5,8,8,8,8,8,8, /* (5) 0 ~ 9 */
-  8,6,6,6,6,6,6,2, 2,2,2,2,2,2,2,2, 2,2,2,2,2,2,2,2, 2,2,2,8,8,8,8,8, /* (6/2) A ~ Z */
-  8,7,7,7,7,7,7,3, 3,3,3,3,3,3,3,3, 3,3,3,3,3,3,3,3, 3,3,3,8,8,8,8,0, /* (7/3) a ~ z */
-  0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-  0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-  0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0,
-  0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0, 0,0,0,0,0,0,0,0
+/**
+ * [non-zero] pritable charater
+ * [00111010] G ~ Z   0x3a
+ * [00111011] g ~ z   0x3b
+ * [00111101] 0 ~ 9   0x3d
+ * [00111110] A ~ F   0x3e
+ * [00111111] a ~ f   0x3f
+ * [00110000] _       0x30
+ * [00100000] -       0x20
+ * [0000XX1X] letter                 (ch & 0x02)
+ * [0000XX10] upper letter           (ch & 0x03) == 2
+ * [0000XX11] lower letter           (ch & 0x03) == 3
+ * [0000X1XX] hex digit              (ch & 0x04)
+ * [00001XXX] alphanum               (ch & 0x08)
+ * [XXX1XXXX] alphanum and _         (ch & 0x10)
+ * [XX1XXXXX] alphanum and _ and -   (ch & 0x20)
+ */
+const l_rune l_rune_class_table[] = {
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80, 0x80,0x80,0x80,0x80,0x80,0x20,0x80,0x80, 0x3d,0x3d,0x3d,0x3d,0x3d,0x3d,0x3d,0x3d, 0x3d,0x3d,0x80,0x80,0x80,0x80,0x80,0x80, /* (20) - (3d) 0 ~ 9 */
+  0x80,0x3e,0x3e,0x3e,0x3e,0x3e,0x3e,0x3a, 0x3a,0x3a,0x3a,0x3a,0x3a,0x3a,0x3a,0x3a, 0x3a,0x3a,0x3a,0x3a,0x3a,0x3a,0x3a,0x3a, 0x3a,0x3a,0x3a,0x80,0x80,0x80,0x80,0x30, /* (3e,3a) A ~ Z (30) _ */
+  0x80,0x3f,0x3f,0x3f,0x3f,0x3f,0x3f,0x3b, 0x3b,0x3b,0x3b,0x3b,0x3b,0x3b,0x3b,0x3b, 0x3b,0x3b,0x3b,0x3b,0x3b,0x3b,0x3b,0x3b, 0x3b,0x3b,0x3b,0x80,0x80,0x80,0x80,0x00, /* (3f,3b) a ~ z */
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+  0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 };
 
 static const l_rune* l_hex_runes[] = {
@@ -280,21 +297,21 @@ l_int l_string_parse_hex(l_strt s) {
   int negative = false;
 
   while (s.start < s.end) {
-    if (l_check_digit_is_hex(*s.start)) break;
+    if (l_check_is_hex_digit(*s.start)) break;
     if (*s.start == '-') negative = true;
     ++s.start;
   }
 
   if (*s.start == '0' && s.start + 1 < s.end && (*(s.start + 1) == 'x' || *(s.start + 1) == 'X')) {
     s.start += 2;
-    if (s.start >= s.end || !l_check_digit_is_hex(*s.start)) {
+    if (s.start >= s.end || !l_check_is_hex_digit(*s.start)) {
       return 0;
     }
   }
 
   start = s.start;
   while (s.start < s.end) {
-    if (!l_check_digit_is_hex(*s.start)) break;
+    if (!l_check_is_hex_digit(*s.start)) break;
     ++s.start;
   }
 
@@ -1256,5 +1273,73 @@ void l_string_test() {
 
   l_string_free_map(&map);
   l_string_free(&str);
+
+  l_assert(l_check_is_dec_digit('0') && l_check_is_hex_digit('0'));
+  l_assert(l_check_is_dec_digit('1') && l_check_is_hex_digit('1'));
+  l_assert(l_check_is_dec_digit('2') && l_check_is_hex_digit('2'));
+  l_assert(l_check_is_dec_digit('3') && l_check_is_hex_digit('3'));
+  l_assert(l_check_is_dec_digit('4') && l_check_is_hex_digit('4'));
+  l_assert(l_check_is_dec_digit('5') && l_check_is_hex_digit('5'));
+  l_assert(l_check_is_dec_digit('6') && l_check_is_hex_digit('6'));
+  l_assert(l_check_is_dec_digit('7') && l_check_is_hex_digit('7'));
+  l_assert(l_check_is_dec_digit('8') && l_check_is_hex_digit('8'));
+  l_assert(l_check_is_dec_digit('9') && l_check_is_hex_digit('9'));
+
+  l_assert(l_check_is_letter('a') && l_check_is_lower_letter('a') && l_check_is_hex_digit('a'));
+  l_assert(l_check_is_letter('b') && l_check_is_lower_letter('b') && l_check_is_hex_digit('b'));
+  l_assert(l_check_is_letter('c') && l_check_is_lower_letter('c') && l_check_is_hex_digit('c'));
+  l_assert(l_check_is_letter('d') && l_check_is_lower_letter('d') && l_check_is_hex_digit('d'));
+  l_assert(l_check_is_letter('e') && l_check_is_lower_letter('e') && l_check_is_hex_digit('e'));
+  l_assert(l_check_is_letter('f') && l_check_is_lower_letter('f') && l_check_is_hex_digit('f'));
+  l_assert(l_check_is_letter('g') && l_check_is_lower_letter('g'));
+  l_assert(l_check_is_letter('h') && l_check_is_lower_letter('h'));
+  l_assert(l_check_is_letter('i') && l_check_is_lower_letter('i'));
+  l_assert(l_check_is_letter('j') && l_check_is_lower_letter('j'));
+  l_assert(l_check_is_letter('k') && l_check_is_lower_letter('k'));
+  l_assert(l_check_is_letter('l') && l_check_is_lower_letter('l'));
+  l_assert(l_check_is_letter('m') && l_check_is_lower_letter('m'));
+  l_assert(l_check_is_letter('n') && l_check_is_lower_letter('n'));
+  l_assert(l_check_is_letter('o') && l_check_is_lower_letter('o'));
+  l_assert(l_check_is_letter('p') && l_check_is_lower_letter('p'));
+  l_assert(l_check_is_letter('q') && l_check_is_lower_letter('q'));
+  l_assert(l_check_is_letter('r') && l_check_is_lower_letter('r'));
+  l_assert(l_check_is_letter('s') && l_check_is_lower_letter('s'));
+  l_assert(l_check_is_letter('t') && l_check_is_lower_letter('t'));
+  l_assert(l_check_is_letter('u') && l_check_is_lower_letter('u'));
+  l_assert(l_check_is_letter('v') && l_check_is_lower_letter('v'));
+  l_assert(l_check_is_letter('w') && l_check_is_lower_letter('w'));
+  l_assert(l_check_is_letter('x') && l_check_is_lower_letter('x'));
+  l_assert(l_check_is_letter('y') && l_check_is_lower_letter('y'));
+  l_assert(l_check_is_letter('z') && l_check_is_lower_letter('z'));
+
+  l_assert(l_check_is_letter('A') && l_check_is_upper_letter('A') && l_check_is_hex_digit('A'));
+  l_assert(l_check_is_letter('B') && l_check_is_upper_letter('B') && l_check_is_hex_digit('B'));
+  l_assert(l_check_is_letter('C') && l_check_is_upper_letter('C') && l_check_is_hex_digit('C'));
+  l_assert(l_check_is_letter('D') && l_check_is_upper_letter('D') && l_check_is_hex_digit('D'));
+  l_assert(l_check_is_letter('E') && l_check_is_upper_letter('E') && l_check_is_hex_digit('E'));
+  l_assert(l_check_is_letter('F') && l_check_is_upper_letter('F') && l_check_is_hex_digit('F'));
+  l_assert(l_check_is_letter('G') && l_check_is_upper_letter('G'));
+  l_assert(l_check_is_letter('H') && l_check_is_upper_letter('H'));
+  l_assert(l_check_is_letter('I') && l_check_is_upper_letter('I'));
+  l_assert(l_check_is_letter('J') && l_check_is_upper_letter('J'));
+  l_assert(l_check_is_letter('K') && l_check_is_upper_letter('K'));
+  l_assert(l_check_is_letter('L') && l_check_is_upper_letter('L'));
+  l_assert(l_check_is_letter('M') && l_check_is_upper_letter('M'));
+  l_assert(l_check_is_letter('N') && l_check_is_upper_letter('N'));
+  l_assert(l_check_is_letter('O') && l_check_is_upper_letter('O'));
+  l_assert(l_check_is_letter('P') && l_check_is_upper_letter('P'));
+  l_assert(l_check_is_letter('Q') && l_check_is_upper_letter('Q'));
+  l_assert(l_check_is_letter('R') && l_check_is_upper_letter('R'));
+  l_assert(l_check_is_letter('S') && l_check_is_upper_letter('S'));
+  l_assert(l_check_is_letter('T') && l_check_is_upper_letter('T'));
+  l_assert(l_check_is_letter('U') && l_check_is_upper_letter('U'));
+  l_assert(l_check_is_letter('V') && l_check_is_upper_letter('V'));
+  l_assert(l_check_is_letter('W') && l_check_is_upper_letter('W'));
+  l_assert(l_check_is_letter('X') && l_check_is_upper_letter('X'));
+  l_assert(l_check_is_letter('Y') && l_check_is_upper_letter('Y'));
+  l_assert(l_check_is_letter('Z') && l_check_is_upper_letter('Z'));
+
+  l_assert(l_check_is_alphanum_underscore('_'));
+  l_assert(l_check_is_alphanum_underscore_hyphen('-'));
 }
 

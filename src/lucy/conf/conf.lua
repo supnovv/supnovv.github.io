@@ -17,6 +17,5 @@ http_default = {
   tx_init_size = 0;
   rx_init_size = 0;
   rx_limit = 1024*8;
-  lua_module = "";
 }
 

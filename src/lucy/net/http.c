@@ -203,7 +203,8 @@ enum l_http_common_headers_enum {
   L_HTTP_H_MAX_FORWARDEDS,
   L_HTTP_H_X_FORWARDED_FOR,
   L_HTTP_H_X_FORWARDED_HOST,
-  L_HTTP_H_X_FORWARDED_PROOTO
+  L_HTTP_H_X_FORWARDED_PROOTO,
+  L_HTTP_LAST_COMMON_HEADER
 };
 
 static const l_strn l_http_common_headers[] = {
@@ -270,7 +271,8 @@ enum l_http_request_headers_enum {
   L_HTTP_H_X_REQUESTED_WITH,
   L_HTTP_H_X_HTTP_MOTHOD_OVERRIDE,
   L_HTTP_H_X_UIDH,
-  L_HTTP_H_X_CSRF_TOKEN
+  L_HTTP_H_X_CSRF_TOKEN,
+  L_HTTP_LAST_REQUEST_HEADER
 };
 
 static const l_strn l_http_request_headers[] = {
@@ -332,7 +334,8 @@ enum l_http_response_headers_enum {
   L_HTTP_H_X_XSS_PROTECTION,
   L_HTTP_H_X_CONTENT_TYPE_OPTIONS,
   L_HTTP_H_X_POWERED_BY,
-  L_HTTP_H_X_UA_COMPATIBLE
+  L_HTTP_H_X_UA_COMPATIBLE,
+  L_HTTP_LAST_RESPONSE_HEADER
 };
 
 static const l_strn l_http_response_headers[] = {
@@ -580,6 +583,14 @@ typedef struct {
 } l_startend;
 
 typedef struct {
+  const l_byte* arg;
+  const l_byte* mid;
+  const l_byte* end;
+} l_urlarg;
+
+#define L_HTTP_URL_MAX_ARG_SIZE 32
+
+typedef struct {
   l_service head;
   l_http_server_service* server;
   l_sockaddr remote;
@@ -588,6 +599,12 @@ typedef struct {
   int stage;
   l_byte method; /* method */
   l_byte httpver; /* http version */
+  l_byte isfolder;
+  l_byte urldepth;
+  l_int suffix, suffixend; /* suffix pointer to '.' */
+  l_int arg, argend; /* arg pointer to '?' */
+  l_int argcount;
+  l_urlarg arglist[L_HTTP_URL_MAX_ARG_SIZE];
   l_int url, uend; /* request url */
   l_int body, bodylen; /* body */
   l_umedit commasks;
@@ -849,30 +866,6 @@ ContinueRead:
   return;
 }
 
-static int l_http_server_load_lua_module(lua_State* L) {
-#if 0
-  size_t len = 0;
-  const char* top_arg = lua_tolstring(L, -1, &len);
-  l_strt module_name;
-  l_string load;
-
-  if (module_name == 0) {
-    l_loge_s("get module name failed");
-    return 0;
-  }
-
-  module_name = l_strt_e(top_arg, top_arg + len);
-  load = l_create_string(256);
-  l_string_format_1(&load, "local func = require \"%strt\"\n"
-    "local request = LUCY_GLOBAL_TABLE.http_request_arguments_table\n"
-    "local response = LUCY_GLOBAL_TABLE.http_response_results_table\n"
-    "response.code, response.headers, response.body = \n"
-    "func(request.method, request.httpver, request.headers, request.body)\n", lstrt(&module_name));
-#endif
-  (void)L;
-  return 0;
-}
-
 static int l_http_server_receive_service_proc(l_service* srvc, l_message* msg) {
   l_ioevent_message* ioev = (l_ioevent_message*)msg;
   l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
@@ -912,17 +905,9 @@ static int l_http_server_receive_service_proc(l_service* srvc, l_message* msg) {
     }
   }
 
-  if (!l_string_is_empty(&ssrx->server->lua_module)) {
-    /* void luaL_requiref(lua_State* L, const char* modname, lua_CFunction openf, int global);
-    if modname is not already present in package.loaded, calls function openf with string modname as
-    an argument and sets the call result in package.loaded[modname], as if that function has been
-    called through require. if global is true, also stores the module into global modnmae.
-    leaves a copy of the module on the stack. */
-  } else {
-    if ((n = l_service_resume(srvc)) != 0) {
-      if (n < 0) l_close_service(srvc);
-      return 0;
-    }
+  if ((n = l_service_resume(srvc)) != 0) {
+    if (n < 0) l_close_service(srvc);
+    return 0;
   }
 
   /* current request handled finished, prepare for next request or disconnect */
@@ -1040,15 +1025,13 @@ int l_start_http_server(const void* http_conf_name, int (*client_request_handler
   return 0;
 }
 
-int l_http_write_status(l_service* srvc, int code) {
+int l_http_write_status(l_http_server_receive_service* ssrx, int code) {
   /* HTTP/1.1 200 OK<crlf>
      <name>: <value><crlf>
      ...
      <name>: <value><crlf>
      <crlf>
      <entity-body>   */
-
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
   l_string* txbuf = &ssrx->txbuf;
   int httpver = ssrx->httpver;
 
@@ -1076,9 +1059,15 @@ int l_http_write_status(l_service* srvc, int code) {
   return true;
 }
 
-int l_http_write_header(l_service* srvc, l_strt header) {
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
+#define L_HTTP_COMMON_HEADER_FLAG (1<<10)
+#define L_HTTP_REQUEST_HEADER_FLAG (1<<11)
+#define L_HTTP_RESPONSE_HEADER_FLAG (1<<12)
+#define L_HTTP_HEADER_KEYINDEX_MASK (0x00ff)
+#define L_HTTP_HEADER_TYPE_MASK (0xff00)
+
+static int l_http_write_header_impl(l_http_server_receive_service* ssrx, int keyindex, l_strt value) {
   l_string* txbuf = &ssrx->txbuf;
+  int type = 0;
 
   if (ssrx->httpver == L_HTTP_VER_0NN) {
     ssrx->stage = L_HTTP_WRITE_HEADER;
@@ -1090,13 +1079,52 @@ int l_http_write_header(l_service* srvc, l_strt header) {
     return false;
   }
 
-  l_string_format_1(txbuf, "%strt\r\n", lstrt(&header));
   ssrx->stage = L_HTTP_WRITE_HEADER;
-  return true;
+
+  type = (keyindex & L_HTTP_HEADER_TYPE_MASK);
+  keyindex = (keyindex & L_HTTP_HEADER_KEYINDEX_MASK);
+
+  if ((type & L_HTTP_COMMON_HEADER_FLAG) && keyindex < L_HTTP_LAST_COMMON_HEADER) {
+    l_string_format_2(txbuf, "%strn: %strt\r\n", lstrn(l_http_common_headers + keyindex), lstrt(&value));
+    return true;
+  }
+
+  if ((type & L_HTTP_REQUEST_HEADER_FLAG) && keyindex < L_HTTP_LAST_REQUEST_HEADER) {
+    l_string_format_2(txbuf, "%strn: %strt\r\n", lstrn(l_http_request_headers + keyindex), lstrt(&value));
+    return true;
+  }
+
+  if ((type & L_HTTP_RESPONSE_HEADER_FLAG) && keyindex < L_HTTP_LAST_RESPONSE_HEADER) {
+    l_string_format_2(txbuf, "%strn: %strt\r\n", lstrn(l_http_response_headers + keyindex), lstrt(&value));
+    return true;
+  }
+
+  if (type == 0 && keyindex == 0) {
+    l_string_format_1(txbuf, "%strt\r\n", lstrt(&value));
+    return true;
+  }
+
+  l_loge_1("write invalid header of type %x", lx(type));
+  return false;
 }
 
-int l_http_write_body(l_service* srvc, l_strt body, int mime) {
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
+int l_http_write_common_header(l_http_server_receive_service* ssrx, int keyindex, l_strt value) {
+  return l_http_write_header_impl(ssrx, keyindex | L_HTTP_COMMON_HEADER_FLAG, value);
+}
+
+int l_http_write_request_header(l_http_server_receive_service* ssrx, int keyindex, l_strt value) {
+  return l_http_write_header_impl(ssrx, keyindex | L_HTTP_REQUEST_HEADER_FLAG, value);
+}
+
+int l_http_write_response_header(l_http_server_receive_service* ssrx, int keyindex, l_strt value) {
+  return l_http_write_header_impl(ssrx, keyindex | L_HTTP_RESPONSE_HEADER_FLAG, value);
+}
+
+int l_http_write_header(l_http_server_receive_service* ssrx, l_strt header) {
+  return l_http_write_header_impl(ssrx, 0, header);
+}
+
+int l_http_write_body(l_http_server_receive_service* ssrx, l_strt body, int mime) {
   l_string* txbuf = &ssrx->txbuf;
   l_int len = body.end - body.start;
 
@@ -1124,8 +1152,7 @@ int l_http_write_body(l_service* srvc, l_strt body, int mime) {
   return true;
 }
 
-int l_http_write_file(l_service* srvc, l_strt filename, int mime) {
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
+int l_http_write_file(l_http_server_receive_service* ssrx, l_strt filename, int mime) {
   l_string* txbuf = &ssrx->txbuf;
   l_long filesize = 0;
   l_filestream file;
@@ -1162,20 +1189,20 @@ int l_http_write_file(l_service* srvc, l_strt filename, int mime) {
   return true;
 }
 
-int l_http_write_css_file(l_service* srvc, l_strt filename) {
-  return l_http_write_file(srvc, filename, L_HTTP_MIME_CSS);
+int l_http_write_css_file(l_http_server_receive_service* ssrx, l_strt filename) {
+  return l_http_write_file(ssrx, filename, L_HTTP_MIME_CSS);
 }
 
-int l_http_write_js_file(l_service* srvc, l_strt filename) {
-  return l_http_write_file(srvc, filename, L_HTTP_MIME_JS);
+int l_http_write_js_file(l_http_server_receive_service* ssrx, l_strt filename) {
+  return l_http_write_file(ssrx, filename, L_HTTP_MIME_JS);
 }
 
-int l_http_write_html_file(l_service* srvc, l_strt filename) {
-  return l_http_write_file(srvc, filename, L_HTTP_MIME_HTML);
+int l_http_write_html_file(l_http_server_receive_service* ssrx, l_strt filename) {
+  return l_http_write_file(ssrx, filename, L_HTTP_MIME_HTML);
 }
 
-int l_http_write_plain_file(l_service* srvc, l_strt filename) {
-  return l_http_write_file(srvc, filename, L_HTTP_MIME_PLAIN);
+int l_http_write_plain_file(l_http_server_receive_service* ssrx, l_strt filename) {
+  return l_http_write_file(ssrx, filename, L_HTTP_MIME_PLAIN);
 }
 
 static int l_http_send_response_impl(l_service* srvc) {
@@ -1192,14 +1219,13 @@ static int l_http_send_response_impl(l_service* srvc) {
   ssrx->txcur += n;
 
   if (n < count) {
-    return l_service_yield(srvc, l_http_send_response_impl);
+    return l_service_yield(&ssrx->head, l_http_send_response_impl);
   }
 
   return 0;
 }
 
-int l_http_send_response(l_service* srvc) {
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
+int l_http_send_response(l_http_server_receive_service* ssrx) {
   l_string* txbuf = &ssrx->txbuf;
 
   if (l_string_is_empty(txbuf) || ssrx->stage < L_HTTP_WRITE_STATUS) {
@@ -1208,10 +1234,225 @@ int l_http_send_response(l_service* srvc) {
   }
 
   if (ssrx->httpver != L_HTTP_VER_0NN && ssrx->stage != L_HTTP_WRITE_BODY) {
-    l_string_append(txbuf, l_literal_strt("\r\n"));
+    l_string_append(txbuf, l_literal_strt("Content-Length: 0\r\n\r\n"));
   }
 
   ssrx->txcur = l_string_start(txbuf);
-  return l_http_send_response_impl(srvc);
+  return l_http_send_response_impl(&ssrx->head);
 }
 
+#define L_HTTP_PATH_MAX_DEPTH 0xff
+
+int l_http_check_url_path_sep(l_strt name) {
+  if (l_strt_is_empty(&name)) return false;
+  for (; name.start < name.end; ++name.start) { /* 0~9 a~z A~Z _ - */
+    if (l_check_is_alphanum_underscore_hyphen(*name.start)) continue;
+    return false;
+  }
+  return true;
+}
+
+int l_http_check_url_add_arg(l_http_server_receive_service* ssrx, const l_byte* arg, const l_byte* mid, const l_byte* end) {
+  l_urlarg* curarg = 0;
+  if (ssrx->argcount == L_HTTP_URL_MAX_ARG_SIZE) return false;
+  curarg = ssrx->arglist + (ssrx->argcount++);
+  curarg->arg = arg;
+  curarg->mid = mid;
+  curarg->end = end;
+  return true;
+}
+
+int l_http_check_url_argument(l_http_server_receive_service* ssrx, l_strt arg) {
+  /* golden color=blue item=  =value = */
+  const l_byte* start = arg.start;
+  const l_byte* pcur = arg.start;
+  const l_byte* middle = 0;
+
+  if (l_strt_is_empty(&arg)) {
+    l_loge_s("current url arg is empty");
+    return false;
+  }
+
+  for (; pcur < arg.end; ++pcur) {
+    if (l_check_is_alphanum_underscore_hyphen(*pcur)) continue;
+    break;
+  }
+
+  if (pcur == arg.end) { /* golden */
+    return l_http_check_url_add_arg(ssrx, start, pcur, pcur);
+  }
+
+  if (pcur == start || *pcur != '=') { /* "=value" "=" */
+    l_loge_1("argument name is empty or invalid %strt", lstrt(&arg));
+    return false;
+  }
+
+  middle = pcur++; /* '=' */
+  if (pcur == arg.end) {
+    return l_http_check_url_add_arg(ssrx, start, middle, middle);
+  }
+
+  if (l_strt_equal(l_strt_e(start, middle), l_literal_strt("jump"))) {
+    return l_http_check_url_add_arg(ssrx, start, middle, arg.end);
+  }
+
+  for (; pcur < arg.end; ++pcur) {
+    if (l_check_is_alphanum_underscore_hyphen(*pcur)) continue;
+    l_loge_1("argument value is invalid %strt", lstrt(&arg));
+    return false;
+  }
+
+  return l_http_check_url_add_arg(ssrx, start, middle, arg.end);
+}
+
+int l_http_check_url_last_part(l_http_server_receive_service* ssrx, l_strt sep) {
+  /* last part: /"file" or /"file.suffix" or /"filename?param=value&color=blue" */
+  const l_byte* start = sep.start;
+  const l_byte* pcur = sep.start;
+
+  if (l_strt_is_empty(&sep)) return false;
+
+  for (; pcur < sep.end; ++pcur) {
+    if (l_check_is_alphanum_underscore_hyphen(*pcur)) continue;
+    break;
+  }
+
+  if (pcur == sep.end) return true;
+
+  if (*pcur == '.') {
+    if (ssrx->suffix != 0) return false; /* cannot have two '.', such as "file.sub.fix" */
+
+    if (pcur == sep.start || pcur + 1 == sep.end) {
+      return false; /* "/.sub" "/file." is not allowed */
+    }
+
+    ssrx->suffix = pcur - l_string_cstr(&ssrx->rxbuf);
+
+    start = ++pcur;
+    for (; pcur < sep.end; ++pcur) {
+      if (l_check_is_alphanum_underscore_hyphen(*pcur)) continue;
+      break;
+    }
+
+    if (pcur == start) {
+      return false; /* "file.#" is not allowed, # is not an alphanum_underscore_hyphen */
+    }
+
+    ssrx->suffixend = pcur - l_string_cstr(&ssrx->rxbuf);
+    if (pcur == sep.end) return true;
+  }
+
+  if (*pcur != '?') {
+    l_loge_1("invalid url last part %strt", lstrt(&sep));
+    return false;
+  }
+
+  if (pcur + 1 == sep.end) { /* empty arg - no chars after '?' */
+    return true;
+  }
+
+  ssrx->arg = pcur - l_string_cstr(&ssrx->rxbuf);
+
+  start = ++pcur;
+  for (; pcur < sep.end; ++pcur) {
+    if (*pcur != '&') continue;
+    if (!l_http_check_url_argument(ssrx, l_strt_e(start, pcur))) {
+      return false;
+    }
+    start = pcur + 1;
+  }
+
+  if (pcur == start) { /* empty arg - no chars after '&' */
+    return true;
+  }
+
+  return l_http_check_url_argument(ssrx, l_strt_e(start, pcur));
+}
+
+int l_http_handle_url_path_sep(l_http_server_receive_service* ssrx, int (*func)(void* self, l_strt sep, int depth), void* self) {
+  int depth = 0;
+  const l_byte* bufstart = l_string_cstr(&ssrx->rxbuf);
+  l_strt url = l_strt_e(bufstart + ssrx->url, bufstart + ssrx->uend);
+  const l_byte* pcur = url.start;
+  l_strt sep = l_empty_strt();
+
+  ssrx->isfolder = false;
+  ssrx->urldepth = -1;
+  ssrx->suffix = ssrx->suffixend = 0;
+  ssrx->arg = ssrx->argend = 0;
+  ssrx->argcount = 0;
+
+  if (url.start >= url.end || *url.start != '/') {
+    return false;
+  }
+
+  sep.start = ++pcur;
+  for (; pcur < url.end; ++pcur) {
+    if (*pcur != '/') continue;
+    sep.end = pcur;
+    if (!l_http_check_url_path_sep(sep) || !func(self, sep, ++depth)) {
+      return false;
+    }
+    sep.start = pcur + 1;
+  }
+
+  /* last part: /"" or /"file" or /"file.suffix" or /"filename?param=value&color=blue" */
+  ssrx->urldepth = depth;
+  if (sep.start == pcur) {
+    ssrx->isfolder = true;
+    return true;
+  }
+
+  sep.end = pcur;
+  if (!l_http_check_url_last_part(ssrx, sep)) {
+    ssrx->urldepth = -1;
+    return false;
+  }
+
+  return true;
+}
+
+void l_http_server_handle_get_method(l_http_server_receive_service* ssrx) {
+  /** URL **
+   "<scheme>://<user>:<password>@<host>:<port>/<path>;<params>?<query>#<frag>"
+   /hammers;sale=0;color=red?item=1&size=m
+   /hammers;sale=false/index.html;graphics=true
+   /check.cgi?item=12731&color=blue&size=large
+   /tools.html#drills
+
+   *
+   /
+   /file     (file or path) ??? just parse as file
+   /file?item=value
+   /file?item=value&color=blue
+   /path/
+   /path/file
+   /path/file?item=value
+   /path/file?item=value&color=blue
+
+   只能包含 /?=_-0~9a~zA~Z 除非最后一个参数是 jump=xxxxx
+
+   URL编码机制，为了使用不安全字符，使用%和两个两个十六进制字符表示，例如空格可使用%20表示，根据浏览器的不同组合成的字符可能使用不同的编码
+   保留字符有 % / . .. # ? ; : $ + @ & =
+   受限字符有 {} | \ ^ ~ [ ] ' < > "　以及不可打印字符 0x00~0x1F >=0x7F，而且不能使用空格，通常使用+来替代空格
+   0~9A~Za~z_- */
+   (void)ssrx;
+}
+
+int l_http_server_handle_request(l_http_server_receive_service* ssrx) {
+  switch (ssrx->method) {
+  case L_HTTP_M_GET:
+  case L_HTTP_M_HEAD:
+    l_http_server_handle_get_method(ssrx);
+    break;
+  case L_HTTP_M_OPTIONS:
+    l_http_write_status(ssrx, L_HTTP_200_OK);
+    l_http_write_response_header(ssrx, L_HTTP_H_ALLOW, l_literal_strt("GET, HEAD, OPTIONS, POST"));
+    break;
+  case L_HTTP_M_POST:
+  default:
+    l_http_write_status(ssrx, L_HTTP_405_METHOD_NOT_ALLOWED);
+    break;
+  }
+  return l_http_send_response(ssrx);
+}

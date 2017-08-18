@@ -340,28 +340,40 @@ l_extern const l_rune* l_string_skip_space_and_match_sub(l_strt sub, l_strt s);
 
 l_extern const l_rune l_rune_class_table[256];
 
-l_inline int l_check_rune_is_pritable(l_byte ch) {
+l_inline int l_check_is_pritable(l_byte ch) {
   return l_rune_class_table[ch];
 }
 
-l_inline int l_check_digit_is_dec(l_byte ch) {
-  return l_rune_class_table[ch] == 5;
+l_inline int l_check_is_dec_digit(l_byte ch) {
+  return l_rune_class_table[ch] == 0x3d;
 }
 
-l_inline int l_check_digit_is_hex(l_byte ch) {
-  return l_rune_class_table[ch] & 0x04;
-}
-
-l_inline int l_check_rune_is_letter(l_byte ch) {
+l_inline int l_check_is_letter(l_byte ch) {
   return l_rune_class_table[ch] & 0x02;
 }
 
-l_inline int l_check_upper_letter(l_byte ch) {
+l_inline int l_check_is_upper_letter(l_byte ch) {
   return (l_rune_class_table[ch] & 0x03) == 2;
 }
 
-l_inline int l_check_lower_letter(l_byte ch) {
+l_inline int l_check_is_lower_letter(l_byte ch) {
   return (l_rune_class_table[ch] & 0x03) == 3;
+}
+
+l_inline int l_check_is_hex_digit(l_byte ch) {
+  return l_rune_class_table[ch] & 0x04;
+}
+
+l_inline int l_check_is_alphanum(l_byte ch) {
+  return l_rune_class_table[ch] & 0x08;
+}
+
+l_inline int l_check_is_alphanum_underscore(l_byte ch) {
+  return l_rune_class_table[ch] & 0x10;
+}
+
+l_inline int l_check_is_alphanum_underscore_hyphen(l_byte ch) {
+  return l_rune_class_table[ch] & 0x20;
 }
 
 l_extern l_int l_string_parse_dec(l_strt s);

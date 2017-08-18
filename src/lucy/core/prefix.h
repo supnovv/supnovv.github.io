@@ -65,9 +65,11 @@ TARGET_IPHONE_SIMULATOR 0        0        1 */
 #if defined(L_PLAT_WINDOWS)
 #define L_NEWLINE "\r\n"
 #define L_NL_SIZE 2
+#define L_PATH_SEP "\\"
 #else
 #define L_NEWLINE "\n"
 #define L_NL_SIZE 1
+#define L_PATH_SEP "/"
 #endif
 
 #define L_PLAT_IMPL_SIZE(n) l_eight impl[((n) - 1) / sizeof(l_eight) + 1]
