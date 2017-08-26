@@ -232,7 +232,6 @@ VIM编辑器
 * C             删除当前字符以及到行尾的所有字符，最终处于插入模式
 * D             删除当前字符以及到行尾的所有字符，最终处于普通模式
 * 插入模式（insert mode）
-* CTRL+n/CTRL+p 显示提示列表，并在列表中进行选择
 * CTRL+w        删除前一个单词
 * CTRL+u        删除至行首
 * CTRL+o        退出插入模式执行一条普通模式命令并返回插入模式
@@ -294,6 +293,38 @@ VIM编辑器
 * :NmM          将第N行的内容剪切到第M行之下
 * :N,MmL        将范围内的行或高亮选取的内容剪切到第L行之下
 * :normal cmd   执行普通模式下的命令
+CTAGS和代码提示
+$ sudo apt-get install exuberant-ctags
+$ ctags --help  #检查ctags是否安装成功
+$ ctags -R --languages=c --langmap=c:+.h -h +.h  #生成当前目录下所有C文件的标签文件tags
+* :set tags?    查看VIM当前关联tags文件
+* :set tags=... 设置VIM当前关联的tags文件，排在前面的tags文件优先级高
+* :set tags+=.. 添加VIM当前关联的tags文件，排在前面的tags文件优先级高
+* :set omnifunc=ccomplete#Complete
+* CTRL+]        跳转到当前光标关键字的定义处
+* gCTRL+]       如果有多个匹配位置，会提供选择跳转到哪个匹配处
+* CTRL+t        回到上一个跳转处或回到最初位置
+* :pop          反向遍历标签历史，相当于CTRL+t
+* :tag          正向遍历标签历史
+* :tselect      如果匹配不止一个，这个命令可查看匹配列表，并进行选择
+* :tnext        跳转到下一个匹配位置
+* :tprev        跳转到上一个匹配位置
+* :tfirst       跳转到第一个匹配位置
+* :tlast        跳转到最后一个匹配位置
+* :tag keyword  无需移动光标版的CTRL+]，在输入keyword时，可以使用TAB键进行自动补全
+* :tjump word   无需移动光标版的gCTRL+]
+* :tag /phone$  关键字可以使用正则表达式，例如此处查找以phone结尾的关键字定义位置
+* CTRL+n/CTRL+p 普通关键字补全，显示提示列表，同时有向下/下选择功能
+* CTRL+xCTRL+n  当前缓冲区关键字补全
+* CTRL+xCTRL+i  包含文件关键字补全
+* CTRL+xCTRL+]  标签关键字补全
+* CTRL+xCTRL+f  文件名补全
+* CTRL+xCTRL+l  整行补全
+* CTRL+xCTRL+k  字典补全
+* CTRL+xCTRL+o  全能（Omni）补全，C语言可以补全结构体成员名称
+* CTRL+e        放弃这次补全
+VIM上可直接执行的SHELL命令
+* :pwd :grep
 浮点标准
 * https://en.wikipedia.org/wiki/IEEE_754-1985
 * https://en.wikipedia.org/wiki/IEEE_floating_point#IEEE_754-2008
