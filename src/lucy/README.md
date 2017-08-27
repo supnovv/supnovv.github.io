@@ -243,6 +243,45 @@ VIM编辑器
 * CTRL+v        列模式
 * o             切换到当前选取块的开头字符或结束字符
 * 命令模式（command mode）
+* :N            移动到第N行开头
+* :$            移动到最后一行开头
+* :!shell       执行shell命令
+* :ls           列出VIM当前管理的所有文件缓冲区，其中标有%的文件是当前可见的文件
+* :bnext        切换到下一个文件
+* :bprev        切换到上一个文件
+* :bfirst       切换到第一个文件
+* :blast        切换到最后一个文件
+* :bN           切换到第N个文件
+* :b name       切换到包含名称的文件，可用TAB补全
+* :bd N1 N2 N3  移除缓冲区中的文件
+* :N,M bd       通过范围移除缓冲区中的文件
+* :args         显示VIM当前的文件参数列表，参数列表可用于将缓冲区文件分组
+* :args file    清空并重置参数列表，没有在文件缓冲区的文件会加到缓冲区
+* :args `shell` 用shell命令返回的文件重置参数列表
+* :args *.*     用批量文件重置参数列表，不会递归子目录
+* :args **/*.*  通配符**会递归子目录
+* :next         切换到参数列表的下一个文件
+* :prev         切换到参数列表的下一个文件
+* :first        第一个文件
+* :last         最后一个文件
+* :tabe file    在新标签页中打开文件
+* :tabc[lose]   关闭当前标签页和其中的所有窗口
+* :tabo[nly]    关闭其他所有标签页
+* :tabn         切换到下一个标签页
+* :tabp         切换到上一个标签页
+* :tabnN        切换到第N个标签页
+* :tabm0        将当前标签页移动到开头
+* :tabm[ove]    将当前标签页移动到结尾
+* :tabmN        将当前标签页移动到第N位置
+* CTRL+ws       水平分割窗口，CTRL+w然后按s，不是一直按着CTRL，CTRL+s是锁屏命令会导致VIM假死，按CTRL+q解锁恢复
+* CTRL+wv       垂直分割窗口
+* CTRL+ww       循环切换窗口
+* CTRL+w[hjkl]  切换到对应方向的窗口
+* CTRL+g        查看文件状态
+* :sp[lit] file 水平切分当前窗口并载入文件，相当于CTRL+ws然后：edit file
+* :vsp[lit] fl  垂直切分当前窗口并载入文件
+* :clo[se]      关闭当前窗口
+* :on[ly]       关闭其他所有窗口
 * :w            把缓冲区中的内容写入文件
 * :wa!          把所有缓冲区中的内容写入文件
 * :e!           重新读取文件到缓冲区，即回滚所有操作
@@ -250,40 +289,10 @@ VIM编辑器
 * :saveas file  文件另存为
 * :e file       在当前窗口载入新文件
 * :e .          打开文件管理器，并显示当前目录文件
-* :N            移动到第N行开头
-* :$            移动到最后一行开头
-* :!shell       执行shell命令
-* :ls           列出VIM当前管理的所有文件缓冲区，其中标有%的文件是当前可见的文件
-* :bn           切换到下一个文件
-* :bp           切换到上一个文件
-* :bf           切换到第一个文件
-* :bl           切换到最后一个文件
-* :bN           切换到第N个文件
-* :b name       切换到包含名称的文件，可用TAB补全
-* :bd N1 N2 N3  移除缓冲区中的文件
-* :N,M bd       通过范围移除缓冲区中的文件
-* :args         显示VIM当前的文件参数列表
-* :args file    清空并重置参数列表，没有在文件缓冲区的文件会加到缓冲区
-* :args `shell` 用shell命令返回的文件重置参数列表
-* :args *.*     用批量文件重置参数列表，不会递归子目录
-* :args **/*.*  通配符**会递归子目录
-* :n            切换到参数列表的下一个文件
-* :p            切换到参数列表的下一个文件
-* :tabe file    在新标签页中打开文件
-* :tabc         关闭当前标签页和其中的所有窗口
-* :tabo         关闭其他所有标签页
-* :tabn         切换到下一个标签页
-* :tabp         切换到上一个标签页
-* :tabnN       切换到第N个标签页
-* :tabm0       将当前标签页移动到开头
-* :tabm         将当前标签页移动到结尾
-* :tabmN       将当前标签页移动到第N位置
-* :sp file      水平切分当前窗口并载入文件
-* :vsp file     垂直切分当前窗口并载入文件
-* :clo          关闭当前窗口
-* :on           关闭其他所有窗口
-* CTRL+ww       循环切换窗口
-* CTRL+w[hjkl]  切换到对应方向的窗口
+* :E            打开文件管理器，并显示活动缓冲区所在目录
+* :Se           在水平窗口中打开文件管理器
+* :Ve           在垂直窗口中打开文件管理器
+* CTRL+^        
 * :set nu       显示行号
 * :set nonu     取消行号
 * :Nt.          将第N行的内容拷贝到当前行之下
@@ -324,7 +333,29 @@ $ ctags -R --languages=c --langmap=c:+.h -h +.h  #生成当前目录下所有C�
 * CTRL+xCTRL+o  全能（Omni）补全，C语言可以补全结构体成员名称
 * CTRL+e        放弃这次补全
 VIM上可直接执行的SHELL命令
-* :pwd :grep
+* :pwd :grep :make
+* :vimgrep keyword **/*.c **/*.h   在当前以及所有子目录的.c和.h文件中查找keyword
+* :copen        打开quickfix窗口,如果在某一项按Enter会打开对应的文件，如果这个文件已在某个窗口中打开，则会复用这个缓冲区
+* :cclose       关闭quickfix窗口
+* :colder       上一次quickfix结果
+* :cnewer       新一次quickfix结果
+* :cnext        跳转到quickfix列表的下一项，这个命令如此的常用，可将它映射成快捷键
+* :cprev        跳转到quickfix列表的上一项
+* :5cnext　　　　快速前进
+* :5cprev       快速后退
+* :cfirst       第一项
+* :clast        最后一项
+* :cnfile       下一个文件的第一项
+* :cpfile       上一个文件的最后一项
+* :cc N         跳转到第N项
+* :lmake :lgrep :lvimgrep  会使用位置列表，区别在于在任意时刻，只能有一个quickfix列表，而位置列表要多少有多少
+重复
+* qa            开启一个宏录制命令序列，这个宏保存在寄存器a中
+* q             停止录制
+* :reg a        查看寄存器a中宏的内容
+* @a            回放命令序列
+* @@            回放上一次序列
+* qA            追加命令到宏a中
 浮点标准
 * https://en.wikipedia.org/wiki/IEEE_754-1985
 * https://en.wikipedia.org/wiki/IEEE_floating_point#IEEE_754-2008
