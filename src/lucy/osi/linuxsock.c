@@ -59,7 +59,7 @@ errorlabel:
   } else {
     l_loge_1("inet_pton %s", lserror(errno));
   }
-  l_zero_l(sa, sizeof(llsockaddr));
+  l_zero_n(sa, sizeof(llsockaddr));
   return false;
 }
 

@@ -168,6 +168,32 @@ static const l_strn l_mime_types[] = {
 };
 
 
+enum l_http_file_types_enum {
+  L_HTTP_FILE_HTML,
+  L_HTTP_FILE_TXT,
+  L_HTTP_FILE_MD,
+  L_HTTP_LAST_FILE_TYPE
+};
+
+static const l_strn l_file_types[] = {
+  l_literal_strn("html"),
+  l_literal_strn("txt"),
+  l_literal_strn("md"),
+  l_literal_strn("css"),
+  l_literal_strn("json"),
+  l_literal_strn("js"),
+  l_literal_strn("gif"),
+  l_literal_strn("png"),
+  l_literal_strn("bmp"),
+  l_literal_strn("svg"),
+  l_literal_strn("ico"),
+  l_literal_strn("jpeg"),
+  l_literal_strn("pdf"),
+  l_literal_strn("gzip"),
+  l_literal_strn("zip")
+};
+
+
 #define L_HTTP_HEADER_MAX_LEN (27)
 #define L_NUM_OF_COMMON_HEADERS (30)
 #define L_NUM_OF_REQUEST_HEADERS (31)
@@ -563,8 +589,9 @@ typedef struct {
   l_int tx_init_size;
   l_int rx_init_size;
   l_int rx_limit;
-  l_string lua_module;
   int (*client_request_handler)(l_service*);
+  l_int slots;
+  l_hashtable* strpool;
 } l_http_server_service;
 
 typedef struct {
@@ -588,8 +615,6 @@ typedef struct {
   const l_byte* end;
 } l_urlarg;
 
-#define L_HTTP_URL_MAX_ARG_SIZE 32
-
 typedef struct {
   l_service head;
   l_http_server_service* server;
@@ -602,9 +627,7 @@ typedef struct {
   l_byte isfolder;
   l_byte urldepth;
   l_int suffix, suffixend; /* suffix pointer to '.' */
-  l_int arg, argend; /* arg pointer to '?' */
-  l_int argcount;
-  l_urlarg arglist[L_HTTP_URL_MAX_ARG_SIZE];
+  l_int arg; /* arg pointer to '?' */
   l_int url, uend; /* request url */
   l_int body, bodylen; /* body */
   l_umedit commasks;
@@ -1252,6 +1275,7 @@ int l_http_check_url_path_sep(l_strt name) {
   return true;
 }
 
+#if 0
 int l_http_check_url_add_arg(l_http_server_receive_service* ssrx, const l_byte* arg, const l_byte* mid, const l_byte* end) {
   l_urlarg* curarg = 0;
   if (ssrx->argcount == L_HTTP_URL_MAX_ARG_SIZE) return false;
@@ -1304,6 +1328,7 @@ int l_http_check_url_argument(l_http_server_receive_service* ssrx, l_strt arg) {
 
   return l_http_check_url_add_arg(ssrx, start, middle, arg.end);
 }
+#endif
 
 int l_http_check_url_last_part(l_http_server_receive_service* ssrx, l_strt sep) {
   /* last part: /"file" or /"file.suffix" or /"filename?param=value&color=blue" */
@@ -1317,16 +1342,19 @@ int l_http_check_url_last_part(l_http_server_receive_service* ssrx, l_strt sep) 
     break;
   }
 
-  if (pcur == sep.end) return true;
+  if (pcur == sep.end) {
+    ssrx->suffix = ssrx->suffixend = pcur - l_string_cstr(&ssrx->rxbuf);
+    return true;
+  }
 
   if (*pcur == '.') {
     if (ssrx->suffix != 0) return false; /* cannot have two '.', such as "file.sub.fix" */
 
+    ssrx->suffix = ssrx->suffixend = pcur - l_string_cstr(&ssrx->rxbuf);
+
     if (pcur == sep.start || pcur + 1 == sep.end) {
       return false; /* "/.sub" "/file." is not allowed */
     }
-
-    ssrx->suffix = pcur - l_string_cstr(&ssrx->rxbuf);
 
     start = ++pcur;
     for (; pcur < sep.end; ++pcur) {
@@ -1335,6 +1363,7 @@ int l_http_check_url_last_part(l_http_server_receive_service* ssrx, l_strt sep) 
     }
 
     if (pcur == start) {
+      l_loge_1("invalid file suffix %strt", lstrt(&sep));
       return false; /* "file.#" is not allowed, # is not an alphanum_underscore_hyphen */
     }
 
@@ -1352,7 +1381,9 @@ int l_http_check_url_last_part(l_http_server_receive_service* ssrx, l_strt sep) 
   }
 
   ssrx->arg = pcur - l_string_cstr(&ssrx->rxbuf);
+  return true;
 
+#if 0
   start = ++pcur;
   for (; pcur < sep.end; ++pcur) {
     if (*pcur != '&') continue;
@@ -1367,9 +1398,10 @@ int l_http_check_url_last_part(l_http_server_receive_service* ssrx, l_strt sep) 
   }
 
   return l_http_check_url_argument(ssrx, l_strt_e(start, pcur));
+#endif
 }
 
-int l_http_handle_url_path_sep(l_http_server_receive_service* ssrx, int (*func)(void* self, l_strt sep, int depth), void* self) {
+int l_http_handle_url_path_sep(l_http_server_receive_service* ssrx) {
   int depth = 0;
   const l_byte* bufstart = l_string_cstr(&ssrx->rxbuf);
   l_strt url = l_strt_e(bufstart + ssrx->url, bufstart + ssrx->uend);
@@ -1379,7 +1411,7 @@ int l_http_handle_url_path_sep(l_http_server_receive_service* ssrx, int (*func)(
   ssrx->isfolder = false;
   ssrx->urldepth = -1;
   ssrx->suffix = ssrx->suffixend = 0;
-  ssrx->arg = ssrx->argend = 0;
+  ssrx->arg = 0;
   ssrx->argcount = 0;
 
   if (url.start >= url.end || *url.start != '/') {
@@ -1390,7 +1422,7 @@ int l_http_handle_url_path_sep(l_http_server_receive_service* ssrx, int (*func)(
   for (; pcur < url.end; ++pcur) {
     if (*pcur != '/') continue;
     sep.end = pcur;
-    if (!l_http_check_url_path_sep(sep) || !func(self, sep, ++depth)) {
+    if (!l_http_check_url_path_sep(sep) /*|| !func(self, sep, ++depth)*/) {
       return false;
     }
     sep.start = pcur + 1;
@@ -1411,6 +1443,46 @@ int l_http_handle_url_path_sep(l_http_server_receive_service* ssrx, int (*func)(
 
   return true;
 }
+
+typedef struct {
+  l_service head;
+  l_http_server_service* server;
+  l_sockaddr remote;
+  l_http_read_common comm;
+  l_string rxbuf;
+  int stage;
+  l_byte method; /* method */
+  l_byte httpver; /* http version */
+  l_byte isfolder;
+  l_byte urldepth;
+  l_int suffix, suffixend; /* suffix pointer to '.' */
+  l_int arg; /* arg pointer to '?' */
+  l_int url, uend; /* request url */
+  l_int body, bodylen; /* body */
+  l_umedit commasks;
+  l_umedit reqmasks;
+  l_startend comhead[32];
+  l_startend reqhead[32];
+  l_string txbuf;
+  l_rune* txcur;
+} l_http_server_receive_service;
+
+
+typedef union {
+  l_byte s[4];
+  l_umedit value;
+} l_filesuffix;
+
+static const l_filesuffix l_file_suffix_html = {'h', 't', 'm', 'l'};
+static const l_filesuffix l_file_suffix_md = {'m', 'd', 0, 0};
+static const l_filesuffix l_file_suffix_js = {'j', 's', 0, 0};
+static const l_filesuffix l_file_suffix_json = {'j', 's', 'o', 'n'};
+static const l_filesuffix l_file_suffix_css = {'c', 's', 's', 0};
+static const l_filesuffix l_file_suffix_png = {'p', 'n', 'g', 0};
+static const l_filesuffix l_file_suffix_svg = {'s', 'v', 'g', 0};
+static const l_filesuffix l_file_suffix_gif = {'g', 'i', 'f', 0};
+static const l_filesuffix l_file_suffix_bmp = {'b', 'm', 'p', 0};
+static const l_filesuffix l_file_suffix_jepg = {'j', 'e', 'p', 'g'};
 
 void l_http_server_handle_get_method(l_http_server_receive_service* ssrx) {
   /** URL **
@@ -1436,7 +1508,30 @@ void l_http_server_handle_get_method(l_http_server_receive_service* ssrx) {
    保留字符有 % / . .. # ? ; : $ + @ & =
    受限字符有 {} | \ ^ ~ [ ] ' < > "　以及不可打印字符 0x00~0x1F >=0x7F，而且不能使用空格，通常使用+来替代空格
    0~9A~Za~z_- */
-   (void)ssrx;
+  l_filesuffix file_suffix;
+  const l_byte* start = l_string_cstr(&ssrx->rxbuf);
+
+  if (!l_http_handle_url_path_sep(ssrx)) {
+    l_http_write_status(ssrx, L_HTTP_404_NOT_FOUND);
+    return;
+  }
+
+  /* [url, suffix) - main file name, [suffix suffixend) - file suffix name, [arg, uend) - arguments */
+  if (ssrx->suffix < ssrx->suffixend) {
+  } else {
+  }
+}
+
+
+
+void l_http_server_handle_post_method(l_http_server_receive_service* ssrx) {
+  l_filesuffix file_suffix;
+  const l_byte* start = l_string_cstr(&ssrx->rxbuf);
+
+  if (!l_http_handle_url_path_sep(ssrx)) {
+    l_http_write_status(ssrx, L_HTTP_404_NOT_FOUND);
+    return;
+  }
 }
 
 int l_http_server_handle_request(l_http_server_receive_service* ssrx) {
@@ -1450,6 +1545,8 @@ int l_http_server_handle_request(l_http_server_receive_service* ssrx) {
     l_http_write_response_header(ssrx, L_HTTP_H_ALLOW, l_literal_strt("GET, HEAD, OPTIONS, POST"));
     break;
   case L_HTTP_M_POST:
+    l_http_server_handle_post_method(ssrx);
+    break;
   default:
     l_http_write_status(ssrx, L_HTTP_405_METHOD_NOT_ALLOWED);
     break;

@@ -89,11 +89,11 @@
 #define l_debug_assert(e) ((void)0)
 #endif
 
-#define l_zero_e(start, end) l_zero_l(start, l_str(end) - l_str(start))
-l_extern void l_zero_l(void* start, l_int len);
+#define l_zero_e(start, end) l_zero_n(start, l_str(end) - l_str(start))
+l_extern void l_zero_n(void* start, l_int len);
 
-#define l_copy_e(from, end, to) return l_copy_l(from, l_str(end) - l_str(from), (to))
-l_extern l_byte* l_copy_l(const void* from, l_int len, void* to);
+#define l_copy_e(from, end, to) return l_copy_n(from, l_str(end) - l_str(from), (to))
+l_extern l_byte* l_copy_n(const void* from, l_int len, void* to);
 
 l_extern void* l_raw_malloc(l_int size);
 l_extern void* l_raw_calloc(l_int size);
@@ -165,6 +165,15 @@ l_extern void l_mmheap_init(l_mmheap* self, int (*less)(void*, void*), int inits
 l_extern void l_mmheap_free(l_mmheap* self);
 l_extern void l_mmheap_add(l_mmheap* self, void* elem);
 l_extern void* l_mmheap_del(l_mmheap* self, l_umedit i);
+
+typedef struct l_hashtable l_hashtable;
+l_extern l_hashtable* l_hashtable_create(l_byte sizebits);
+l_extern int l_hashtable_add(l_hashtable* self, l_smplnode* elem, l_umedit hash);
+l_extern l_smplnode* l_hashtable_find(l_hashtable* self, l_umedit hash, int (*check)(void*, l_smplnode*), void* obj);
+l_extern l_smplnode* l_hashtable_del(l_hashtable* self, l_umedit hash, int (*check)(void*, l_smplnode*), void* obj);
+l_extern void l_hashtable_foreach(l_hashtable* self, void (*func)(void*, l_smplnode*), void* obj);
+l_extern void l_hashtable_clear(l_hashtable* self, void *(freefunc)(l_smplnode*));
+l_extern void l_hashtable_free(l_hashtable** self, void (*freefunc)(l_smplnode*));
 
 #define L_COMMON_BUFHEAD \
   l_smplnode node; \
@@ -256,6 +265,7 @@ l_specif l_dirstream l_open_dir(const void* name);
 l_specif void l_close_dir(l_dirstream* d);
 l_specif const l_rune* l_read_dir(l_dirstream* d);
 l_specif int l_print_current_dir(void* stream, int (*write)(void* stream, const void* str));
+l_specif int l_execute_shell_command(const void* command, void (*out)(void*, const l_byte*, l_int), void* userobj);
 
 typedef struct {
   L_PLAT_IMPL_SIZE(L_MUTEX_SIZE);

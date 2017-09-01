@@ -20,16 +20,19 @@ typedef struct {
   l_srvcslot* slot;
 } l_srvctable;
 
-static void l_srvctable_init(l_srvctable* self, l_byte sizebits) {
+static int l_srvctable_init(l_srvctable* self, l_byte sizebits) {
+  self->nelem = 0;
+
   if (sizebits > 30) {
+    self->nslot = 0;
     self->slot = 0;
-    self->nelem = 0;
     l_loge_1("slots 2^%d", ld(sizebits));
-    return;
+    return false;
   }
+
   self->nslot = (1 << sizebits);
   self->slot = (l_srvcslot*)l_raw_calloc(sizeof(l_srvcslot)*self->nslot);
-  self->nelem = 0;
+  return true;
 }
 
 static l_smplnode* llheadnode(l_srvctable* self, l_umedit svid) {
@@ -255,7 +258,7 @@ static l_service* l_create_service_impl(l_int size, int (*entry)(l_service*, l_m
   }
 
   srvc = l_thread_alloc_buffer(thread, size);
-  l_zero_l(srvc, size);
+  l_zero_n(srvc, size);
 
   srvc->svid = l_master_gen_service_id();
   srvc->thread = thread;
@@ -336,7 +339,7 @@ l_string l_thread_create_limited_string_from(l_thread* thread, l_strt from, l_in
   l_string s = l_thread_create_limited_string(thread, len, maxlimit);
   if (from.start && len > 0) {
     l_strbuf* b = s.b;
-    l_copy_l(from.start, len, l_strbuf_cstr(b));
+    l_copy_n(from.start, len, l_strbuf_cstr(b));
     b->size = len;
     *(l_strbuf_cstr(b) + len) = 0;
   }
@@ -397,7 +400,7 @@ static int l_set_logfile_prefix(void* pconf, l_strt name) {
   if (len <= 0 || len > FILENAME_MAX) {
     return false;
   }
-  l_copy_l(name.start, len, conf->logfile);
+  l_copy_n(name.start, len, conf->logfile);
   conf->logfile[len] = 0;
   conf->prefixend = conf->logfile + len;
   return true;
@@ -506,7 +509,7 @@ static void l_thread_init_impl(l_thread* t, l_config* conf) {
   l_squeue_init(t->txms);
 
   t->frbq = &b->fq;
-  l_zero_l(t->frbq, sizeof(l_freebq));
+  l_zero_n(t->frbq, sizeof(l_freebq));
   l_squeue_init(&b->fq.queue);
   b->fq.limit = conf->thread_max_free_memory;
 
@@ -520,7 +523,7 @@ static void l_thread_init_impl(l_thread* t, l_config* conf) {
     suffix = conf->prefixend;
     *suffix++ = '_';
     suffix = l_string_print_ulong(t->index, suffix);
-    suffix = l_copy_l(".txt", 4, suffix);
+    suffix = l_copy_n(".txt", 4, suffix);
     *suffix = 0;
     t->logfile = l_open_append_unbuffered(conf->logfile);
     l_write_strt_to_file(&t->logfile, l_literal_strt("--------" L_NEWLINE));

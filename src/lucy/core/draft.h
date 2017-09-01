@@ -2716,7 +2716,7 @@ void l_hashtable_free(l_hashtable* self) {
     l_raw_free(self->slot);
     self->slot = 0;
   }
-  l_zero_l(self, sizeof(l_hashtable));
+  l_zero_n(self, sizeof(l_hashtable));
 }
 
 static l_umedit llgethashval(l_hashtable* self, void* elem) {

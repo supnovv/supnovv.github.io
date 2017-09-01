@@ -334,7 +334,7 @@ static int llepollmgr_del(int epfd, int fd) {
   Applications that need to be portable to kernels before
   2.6.9 should specify a non-null pointer in event. */
   struct epoll_event event;
-  l_zero_l(&event, sizeof(struct epoll_event));
+  l_zero_n(&event, sizeof(struct epoll_event));
   if (!llepollmgr_ctl(epfd, EPOLL_CTL_DEL, fd, &event)) {
     l_loge_1("llepollmgr_del %s", lserror(errno));
     return false;
@@ -403,7 +403,7 @@ static void llepollmgr_wait(llepollmgr* self, int ms) {
 
 int l_ionfmgr_init(l_ionfmgr* self) {
   llepollmgr* mgr = (llepollmgr*)self;
-  l_zero_l(mgr, sizeof(llepollmgr));
+  l_zero_n(mgr, sizeof(llepollmgr));
   l_mutex_init((l_mutex*)&(mgr->mutex));
   if ((mgr->epfd = ll_epoll_create()) == -1) {
     return false;

@@ -6,7 +6,7 @@
 #define L_CORELIB_IMPL
 #include "lucycore.h"
 
-void l_zero_l(void* start, l_int len) {
+void l_zero_n(void* start, l_int len) {
   if (!start || len <= 0 || len > l_max_rdwr_size) {
     l_loge_1("size %d", ld(len));
     return;
@@ -15,7 +15,7 @@ void l_zero_l(void* start, l_int len) {
   memset(start, 0, (size_t)len);
 }
 
-l_byte* l_copy_l(const void* from, l_int len, void* to) {
+l_byte* l_copy_n(const void* from, l_int len, void* to) {
   if (!from || len <= 0 || len > l_max_rdwr_size) {
     l_loge_1("size %d", ld(len));
     return 0;
@@ -37,7 +37,7 @@ l_byte* l_copy_l(const void* from, l_int len, void* to) {
 }
 
 l_byte* l_copy_from(l_strt s, void* to) {
-  return l_copy_l(s.start, s.end - s.start, to);
+  return l_copy_n(s.start, s.end - s.start, to);
 }
 
 static void* l_out_of_memory(l_int size, int init) {
@@ -96,12 +96,12 @@ void* l_raw_realloc(void* p, l_int old, l_int newsz) {
   if (n > old) {
     temp = realloc(p, l_cast(size_t, n));
     if (temp) { /* the newly allocated portion is indeterminate */
-      l_zero_l(temp + old, n - old);
+      l_zero_n(temp + old, n - old);
       return temp;
     }
     if ((temp = l_out_of_memory(n, 0))) {
-      l_copy_l(p, old, temp);
-      l_zero_l(temp + old, n - old);
+      l_copy_n(p, old, temp);
+      l_zero_n(temp + old, n - old);
       l_raw_free(p);
       return temp;
     }
@@ -109,7 +109,7 @@ void* l_raw_realloc(void* p, l_int old, l_int newsz) {
     temp = realloc(p, l_cast(size_t, n));
     if (temp) return temp;
     if ((temp = l_out_of_memory(n, 0))) {
-      l_copy_l(p, n, temp);
+      l_copy_n(p, n, temp);
       l_raw_free(p);
       return temp;
     }
@@ -524,6 +524,144 @@ void* l_mmheap_del(l_mmheap* self, l_umedit i) {
   return elem;
 }
 
+typedef struct {
+  l_smplnode node;
+} l_hashslot;
+
+typedef struct {
+  l_umedit nslot;
+  l_umedit nelem;
+  l_umedit seed;
+  l_hashslot slot[1];
+} l_hashtable;
+
+l_hashtable* l_hashtable_create(l_byte sizebits, l_umedit seed) {
+  l_umedit size = 0;
+  l_hashtable* table = 0;
+
+  if (sizebits > 30) {
+    l_loge_1("slots 2^%d", ld(sizebits));
+    return 0;
+  }
+
+  size = (1 << sizebits);
+  table = (l_hashtable*)l_raw_calloc(sizeof(l_hashtable) + sizeof(l_hashslot) * size);
+  table->nslot = size;
+  table->nelem = 0;
+  table->seed = seed;
+
+  return table;
+}
+
+static l_smplnode* l_hashtable_slot_head_node(l_hashtable* self, l_umedit hash) {
+  return &(self->slot[hash & (self->nslot - 1)].node);
+}
+
+int l_hashtable_add(l_hashtable* self, l_smplnode* elem, l_umedit hash) {
+  l_smplnode* slot = 0;
+
+  if (elem == 0) return false;
+
+  slot = l_hashtable_slot_head_node(self, hash);
+  elem->next = slot->next;
+  slot->next = elem;
+  self->nelem += 1;
+
+  if (self->nelem >= self->nslot) {
+    l_logw_2("nelem %d nslot %d", ld(self->nelem), ld(self->nslot));
+  }
+
+  return true;
+}
+
+l_smplnode* l_hashtable_find(l_hashtable* self, l_umedit hash, int (*check)(void*, l_smplnode*), void* obj) {
+  l_smplnode* slot = l_hashtable_slot_head_node(self, hash);
+  l_smplnode* elem = slot->next;
+  int depth = 0;
+
+  while (elem) {
+    depth += 1;
+    if (check(obj, elem)) break;
+    elem = elem->next;
+  }
+
+  if (depth > 3) {
+    l_logw_2("hashtable slot depth %d bottom %d", ld(depth), ld(elem == 0));
+  }
+
+  return elem;
+}
+
+l_smplnode* l_hashtable_del(l_hashtable* self, l_umedit hash, int (*check)(void*, l_smplnode*), void* obj) {
+  l_smplnode* elem = l_hashtable_slot_head_node(self, hash);
+  l_smplnode* node = elem->next;
+  int depth = 0;
+
+  while (node) {
+    depth += 1;
+
+    if (check(obj, node)) {
+      elem->next = node->next;
+      self->nelem -= 1;
+      break;
+    }
+
+    elem = node;
+    node = elem->next;
+  }
+
+  if (depth > 3) {
+    l_logw_2("hashtable slot depth %d bottom %d", ld(depth), ld(node == 0));
+  }
+
+  return node;
+}
+
+void l_hashtable_foreach(l_hashtable* self, void (*func)(void*, l_smplnode*), void* obj) {
+  l_smplnode* slot = self->slot;
+  l_smplnode* send = slot + self->nslot;
+  l_smplnode* elem = 0;
+
+  for (; slot < send; ++slot) {
+    elem = slot->node.next;
+    while (elem) {
+      func(obj, elem);
+      elem = elem->next;
+    }
+  }
+}
+
+void l_hashtable_clear(l_hashtable* self, void *(freefunc)(l_smplnode*)) {
+  l_hashslot* slot = self->slot;
+  l_hashslot* send = slot + self->nslot;
+  l_smplnode* head = 0;
+  l_smplnode* first = 0;
+
+  for (; slot < send; ++slot) {
+    head = &slot->node;
+    while (head->next) {
+      first = head->next;
+      head->next = first->next;
+      if (freefunc) freefunc(first);
+    }
+  }
+}
+
+void l_hashtable_free(l_hashtable** self, void (*freefunc)(l_smplnode*)) {
+  if (*self == 0) return;
+  l_hashtable_clear(*self, freefunc);
+  l_raw_free(*self);
+  *self = 0;
+}
+
+typedef struct l_treenode {
+  void* data;
+  struct l_treenode* next_sibling;
+  struct l_treenode* prev_sibling;
+  struct l_treenode* first_child;
+  struct l_treenode* parent;
+} l_treenode;
+
 void l_core_test() {
   char buffer[] = "012345678";
   char* a = buffer;
@@ -592,11 +730,11 @@ void l_core_test() {
   l_assert(l_cast(l_ulong, l_min_long) == 9223372036854775808ull);
   l_assert(l_cast(l_ulong, l_min_long) == 0x8000000000000000ull);
   /* copy test */
-  l_copy_l(a, 1, a+1);
+  l_copy_n(a, 1, a+1);
   l_assert(a[1] == '0'); a[1] = '1';
-  l_copy_l(a+3, 1, a+2);
+  l_copy_n(a+3, 1, a+2);
   l_assert(a[2] == '3'); a[2] = '2';
-  l_copy_l(a, 4, a+2);
+  l_copy_n(a, 4, a+2);
   l_assert(a[2] == '0');
   l_assert(a[3] == '1');
   l_assert(a[4] == '2');

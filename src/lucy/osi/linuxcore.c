@@ -232,7 +232,7 @@ static void llsetwdaymonth(l_date* date, int wday, int month) {
 static l_date llgetdate(time_t secs) {
   struct tm st;
   l_date date = {0};
-  l_zero_l(&st, sizeof(struct tm));
+  l_zero_n(&st, sizeof(struct tm));
   /* struct tm* gmtime_r(const time_t* secs, struct tm* out);
   The function converts the time secs to broken-down time representation,
   expressed in Coordinated Universal Time (UTC), i.e. since Epoch. */
@@ -334,7 +334,7 @@ l_long l_file_size(const void* name) {
   owner, group, link count, mode, etc.). */
   struct stat st; /* lstat needs _POSIX_C_SOURCE >= 200112L */
   if (!name) { l_loge_s("empty name"); return 0; }
-  l_zero_l(&st, sizeof(struct stat));
+  l_zero_n(&st, sizeof(struct stat));
   if (lstat((const char*)name, &st) != 0) {
     l_loge_2("lstat %s %s", lserror(errno), ls(name));
     return 0;
@@ -346,7 +346,7 @@ l_fileattr l_file_attr(const void* name) {
   struct stat st;
   l_fileattr fa = {0};
   if (!name) { l_loge_s("empty name"); return fa; }
-  l_zero_l(&st, sizeof(struct stat));
+  l_zero_n(&st, sizeof(struct stat));
   if (lstat((const char*)name, &st) != 0) {
     l_loge_2("lstat %s %s", lserror(errno), ls(name));
     return fa;
@@ -453,6 +453,106 @@ int l_print_current_dir(void* stream, int (*write)(void* stream, const void* str
   count = write(stream, curdir);
   free(curdir);
   return count;
+}
+
+int l_execute_shell_command(const void* command, void (*out)(void*, const l_byte*, l_int), void* userobj) {
+  /**
+   * popen, pclose - pipe stream to or from a process
+   * ```
+   * FILE* popen(const char* command, const char* type);
+   * int pclose(FILE* stream);
+   * ```
+   *
+   * The popen() function opens a process by creating a pipe, forking, and
+   * invoking the shell. Since a pipe is by definition unidirectional,
+   * the type argument may specify only reading or writing, not both; the
+   * resulting stream is correspondingly read-only or write-only.
+   *
+   * The command argument is a pointer to a null-terminated string
+   * containing a shell command line. This command is passed to /bin/sh
+   * using the -c flag; interpretation, if any, is performed by the shell.
+   *
+   * ```
+   * $ sh -c command_string [command_name [argument ...]]
+   * ```
+   *
+   * `man sh` -c: Read commands from the command_string operand instead of
+   * from the standard input. Special parameter 0 will be set from the
+   * command_name operand and the positional parameters ($1, $2, etc.) set
+   * from the remaining argument operands.
+   *
+   * The type argument is a pointer to a null-terminated string which must
+   * contain either the letter 'r' for reading or the letter 'w' for writing.
+   * Since glibc 2.9, this argument can additionally include the letter 'e',
+   * which causes the close-on-exec flag (FD_CLOEXEC) to be set on the
+   * underlying file descriptor; see the description of the O_CLOEXEC flag
+   * in open(2) for reasons why this may be useful.
+   *
+   * The return value from popen() is a normal standard I/O stream in all
+   * respects save that it must be closed with pclose() rather than fclose(3).
+   * Writing to such a stream writes to the standard input of the command;
+   * the command's standard output is the same as that of the process that
+   * called popen(), unless this is altered by the command itself. Conversely,
+   * reading from the stream reads the command's standard output, and the
+   * command's standard input is the same as that of the process that called
+   * popen().
+   *
+   * Note that output popen() streams are block buffered by default. The
+   * pclose() function waits for the associated process to terminate and
+   * returns the exit status of the command as returned by wait4(2).
+   *
+   * @return popen() return NULL if failed; pclose() resturns the exit
+   * status of the command on success, and return -1 if error.
+   * Both functions set errno to an appropriate value in the case of an error.
+   * If the type argument is invalid, and this condition is detected, errno
+   * is set to EINVAL. If pclose() cannot obtain the child status, errno
+   * is set to ECHILD. The popen() function doesn't set errno if memory
+   * allocation fails.
+   *
+   * Since the standard input of a command opened for reading shares its seek
+   * offset with the process that called popen(), if the original process
+   * has done a buffered read, the command's input position may not be as
+   * expected. Similarly, the output from a command opened for writing may
+   * become intermingled with that of the original process. The later can be
+   * avoided by calling fflush(3) before popen().
+   *
+   * Failure to execute the shell is indistinguishable from the shell's failure
+   * to execute command, or an immediate exit of the command. The only hint is
+   * an exit status of 127.
+   */
+
+   int exitcode = 0;
+   l_filestream fs;
+   #define SHELL_OUTPUT_TEMP_BUFSZ 1024
+   l_byte buffer[SHELL_OUTPUT_TEMP_BUFSZ+1];
+   l_int readsize = 0;
+
+   fs.stream = popen((const char*)command, "r");
+   if (!fs.stream) {
+     l_loge_1("popen failed %s", lserror(errno));
+     return false;
+   }
+
+   while ((readsize = l_read_file(&fs, buffer, SHELL_OUTPUT_TEMP_BUFSZ)) == SHELL_OUTPUT_TEMP_BUFSZ) {
+     out(userobj, buffer, readsize);
+   }
+
+   if (readsize > 0) {
+     out(userobj, buffer, readsize);
+   }
+
+   exitcode = pclose(fs.stream);
+   if (exitcode == -1) {
+     l_loge_1("pclose failed %s", lserror(errno));
+     return false;
+   }
+
+   if (exitcode != 0) {
+     l_loge_1("pclose exit code %d", ld(exitcode));
+     return false;
+   }
+
+   return true;
 }
 
 void l_thrkey_init(l_thrkey* self) {

@@ -313,6 +313,11 @@ l_inline int l_string_format_9(l_string* self, const void* fmt, l_value a,
   return l_string_format_impl(self, fmt, a, b, c, d, e, f, g, h, i);
 }
 
+typedef struct l_shortstr l_shortstr;
+l_extern l_pnstr* l_create_shortstr(l_byte size, const void* str, void* (*allocfunc)(l_int));
+l_extern void l_destroy_shortstr(l_shortstr* self, void (*freefunc)(void*));
+
+
 typedef struct {
   void* t; /* table array, 1 table contains 1 rune, the array size is up to the length of the string */
   l_int size; /* a string map can store strings up to 'maxnumofstr', the size is the length of the longest string */
