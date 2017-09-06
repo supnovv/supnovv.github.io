@@ -279,6 +279,83 @@ l_date l_system_date() {
 
 /** File and attribute */
 
+int l_is_file_exist(const void* name) {
+  /**
+   * # access, faccessat - check user's permissions for a file
+   *
+   * ```
+   * #include <fcntl.h>
+   * #include <unistd.h>
+   * int access(const char* pathname, int mode);
+   * int faccessat(int dirfd, const char* pathname, int mode, int flags);
+   * ```
+   *
+   * **access**() checks whether the calling process can access the file
+   * `pathname`. If `pathname` is a symbolic link, it is dereferenced.
+   *
+   * The `mode` specifies the accessibility check(s) to be performed, and is
+   * either the value F_OK, or a mask consisting of the bitwise OR of one
+   * or more of R_OK, W_OK, and X_OK. F_OK tests for the existence of the
+   * file. R_OK, W_OK, and X_OK test whether the file exists and grants
+   * read, write, and execute permissions, respectively.
+   *
+   * The check is done using the calling process's **real** UID and GID,
+   * rather than the effective IDs as is done when actually attempting an
+   * operation (e.g., open(2)) on the file. Similarly, for the root user,
+   * the check uses the set of permitted capabilities rather than the set
+   * of effective capabilities; and for non-root users, the check uses an
+   * empty set of capabilities.
+   *
+   * This allows set-user-ID programs and capability-endowed programs to
+   * easily determine the invoking user's authority. In other words,
+   * **access**() does not answer the "can I read/write/execute this file?"
+   * question. It answers a slightly different question: "(assuming I'm a
+   * setuid binary) can the user who invoked me read/write/execute this
+   * file?", which gives set-user-ID programs the possibility to prevent
+   * malicious users from causing them to read files which users shouldn't
+   * be able to read.
+   *
+   * If the calling process is privileged (i.e., its real UID is zero),
+   * then an X_OK check is successful for a regular file if execute
+   * permission is enabled for any of the file owner, group, or other.
+   *
+   * The **faccessat**() system call operates in exactly the same way as
+   * **access**(), except for the differences described here. If the
+   * pathname given is relative, then it is interpreted relative to the
+   * directory referred to by the file descriptor `dirfd` (rather then
+   * relative to the current working directory of the calling process,
+   * as is done by access() for a relative pathname).
+   *
+   * If `pathname` is relative and `dirfd` is the special value AT_FDCWD, then
+   * `pathname` is interpreted relative to the current working directory of
+   * the calling process like access().
+   *
+   * If `pathname` is absolute, then `dirfd` is ignored. `flags` is constructed
+   * by OR together zero or more of the following values:
+   * AT_EACCESS - Perform access checks using the effective user and group IDs.
+   * By default, faccessat() uses the real IDs like access().
+   * AT_SYMLINK_NOFOLLOW - If `pathname` is a symbolic link, do not dereference it:
+   * instead return information about the link itself.
+   *
+   * @return On success, zero is returned. On error, -1 is returned, and errno
+   * is set appropriately.
+   *
+   */
+   if (faccessat(AT_FDCWD, (const char*)name, F_OK, AT_SYMLINK_NOFOLLOW) != 0) {
+     l_loge_1("faccessat %s", lserror(errno));
+     return false;
+   }
+   return true;
+}
+
+int l_is_file_exist_in(l_filedescriptor dirfd, const void* name) {
+    if (faccessat(dirfd.unifd, (const void*)name, F_OK, AT_SYMLINK_NOFOLLOW) != 0) {
+      l_loge_1("faccessat %s", lserror(errno));
+      return false;
+    }
+    return true;
+}
+
 l_long l_file_size(const void* name) {
   /** lstat **
   #include <sys/types.h>

@@ -259,6 +259,12 @@ typedef struct {
   void* stream;
 } l_dirstream;
 
+typedef union {
+  int unifd;
+} l_filedescriptor;
+
+l_specif int l_is_file_exist(const void* name);
+l_specif int l_is_file_exist_in(l_filedescriptor dirfd, const void* name);
 l_specif l_long l_file_size(const void* name);
 l_specif l_fileattr l_file_attr(const void* name);
 l_specif l_dirstream l_open_dir(const void* name);
