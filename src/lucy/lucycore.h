@@ -263,6 +263,9 @@ typedef union {
   int unifd;
 } l_filedescriptor;
 
+l_specif l_filedescriptor l_get_dirfd(const void* name);
+l_specif void l_close_fd(l_filedescriptor fd);
+l_specif int l_is_fd_valid(l_filedescriptor fd);
 l_specif int l_is_file_exist(const void* name);
 l_specif int l_is_file_exist_in(l_filedescriptor dirfd, const void* name);
 l_specif l_long l_file_size(const void* name);

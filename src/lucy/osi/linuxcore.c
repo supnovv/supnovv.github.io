@@ -349,11 +349,54 @@ int l_is_file_exist(const void* name) {
 }
 
 int l_is_file_exist_in(l_filedescriptor dirfd, const void* name) {
-    if (faccessat(dirfd.unifd, (const void*)name, F_OK, AT_SYMLINK_NOFOLLOW) != 0) {
-      l_loge_1("faccessat %s", lserror(errno));
-      return false;
-    }
-    return true;
+  if (faccessat(dirfd.unifd, (const void*)name, F_OK, AT_SYMLINK_NOFOLLOW) != 0) {
+    l_loge_1("faccessat %s", lserror(errno));
+    return false;
+  }
+  return true;
+}
+
+l_filedescriptor l_get_dirfd(const void* name) {
+  /**
+   * # open, openat, creat - open and possibly create a file
+   *
+   * ```
+   * #include <sys/types.h>
+   * #include <sys/stat.h>
+   * #include <fcntl.h>
+   * int open(const char* pathname, int flags);
+   * int open(const char* pathname, int flags, mode_t mode);
+   * int creat(const char* pathname, mode_t mode);
+   * int openat(int dirfd, const char* pathname, int flags);
+   * int openat(int dirfd, const char* pathname, int flags, mode_t mode);
+   * ```
+   *
+   * @return open(), openat(), and creat() return the new file descriptor, or -1
+   * if an error occurred (in which case, errno is set appropriately).
+   *
+   */
+   l_filedescriptor fd;
+   fd.unifd = -1;
+
+   if (!name) return fd;
+
+   if ((fd.unifd = open((const char*)name, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOATIME)) == -1) {
+     l_loge_1("open %d", lserror(errno));
+   }
+
+   return fd;
+}
+
+void l_close_fd(l_filedescriptor fd) {
+  if (fd.unifd == -1) return;
+  if (close(fd.unifd) != 0) {
+    l_loge_1("close %d", lserror(errno));
+  }
+  fd.unifd = -1;
+}
+
+int l_is_fd_valid(l_filedescriptor fd) {
+  return (fd.unifd != -1);
 }
 
 l_long l_file_size(const void* name) {
