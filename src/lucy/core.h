@@ -1,5 +1,5 @@
-#ifndef lucycore_h
-#define lucycore_h
+#ifndef lucy_core_h
+#define lucy_core_h
 #include "autoconf.h"
 #include "lucy/prefix.h"
 
@@ -132,5 +132,5 @@ l_squeue_init(l_squeue* q);
 
 
 
-#endif /* lucycore_h */
+#endif /* lucy_core_h */
 
