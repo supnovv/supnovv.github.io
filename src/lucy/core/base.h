@@ -4,7 +4,6 @@
 #include "core/prefix.h"
 
 #undef L_EXTERN
-#undef L_INTERN
 #undef L_GLOBAL
 #undef L_INLINE
 #undef L_THREAD_LOCAL
@@ -24,7 +23,6 @@
   #define L_EXTERN extern
 #endif
 
-#define L_INTERN static
 #define L_GLOBAL static
 #define L_INLINE static
 

@@ -3,10 +3,11 @@
 #include <stdarg.h>
 #include <stdlib.h>
 #include <errno.h>
-#define L_CORELIB_IMPL
+
+#define L_LIBRARY_IMPL
 #include "core/base.h"
 
-l_extern void
+L_EXTERN void
 l_zero_n(void* start, l_int len)
 {
   if (!start || len <= 0 || len > l_max_rwsize) {
@@ -16,7 +17,7 @@ l_zero_n(void* start, l_int len)
   }
 }
 
-l_extern l_byte*
+L_EXTERN l_byte*
 l_copy_n(const void* from, l_int len, void* to)
 {
   if (!from || len <= 0 || len > l_max_rwsize) {
@@ -39,13 +40,13 @@ l_copy_n(const void* from, l_int len, void* to)
   return l_cstr(to) + len;
 }
 
-l_extern l_byte*
+L_EXTERN l_byte*
 l_copy_from(l_strt s, void* to)
 {
   return l_copy_n(s.start, s.end - s.start, to);
 }
 
-l_extern int
+L_EXTERN int
 l_strt_equal(l_strt a, l_strt b)
 {
 #if 0
@@ -64,7 +65,9 @@ l_strt_equal(l_strt a, l_strt b)
   return (len == 0 || memcmp(a.start, b.start, l_cast(size_t, len)) == 0);
 }
 
-int l_strn_equal(l_strn a, l_strn b) {
+L_EXTERN int
+l_strn_equal(l_strn a, l_strn b)
+{
   if (a.len != b.len) return false;
   if (a.len < 0 || a.len > l_max_rwsize) {
     l_loge_1("size %d", ld(a.len));
@@ -73,7 +76,9 @@ int l_strn_equal(l_strn a, l_strn b) {
   return (a.len == 0 || memcmp(a.start, b.start, l_cast(size_t, a.len)) == 0);
 }
 
-const l_byte* l_strt_contain(l_strt s, int ch) {
+L_EXTERN const l_byte*
+l_strt_contain(l_strt s, int ch)
+{
 #if 0
   while (s.start < s.end) {
     if (*s.start++ == ch) return s.start - 1;
@@ -88,7 +93,9 @@ const l_byte* l_strt_contain(l_strt s, int ch) {
   return memchr(s.start, ch, l_cast(size_t, len));
 }
 
-const l_byte* l_strn_contain(l_strn s, int ch) {
+L_EXTERN const l_byte*
+l_strn_contain(l_strn s, int ch)
+{
   if (!s.start || s.len <= 0 || s.len > l_max_rwsize) {
     l_loge_1("size %d", ld(s.len));
     return 0;
@@ -96,14 +103,18 @@ const l_byte* l_strn_contain(l_strn s, int ch) {
   return memchr(s.start, ch, l_cast(size_t, s.len));
 }
 
-static void* l_out_of_memory(l_int size, int init) {
+static void*
+l_out_of_memory(l_int size, int init)
+{
   l_process_exit();
   (void)size;
   (void)init;
   return 0;
 }
 
-static l_int l_check_alloc_size(l_int size) {
+static l_int
+l_check_alloc_size(l_int size)
+{
   if (size <= 0 || size + 8 > l_max_rwsize) return 0;
   return (((size - 1) >> 3) + 1) << 3; /* times of eight */
 }
@@ -113,8 +124,9 @@ static l_int l_check_alloc_size(l_int size) {
 #define l_ralloc(allocfunc, ud, buffer, oldsize, newsize) allocfunc((ud), (buffer), (oldsize), (newsize))
 #define l_mfree(allocfunc, ud, buffer) allocfunc((ud), (buffer), 0, 0)
 
-l_spec_extern(void*)
-l_raw_alloc_func(void* userdata, void* buffer, l_int oldsize, l_int newsize) {
+L_EXTERN void*
+l_raw_alloc_func(void* userdata, void* buffer, l_int oldsize, l_int newsize)
+{
   (void)userdata;
   (void)buffer;
   (void)oldsize;
@@ -195,7 +207,9 @@ void l_raw_free(void* p) {
 }
 #endif
 
-void l_core_base_test() {
+L_EXTERN void
+l_core_base_test()
+{
   char buffer[] = "012345678";
   char* a = buffer;
   l_strt strt = {0};
