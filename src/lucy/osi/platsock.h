@@ -2,7 +2,7 @@
 #define lucy_platsock_h
 #include "core/prefix.h"
 
-#if defined(L_PLAT_WINDOWS)
+#if defined(l_plat_windows)
 /** Windows Socket **/
 #else
 #include "osi/linuxpref.h"

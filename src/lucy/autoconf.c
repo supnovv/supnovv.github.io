@@ -3,15 +3,15 @@
 #include "osi/plationf.h"
 #include "osi/platsock.h"
 
-#if defined(L_PLAT_WINDOWS)
+#if defined(l_plat_windows)
 #include "osi/winpref.h"
 #else
 #include "osi/linuxpref.h"
-int l_mutex_size = sizeof(pthread_mutex_t);
-int l_rwlock_size = sizeof(pthread_rwlock_t);
-int l_condv_size = sizeof(pthread_cond_t);
-int l_thrkey_size = sizeof(pthread_key_t);
-int l_thrid_size = sizeof(pthread_t);
+int l_mutex_type_size = sizeof(pthread_mutex_t);
+int l_rwlock_type_size = sizeof(pthread_rwlock_t);
+int l_condv_type_size = sizeof(pthread_cond_t);
+int l_thrkey_type_size = sizeof(pthread_key_t);
+int l_thrid_type_size = sizeof(pthread_t);
 #endif
 
 #include <stdio.h>
@@ -38,7 +38,7 @@ static void l_log_e(const void* fmt, ...) {
   va_start(args, fmt);
   vfprintf(stdout, (const char*)fmt, args);
   va_end(args);
-  fprintf(stdout, L_NEWLINE);
+  fprintf(stdout, l_newline);
 }
 
 static int l_write_line(FILE* self, const void* fmt, ...) {
@@ -48,7 +48,7 @@ static int l_write_line(FILE* self, const void* fmt, ...) {
   va_start(args, fmt);
   sz = vfprintf(self, (const char*)fmt, args);
   va_end(args);
-  if (sz > 0) fprintf(self, L_NEWLINE);
+  if (sz > 0) fprintf(self, l_newline);
   else l_log_e("vfprintf %s", strerror(errno));
   return sz;
 }
@@ -60,7 +60,7 @@ static int l_write_current_dir(FILE* self, const void* fmt) {
   it will malloc(3) an array big enough to hold the absolute pathname of the current
   working directory. if the environment variable PWD is set, and its value is correct,
   then that value will be returned. the caller should free(3) the returned buffer. */
-#if defined(L_PLAT_WINDOWS)
+#if defined(l_plat_windows)
 #else
   char* curdir = get_current_dir_name();
   int count = 0;
@@ -83,56 +83,55 @@ int main(void) {
   l_byteorder data;
   FILE* file = fopen("autoconf.h", "wb");
   if (!file) { l_log_e("fopen autoconf.h %s", strerror(errno)); return 1; }
-  l_write_line(file, "#ifndef l_autoconf_lib_h%s#define l_autoconf_lib_h", L_NEWLINE);
-  l_write_line(file, "#define _CRT_SECURE_NO_WARNINGS%s", L_NEWLINE);
+  l_write_line(file, "#ifndef lucy_autoconf_h%s#define lucy_autoconf_h", l_newline);
+  l_write_line(file, "#undef L_CORE_AUTO_CONFIG");
+  l_write_line(file, "#define _CRT_SECURE_NO_WARNINGS%s", l_newline);
 
-  l_write_line(file, "#undef L_ROOT_DIR");
-  l_write_current_dir(file, "#define L_ROOT_DIR \"%s%s\"" L_NEWLINE);
+  l_write_line(file, "#undef l_root_dir");
+  l_write_current_dir(file, "#define l_root_dir \"%s%s\"" l_newline);
 
   l_write_line(file, "/* platform bits */");
-  l_write_line(file, "#undef L_PLAT_32BIT");
-  l_write_line(file, "#undef L_PLAT_64BIT");
+  l_write_line(file, "#undef l_arch_32bit");
+  l_write_line(file, "#undef l_arch_64bit");
   if (sizeof(void*) == 4) {
-    l_write_line(file, "#define L_PLAT_32BIT");
+    l_write_line(file, "#define l_arch_32bit");
   } else if (sizeof(void*) == 8) {
-    l_write_line(file, "#define L_PLAT_64BIT");
+    l_write_line(file, "#define l_arch_64bit");
   } else {
     l_write_line(file, "/* unsupported %d-bit platform */", sizeof(void*)*8);
   }
 
-  l_write_line(file, "%s/* byteorder */", L_NEWLINE);
+  l_write_line(file, "%s/* byteorder */", l_newline);
   if (sizeof(unsigned long) < 4) {
     l_log_e("the size of long is less than 4-byte");
     l_write_line(file, "#error \"the size of long is less than 4-byte\"");
   }
-  l_write_line(file, "#undef L_LIT_ENDIAN /* lower byte is stored at lower address */");
-  l_write_line(file, "#undef L_BIG_ENDIAN /* lower byte is stored at higher address */");
+  l_write_line(file, "#undef l_arch_little /* lower byte is stored at lower address */");
+  l_write_line(file, "#undef l_arch_big /* lower byte is stored at higher address */");
   data.i = 0xabcdef;
   if (data.c[0] == 0xef) {
-    l_write_line(file, "#define L_LIT_ENDIAN");
+    l_write_line(file, "#define l_arch_little");
     if (data.c[1] != 0xcd || data.c[2] != 0xab || data.c[3] != 0x00) {
       l_log_e("little endian test failed");
       l_write_line(file, "#error \"little endian test failed\"");
     }
   }
   else {
-    l_write_line(file, "#define L_BIG_ENDIAN");
+    l_write_line(file, "#define l_arch_big");
     if (data.c[0] != 0x00 || data.c[1] != 0xab || data.c[2] != 0xcd || data.c[3] != 0xef) {
       l_log_e("big endian test failed");
       l_write_line(file, "#error \"big endian test failed\"");
     }
   }
 
-  l_write_line(file, "%s/* false true l_rune l_byte l_sbyte */", L_NEWLINE);
+  l_write_line(file, "%s/* false true l_byte l_sbyte */", l_newline);
   l_write_line(file, "#undef false");
   l_write_line(file, "#undef true");
-  l_write_line(file, "#undef l_rune");
   l_write_line(file, "#undef l_byte");
   l_write_line(file, "#undef l_sbyte");
   l_write_line(file, "#define false 0");
   l_write_line(file, "#define true 1");
   if (sizeof(unsigned char) == 1 && sizeof(signed char) == 1) {
-    l_write_line(file, "#define l_rune unsigned char");
     l_write_line(file, "#define l_byte unsigned char");
     l_write_line(file, "#define l_sbyte signed char");
   } else {
@@ -140,7 +139,7 @@ int main(void) {
     l_write_line(file, "#error \"the size of char shall be 1-byte\"");
   }
 
-  l_write_line(file, "%s/* l_short l_ushort - 16-bit */", L_NEWLINE);
+  l_write_line(file, "%s/* l_short l_ushort - 16-bit */", l_newline);
   l_write_line(file, "#undef l_short");
   l_write_line(file, "#undef l_ushort");
   if (sizeof(unsigned short) == 2 && sizeof(short) == 2) {
@@ -154,7 +153,7 @@ int main(void) {
     l_write_line(file, "#error \"no 16-bit integer type found\"");
   }
 
-  l_write_line(file, "%s/* l_medit l_umedit - 32-bit */", L_NEWLINE);
+  l_write_line(file, "%s/* l_medit l_umedit - 32-bit */", l_newline);
   l_write_line(file, "#undef l_medit");
   l_write_line(file, "#undef l_umedit");
   if (sizeof(unsigned int) == 4 && sizeof(int) == 4) {
@@ -168,7 +167,7 @@ int main(void) {
     l_write_line(file, "#error \"no 32-bit integer type found\"");
   }
 
-  l_write_line(file, "%s/* l_long l_ulong - 64-bit */", L_NEWLINE);
+  l_write_line(file, "%s/* l_long l_ulong - 64-bit */", l_newline);
   l_write_line(file, "#undef l_long");
   l_write_line(file, "#undef l_ulong");
   if (sizeof(unsigned int) == 8 && sizeof(int) == 8) {
@@ -185,7 +184,7 @@ int main(void) {
     l_write_line(file, "#error \"no 64-bit integer type found\"");
   }
 
-  l_write_line(file, "%s/* l_int l_uint - pointer-size integer */", L_NEWLINE);
+  l_write_line(file, "%s/* l_int l_uint - pointer-size integer */", l_newline);
   l_write_line(file, "#undef l_int");
   l_write_line(file, "#undef l_uint");
   if (sizeof(short) == sizeof(void*)) {
@@ -205,42 +204,31 @@ int main(void) {
     l_write_line(file, "#error \"no pointer-size integer type found\"");
   }
 
-  l_write_line(file, "%s/* l_handle */", L_NEWLINE);
-  l_write_line(file, "#undef l_handle");
-  if (L_HANDLE_TYPE_SIZE == sizeof(short)) {
-    l_write_line(file, "#define l_handle %s", L_HANDLE_TYPE_IS_SIGNED ? "short" : "unsigned short");
-  } else if (L_HANDLE_TYPE_SIZE == sizeof(int)) {
-    l_write_line(file, "#define l_handle %s", L_HANDLE_TYPE_IS_SIGNED ? "int" : "unsigned int");
-  } else if (L_HANDLE_TYPE_SIZE == sizeof(long)) {
-    l_write_line(file, "#define l_handle %s", L_HANDLE_TYPE_IS_SIGNED ? "long" : "unsigned long");
-  } else if (L_HANDLE_TYPE_SIZE == sizeof(long long)) {
-    l_write_line(file, "#define l_handle %s", L_HANDLE_TYPE_IS_SIGNED ? "long long" : "unsigned long long");
-  } else {
-    l_log_e("no handle-size integer type found");
-    l_write_line(file, "#error \"no handle-size integer type found\"");
-  }
+  l_write_line(file, "%s/* l_cent l_ucent - 128-bit */", l_newline);
+  l_write_line(file, "#undef l_cent");
+  l_write_line(file, "#undef l_ucent");
 
-  l_write_line(file, "%s/* float point */", L_NEWLINE);
+  l_write_line(file, "%s/* float point */", l_newline);
   l_write_line(file, "#undef l_float");
   l_write_line(file, "#define l_float float");
 
-  l_write_line(file, "%s/* platform specific */", L_NEWLINE);
+  l_write_line(file, "%s/* platform specific */", l_newline);
   l_write_line(file, "#undef L_MUTEX_SIZE");
   l_write_line(file, "#undef L_RWLOCK_SIZE");
   l_write_line(file, "#undef L_CONDV_SIZE");
   l_write_line(file, "#undef L_THKEY_SIZE");
   l_write_line(file, "#undef L_THRID_SIZE");
-  l_write_line(file, "#undef L_IONFMGR_SIZE");
+  l_write_line(file, "#undef L_EVENTMGR_SIZE");
   l_write_line(file, "#undef L_SOCKADDR_SIZE");
-  l_write_line(file, "#define L_MUTEX_SIZE %d", l_mutex_size);
-  l_write_line(file, "#define L_RWLOCK_SIZE %d", l_rwlock_size);
-  l_write_line(file, "#define L_CONDV_SIZE %d", l_condv_size);
-  l_write_line(file, "#define L_THKEY_SIZE %d", l_thrkey_size);
-  l_write_line(file, "#define L_THRID_SIZE %d", l_thrid_size);
-  l_write_line(file, "#define L_IONFMGR_SIZE %d", L_IONFMGR_TYPE_SIZE);
+  l_write_line(file, "#define L_MUTEX_SIZE %d", l_mutex_type_size);
+  l_write_line(file, "#define L_RWLOCK_SIZE %d", l_rwlock_type_size);
+  l_write_line(file, "#define L_CONDV_SIZE %d", l_condv_type_size);
+  l_write_line(file, "#define L_THKEY_SIZE %d", l_thrkey_type_size);
+  l_write_line(file, "#define L_THRID_SIZE %d", l_thrid_type_size);
+  l_write_line(file, "#define L_EVENTMGR_SIZE %d", L_EVENTMGR_TYPE_SIZE);
   l_write_line(file, "#define L_SOCKADDR_SIZE %d", L_SOCKADDR_TYPE_SIZE);
 
-  l_write_line(file, "%s/* char %d-bit */", L_NEWLINE, sizeof(char)*8);
+  l_write_line(file, "%s/* char %d-bit */", l_newline, sizeof(char)*8);
   l_write_line(file, "/* short %d-bit */", sizeof(short)*8);
   l_write_line(file, "/* int %d-bit */", sizeof(int)*8);
   l_write_line(file, "/* long %d-bit */", sizeof(long)*8);
@@ -261,7 +249,7 @@ int main(void) {
   l_write_line(file, "/* FLT_EPSILON %.80f */", FLT_EPSILON);
   l_write_line(file, "/* DBL_EPSILON %.80f */", DBL_EPSILON);
 
-  l_write_line(file, "%s#endif /* l_autoconf_lib_h */", L_NEWLINE);
+  l_write_line(file, "%s#endif /* lucy_autoconf_h */", l_newline);
   fclose(file);
   return 0;
 }

@@ -39,10 +39,10 @@ D = .so
 L = .a
 
 AUTOOBJ = autoconf$(O)
-COREOBJ = core/base$(O) core/string$(O) core/state$(O) core/service$(O) core/master$(O) osi/linuxcore$(O)
+COREOBJ = core/base$(O) # core/string$(O) core/state$(O) core/service$(O) core/master$(O) osi/linuxcore$(O)
 SOCKOBJ = osi/linuxsock$(O)
 HTTPOBJ = net/http$(O)
-TESTOBJ = core/test$(O) $(COREOBJ) $(SOCKOBJ) $(HTTPOBJ)
+TESTOBJ = $(COREOBJ) # core/test$(O) $(COREOBJ) # $(SOCKOBJ) $(HTTPOBJ)
 ALLOBJS = $(AUTOOBJ) $(TESTOBJ)
 
 AUTOCONF = autoconf$(E)

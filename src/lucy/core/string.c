@@ -68,20 +68,7 @@ l_strn l_pnstr_get_strn(l_pnstr* self) {
   return l_strn_l(self->sptr + 1, l_pnstr_size(self));
 }
 
-int l_strt_contain(l_strt s, int ch) {
-  while (s.start < s.end) {
-    if (*s.start++ == ch) return true;
-  }
-  return false;
-}
 
-int l_strt_equal(l_strt l, l_strt r) {
-  if (l.end - l.start != r.end - r.start) return false;
-  while (l.start < l.end) {
-    if (*l.start++ != *r.start++) return false;
-  }
-  return true;
-}
 
 static l_byte* l_strbuf_cstr(l_strbuf* self) {
   return (l_byte*)(self + 1);

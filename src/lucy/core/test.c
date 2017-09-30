@@ -1,7 +1,7 @@
-#include "lucycore.h"
+#include "core/base.h"
 
 int l_test_start() {
-  l_core_test();
+  l_core_base_test();
   l_luac_test();
   l_plat_test();
   l_plat_ionf_test();
@@ -12,7 +12,7 @@ int l_test_start() {
 }
 
 int main() {
-  l_set_log_level(4);
+  l_logger_setLevel(4);
   return startmainthread(l_test_start);
 }
 

@@ -2,7 +2,7 @@
 #define lucy_plationf_h
 #include "core/prefix.h"
 
-#if defined(L_PLAT_LINUX)
+#if defined(l_plat_linux)
 #include "osi/linuxpref.h"
 #include <sys/epoll.h>
 
@@ -19,17 +19,15 @@ typedef struct {
 } llepollmgr;
 
 #ifdef L_CORE_AUTO_CONFIG
-#define L_IONFMGR_TYPE_SIZE sizeof(llepollmgr)
-#define L_HANDLE_TYPE_SIZE sizeof(int)
-#define L_HANDLE_TYPE_IS_SIGNED (1)
+#define L_EVENTMGR_TYPE_SIZE sizeof(llepollmgr)
 #endif
 
-#elif defined(L_PLAT_APPLE) || defined(L_PLAT_BSD)
+#elif defined(l_plat_apple) || defined(l_plat_bsd)
 #include <sys/types.h>
 #include <sys/event.h>
 /** BSD Kqueue **/
 
-#elif !defined(L_PLAT_WINDOWS)
+#elif !defined(l_plat_windows)
 #include "osi/linuxpref.h"
 #include <poll.h>
 /** Linux Poll **/
