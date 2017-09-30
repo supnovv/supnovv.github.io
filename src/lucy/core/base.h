@@ -35,9 +35,9 @@
 #endif
 
 #if defined(L_BUILD_DEBUG)
-  #define l_debug_here(...) { __VA_ARGS__ }
+  #define L_DEBUG_HERE(...) { __VA_ARGS__ }
 #else
-  #define l_debug_here(...)
+  #define L_DEBUG_HERE(...)
 #endif
 
 #define l_cast(type, a) ((type)(a))
