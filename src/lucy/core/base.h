@@ -3,35 +3,37 @@
 #include "autoconf.h"
 #include "core/prefix.h"
 
-#undef l_spec_extern
-#undef l_spec_specif
-#undef l_spec_inline
-#undef l_spec_static
-#undef l_spec_shared
-#undef l_spec_thread_local
-#undef l_spec_thread_local_decl
+#undef L_EXTERN
+#undef L_INTERN
+#undef L_GLOBAL
+#undef L_INLINE
+#undef L_THREAD_LOCAL
+#undef L_THREAD_LOCAL_DECL
 
-#define l_spec_extern(a) extern a
-#define l_spec_specif(a) extern a
-#define l_spec_inline(a) static a
-#define l_spec_static(a) static a
-
-#if defined(__GNUC__)
-  #define l_spec_shared(a) extern a
-#else
-  #if defined(L_CORELIB_IMPL) || defined(L_WINDOWS_IMPL)
-    #define l_spec_shared(a) __declspec(dllexport) a
+#if defined(L_BUILD_SHARED)
+  #if defined(__GNUC__)
+    #define L_EXTERN extern
   #else
-    #define l_spec_shared(a) __declspec(dllimport) a
+    #if defined(L_LIBRARY_IMPL)
+      #define L_EXTERN __declspec(dllexport)
+    #else
+      #define L_EXTERN __declspec(dllimport)
+    #endif
   #endif
+#else
+  #define L_EXTERN extern
 #endif
 
+#define L_INTERN static
+#define L_GLOBAL static
+#define L_INLINE static
+
 #if defined(l_cmpl_gcc)
-  #define l_spec_thread_local(a) __thread a
-  #define l_spec_thread_local_decl(a) extern __thread a
+  #define L_THREAD_LOCAL __thread
+  #define L_THREAD_LOCAL_DECL extern __thread
 #elif defined(l_cmpl_msc)
-  #define l_spec_thread_local(a) __declspec(thread) a
-  #define l_spec_thread_local_decl(a) extern __declspec(thread) a
+  #define L_THREAD_LOCAL __declspec(thread)
+  #define L_THREAD_LOCAL_DECL extern __declspec(thread)
 #endif
 
 #if defined(L_BUILD_DEBUG)
@@ -43,19 +45,19 @@
 #define l_cast(type, a) ((type)(a))
 #define l_cstr(s) ((l_byte*)(s))
 
-#define l_max_rwsize    (0x7fff0000) /* 2147418112 */
-#define l_max_ubyte     l_cast(l_byte, 0xff) /* 255 */
-#define l_max_ushort    l_cast(l_ushort, 0xffff) /* 65535 */
-#define l_max_umedit    l_cast(l_umedit, 0xffffffff) /* 4294967295 */
-#define l_max_ulong     l_cast(l_ulong, 0xffffffffffffffff) /* 18446744073709551615 */
-#define l_max_sbyte     l_cast(l_sbyte, 0x7f) /* 127 */
-#define l_max_short     l_cast(l_short, 0x7fff) /* 32767 */
-#define l_max_medit     l_cast(l_medit, 0x7fffffff) /* 2147483647 */
-#define l_max_long      l_cast(l_long, 0x7fffffffffffffff) /* 9223372036854775807 */
-#define l_min_sbyte     l_cast(l_sbyte, -127-1) /* 128 0x80 */
-#define l_min_short     l_cast(l_short, -32767-1) /* 32768 0x8000 */
-#define l_min_medit     l_cast(l_medit, -2147483647-1) /* 2147483648 0x80000000 */
-#define l_min_long      l_cast(l_long, -9223372036854775807-1) /* 9223372036854775808 0x8000000000000000 */
+#define l_max_rwsize (0x7fff0000) /* 2147418112 */
+#define l_max_ubyte  ((l_byte)0xff) /* 255 */
+#define l_max_sbyte  ((l_sbyte)0x7f) /* 127 */
+#define l_min_sbyte  ((l_sbyte)-127-1) /* 128 0x80 */
+#define l_max_ushort ((l_ushort)0xffff) /* 65535 */
+#define l_max_short  ((l_short)0x7fff) /* 32767 */
+#define l_min_short  ((l_short)-32767-1) /* 32768 0x8000 */
+#define l_max_umedit ((l_umedit)0xffffffff) /* 4294967295 */
+#define l_max_medit  ((l_medit)0x7fffffff) /* 2147483647 */
+#define l_min_medit  ((l_medit)-2147483647-1) /* 2147483648 0x80000000 */
+#define l_max_ulong  ((l_ulong)0xffffffffffffffff) /* 18446744073709551615 */
+#define l_max_long   ((l_long)0x7fffffffffffffff) /* 9223372036854775807 */
+#define l_min_long   ((l_long)-9223372036854775807-1) /* 9223372036854775808 0x8000000000000000 */
 
 #define l_status_contread (3)
 #define l_status_waitmore (2)
@@ -73,15 +75,15 @@
  * memory operations
  */
 
-#define l_malloc(allocfunc, ud, size) allocfunc((ud), 0, (size), 0)
-#define l_calloc(allocfunc, ud, size) allocfunc((ud), 0, (size), 1)
-#define l_ralloc(allocfunc, ud, buffer, oldsize, newsize) allocfunc((ud), (buffer), (oldsize), (newsize))
-#define l_mfree(allocfunc, ud, buffer) allocfunc((ud), (buffer), 0, 0)
+#define l_mallocX(allocfunc, ud, size) allocfunc((ud), 0, (size), 0)
+#define l_callocX(allocfunc, ud, size) allocfunc((ud), 0, (size), 1)
+#define l_rallocX(allocfunc, ud, buffer, oldsize, newsize) allocfunc((ud), (buffer), (oldsize), (newsize))
+#define l_mfreeX(allocfunc, ud, buffer) allocfunc((ud), (buffer), 0, 0)
 
-#define l_malloc(allocfunc, ud, size) allocfunc((ud), 0, (size), 0)
-#define l_calloc(allocfunc, ud, size) allocfunc((ud), 0, (size), 1)
-#define l_ralloc(allocfunc, ud, buffer, oldsize, newsize) allocfunc((ud), (buffer), (oldsize), (newsize))
-#define l_mfree(allocfunc, ud, buffer) allocfunc((ud), (buffer), 0, 0)
+#define l_malloc(allocfunc, size) l_mallocX(allocfunc, 0, (size))
+#define l_calloc(allocfunc, size) l_callocX(allocfunc, 0, (size))
+#define l_ralloc(allocfunc, buffer, oldsize, newsize) l_rallocX(allocfunc, 0, (buffer), (oldsize), (newsize))
+#define l_mfree(allocfunc, buffer) l_mfreeX(allocfunc, 0, (buffer))
 
 #define l_raw_malloc(size) l_malloc(l_raw_alloc_func, 0, size)
 #define l_raw_calloc(size) l_calloc(l_raw_alloc_func, 0, size)
@@ -89,9 +91,7 @@
 #define l_raw_mfree(buffer) l_mfree(l_raw_alloc_func, 0, buffer)
 
 typedef void* (*l_allocfunc)(void* userdata, void* buffer, l_int oldsize, l_int newsize);
-
-l_spec_extern(void*)
-l_raw_alloc_func(void* userdata, void* buffer, l_int oldsize, l_int newsize);
+L_EXTERN void* l_raw_alloc_func(void* userdata, void* buffer, l_int oldsize, l_int newsize);
 
 /**
  * simple link list
@@ -101,24 +101,34 @@ typedef struct l_smplnode {
   struct l_smplnode* next;
 } l_smplnode;
 
-l_spec_inline(void)
-l_smplnode_init(l_smplnode* node) {
+L_INLINE void
+l_smplnode_init(l_smplnode* node)
+{
   node->next = node;
 }
 
-l_spec_inline(int)
-l_smplnode_isEmpty(l_smplnode* node) {
+L_INLINE void
+l_smplnode_init(l_smplnode* node)
+{
+  node->next = node;
+}
+
+L_INLINE int
+l_smplnode_isEmpty(l_smplnode* node)
+{
   return node->next == node;
 }
 
-l_spec_inline(void)
-l_smplnode_insertAfter(l_smplnode* node, l_smplnode* newnode) {
+L_INLINE void
+l_smplnode_insertAfter(l_smplnode* node, l_smplnode* newnode)
+{
   newnode->next = node->next;
   node->next = newnode;
 }
 
-l_spec_inline(l_smplnode*)
-l_smplnode_removeNext(l_smplnode* node) {
+L_INLINE l_smplnode*
+l_smplnode_removeNext(l_smplnode* node)
+{
   l_smplnode* p = node->next;
   node->next = p->next;
   return p;
@@ -133,26 +143,30 @@ typedef struct l_linknode {
   struct l_linknode* prev;
 } l_linknode;
 
-l_spec_inline(void)
-l_linknode_init(l_linknode* node) {
+L_INLINE void
+l_linknode_init(l_linknode* node)
+{
   node->next = node->prev = node;
 }
 
-l_spec_inline(int)
-l_linknode_isEmpty(l_linknode* node) {
+L_INLINE int
+l_linknode_isEmpty(l_linknode* node)
+{
   return (node->next == node);
 }
 
-l_spec_inline(void)
-l_linknode_insertAfter(l_linknode* node, l_linknode* newnode) {
+L_INLINE void
+l_linknode_insertAfter(l_linknode* node, l_linknode* newnode)
+{
   newnode->next = node->next;
   node->next = newnode;
   newnode->prev = node;
   newnode->next->prev = newnode;
 }
 
-l_spec_inline(l_linknode*)
-l_linknode_remove(l_linknode* node) {
+L_INLINE l_linknode*
+l_linknode_remove(l_linknode* node)
+{
   node->prev->next = node->next;
   node->next->prev = node->prev;
   return node;
@@ -180,79 +194,76 @@ typedef struct {
 #define l_strn_empty() ((l_strn){0,0})
 #define l_strn_c(s) l_strn_n((s), strlen((char*)(s)))
 
-l_spec_inline(l_strt)
-l_strt_from(const void* s, const void* e) {
+L_INLINE l_strt
+l_strt_from(const void* s, const void* e)
+{
   return (l_strt){l_cstr(s), l_cstr(e)};
 }
 
-l_spec_inline(l_strt)
-l_strt_n(const void* s, l_int len) {
+L_INLINE l_strt
+l_strt_n(const void* s, l_int len)
+{
   return (l_strt){l_cstr(s), l_cstr(s) + len};
 }
 
-l_spec_inline(l_strt)
-l_strt_substr(const void* s, l_int from, l_int to) {
+L_INLINE l_strt
+l_strt_substr(const void* s, l_int from, l_int to)
+{
   return l_strt_from(l_cstr(s) + from, l_cstr(s) + to);
 }
 
-l_spec_inline(int)
-l_strt_isEmpty(const l_strt* s) {
+L_INLINE int
+l_strt_isEmpty(const l_strt* s)
+{
   return !(s->start != 0 && s->start < s->end);
 }
 
-l_spec_inline(l_strn)
-l_strt_tostrn(const l_strt* s) {
+L_INLINE l_strn
+l_strt_tostrn(const l_strt* s)
+{
   return (l_strn){s->start, s->end - s->start};
 }
 
-l_spec_inline(l_strn)
-l_strn_from(const void* s, const void* e) {
+L_INLINE l_strn
+l_strn_from(const void* s, const void* e)
+{
   return (l_strn){l_cstr(s), l_cstr(e) - l_cstr(s)};
 }
 
-l_spec_inline(l_strn)
-l_strn_n(const void* s, l_int len) {
+L_INLINE l_strn
+l_strn_n(const void* s, l_int len)
+{
   return (l_strn){l_cstr(s), len};
 }
 
-l_spec_inline(l_strn)
-l_strn_substr(const void* s, l_int from, l_int to) {
+L_INLINE l_strn
+l_strn_substr(const void* s, l_int from, l_int to)
+{
   return l_strn_from(l_cstr(s) + from, l_cstr(s) + to);
 }
 
-l_spec_inline(int)
-l_strn_isEmpty(const l_strn* s) {
+L_INLINE int
+l_strn_isEmpty(const l_strn* s)
+{
   return !(s->start && s->len > 0);
 }
 
-l_spec_inline(l_strt)
-l_strn_tostrt(const l_strn* s) {
+L_INLINE l_strt
+l_strn_tostrt(const l_strn* s)
+{
   return l_strt_n(s->start, s->len);
 }
 
 #define l_zero(s, e) l_zero_n((s), l_cstr(e) - l_cstr(s))
 #define l_copy(s, e, to) l_copy_n((s), l_cstr(e) - l_cstr(s), (to))
 
-l_spec_extern(void)
-l_zero_n(void* s, l_int n);
-
-l_spec_extern(l_byte*)
-l_copy_n(const void* s, l_int n, void* to);
-
-l_spec_extern(l_byte*)
-l_copy_from(l_strt from, void* to);
-
-l_spec_extern(int)
-l_strt_equal(l_strt a, l_strt b);
-
-l_spec_extern(int)
-l_strn_equal(l_strn a, l_strn b);
-
-l_spec_extern(const l_byte*)
-l_strt_contain(l_strt s, int ch);
-
-l_spec_extern(const l_byte*)
-l_strn_contain(l_strn s, int ch);
+L_EXTERN void l_zero_n(void* s, l_int n);
+L_EXTERN l_byte* l_copy_n(const void* s, l_int n, void* to);
+L_EXTERN l_byte* l_copy_from(l_strt from, void* to);
+L_EXTERN int l_strt_equal(l_strt a, l_strt b);
+L_EXTERN int l_strn_equal(l_strn a, l_strn b);
+L_EXTERN const l_byte* l_strt_contain(l_strt s, int ch);
+L_EXTERN const l_byte* l_strn_contain(l_strn s, int ch);
 
 /**
  * time and date
@@ -284,20 +295,11 @@ typedef struct {
   l_byte sec;    /* 0~61, 60 and 61 are the leap seconds */
 } l_date;
 
-l_spec_specif(l_time)
-l_time_system();
-
-l_spec_specif(l_time)
-l_time_monotonic();
-
-l_spec_specif(l_date)
-l_date_system();
-
-l_spec_specif(l_date)
-l_date_fromsecs(l_long utcsecs);
-
-l_spec_specif(l_date)
-l_date_fromtime(l_time utc);
+L_EXTERN l_time l_time_system();
+L_EXTERN l_time l_time_monotonic();
+L_EXTERN l_date l_date_system();
+L_EXTERN l_date l_date_fromsecs(l_long utcsecs);
+L_EXTERN l_date l_date_fromtime(l_time utc);
 
 /**
  * assert and logging
@@ -367,111 +369,121 @@ typedef union {
   const void* p;
 } l_value;
 
-l_spec_inline(l_value)
-lp(const void* p) {
+L_INLINE l_value
+lp(const void* p)
+{
   l_value a; a.p = p; return a;
 }
 
-l_spec_inline(l_value)
-ld(l_long d) {
+L_INLINE l_value
+ld(l_long d)
+{
   l_value a; a.d = d; return a;
 }
 
-l_spec_inline(l_value)
-lu(l_ulong u) {
+L_INLINE l_value
+lu(l_ulong u)
+{
   l_value a; a.u = u; return a;
 }
 
-l_spec_inline(l_value)
-lf(double f) {
+L_INLINE l_value
+lf(double f)
+{
   l_value a; a.f = f; return a;
 }
 
-l_spec_inline(l_value)
-lstrt(const l_strt* s) {
+L_INLINE l_value
+lstrt(const l_strt* s)
+{
   return lp(s);
 }
 
-l_spec_inline(l_value)
-lstrn(const l_strn* s) {
+L_INLINE l_value
+lstrn(const l_strn* s)
+{
   return lp(s);
 }
 
-l_spec_extern(void)
-l_assert_pass_func(const void* tag, const void* expr);
+L_EXTERN void l_assert_pass_func(const void* tag, const void* expr);
+L_EXTERN void l_assert_fail_func(const void* tag, const void* expr);
+L_EXTERN void l_logger_func_impl(const void* tag, const void* fmt, ...);
 
-l_spec_extern(void)
-l_assert_fail_func(const void* tag, const void* expr);
-
-l_spec_extern(void)
-l_logger_func_impl(const void* tag, const void* fmt, ...);
-
-l_spec_inline(void)
-l_logger_func_s(const void* tag, const void* s) {
+L_INLINE void
+l_logger_func_s(const void* tag, const void* s)
+{
   l_logger_func_impl(tag, s, 0);
 }
 
-l_spec_inline(void)
-l_logger_func_1(const void* tag, const void* s, l_value a) {
+L_INLINE void
+l_logger_func_1(const void* tag, const void* s, l_value a)
+{
   l_logger_func_impl(tag, s, a);
 }
 
-l_spec_inline(void)
-l_logger_func_2(const void* tag, const void* s, l_value a, l_value b) {
+L_INLINE void
+l_logger_func_2(const void* tag, const void* s, l_value a, l_value b)
+{
   l_logger_func_impl(tag, s, a, b);
 }
 
-l_spec_inline(void)
-l_logger_func_3(const void* tag, const void* s, l_value a, l_value b, l_value c) {
+L_INLINE void
+l_logger_func_3(const void* tag, const void* s, l_value a, l_value b, l_value c)
+{
   l_logger_func_impl(tag, s, a, b, c);
 }
 
-l_spec_inline(void)
-l_logger_func_4(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d) {
+L_INLINE void
+l_logger_func_4(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d)
+{
   l_logger_func_impl(tag, s, a, b, c, d);
 }
 
-l_spec_inline(void)
-l_logger_func_5(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d, l_value e) {
+L_INLINE void
+l_logger_func_5(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d,
+    l_value e)
+{
   l_logger_func_impl(tag, s, a, b, c, d, e);
 }
 
-l_spec_inline(void)
-l_logger_func_6(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d, l_value e, l_value f) {
+L_INLINE void
+l_logger_func_6(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d,
+    l_value e, l_value f)
+{
   l_logger_func_impl(tag, s, a, b, c, d, e, f);
 }
 
-l_spec_inline(void)
-l_logger_func_7(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d, l_value e, l_value f, l_value g) {
+L_INLINE void
+l_logger_func_7(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d,
+    l_value e, l_value f, l_value g)
+{
   l_logger_func_impl(tag, s, a, b, c, d, e, f, g);
 }
 
-l_spec_inline(void)
-l_logger_func_8(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d, l_value e, l_value f, l_value g, l_value h) {
+L_INLINE void
+l_logger_func_8(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d,
+    l_value e, l_value f, l_value g, l_value h)
+{
   l_logger_func_impl(tag, s, a, b, c, d, e, f, g, h);
 }
 
-l_spec_inline(void)
-l_logger_func_9(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d, l_value e, l_value f, l_value g, l_value h, l_value i) {
+L_INLINE void
+l_logger_func_9(const void* tag, const void* s, l_value a, l_value b, l_value c, l_value d,
+    l_value e, l_value f, l_value g, l_value h, l_value i)
+{
   l_logger_func_impl(tag, s, a, b, c, d, e, f, g, h, i);
 }
 
-l_spec_inline(void)
-l_logger_func_n(const void* tag, const void* s, l_int n, const l_value* a) {
+L_INLINE void
+l_logger_func_n(const void* tag, const void* s, l_int n, const l_value* a)
+{
   l_logger_func_impl(tag, s, n, a);
 }
 
-l_spec_extern(void)
-l_logger_setLevel(int level);
-
-l_spec_extern(int)
-l_logger_getLevel();
-
-l_spec_extern(void)
-l_process_exit();
-
-l_spec_extern(void)
-l_core_base_test();
+L_EXTERN void l_logger_setLevel(int level);
+L_EXTERN int l_logger_getLevel();
+L_EXTERN void l_process_exit();
+L_EXTERN void l_core_base_test();
 
 #endif /* lucy_core_base_h */
 
