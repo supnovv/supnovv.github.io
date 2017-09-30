@@ -43,31 +43,32 @@
 #define l_cast(type, a) ((type)(a))
 #define l_cstr(s) ((l_byte*)(s))
 
-#define l_max_rwsize (0x7fff0000) /* 2147418112 */
-#define l_max_ubyte  ((l_byte)0xff) /* 255 */
-#define l_max_sbyte  ((l_sbyte)0x7f) /* 127 */
-#define l_min_sbyte  ((l_sbyte)-127-1) /* 128 0x80 */
-#define l_max_ushort ((l_ushort)0xffff) /* 65535 */
-#define l_max_short  ((l_short)0x7fff) /* 32767 */
-#define l_min_short  ((l_short)-32767-1) /* 32768 0x8000 */
-#define l_max_umedit ((l_umedit)0xffffffff) /* 4294967295 */
-#define l_max_medit  ((l_medit)0x7fffffff) /* 2147483647 */
-#define l_min_medit  ((l_medit)-2147483647-1) /* 2147483648 0x80000000 */
-#define l_max_ulong  ((l_ulong)0xffffffffffffffff) /* 18446744073709551615 */
-#define l_max_long   ((l_long)0x7fffffffffffffff) /* 9223372036854775807 */
-#define l_min_long   ((l_long)-9223372036854775807-1) /* 9223372036854775808 0x8000000000000000 */
+#define L_MAX_RWSIZE (0x7fff0000) /* 2147418112 */
+#define L_MAX_UBYTE  ((l_byte)0xff) /* 255 */
+#define L_MAX_SBYTE  ((l_sbyte)0x7f) /* 127 */
+#define L_MIN_SBYTE  ((l_sbyte)-127-1) /* 128 0x80 */
+#define L_MAX_USHORT ((l_ushort)0xffff) /* 65535 */
+#define L_MAX_SHORT  ((l_short)0x7fff) /* 32767 */
+#define L_MIN_SHORT  ((l_short)-32767-1) /* 32768 0x8000 */
+#define L_MAX_UMEDIT ((l_umedit)0xffffffff) /* 4294967295 */
+#define L_MAX_MEDIT  ((l_medit)0x7fffffff) /* 2147483647 */
+#define L_MIN_MEDIT  ((l_medit)-2147483647-1) /* 2147483648 0x80000000 */
+#define L_MAX_ULONG  ((l_ulong)0xffffffffffffffff) /* 18446744073709551615 */
+#define L_MAX_LONG   ((l_long)0x7fffffffffffffff) /* 9223372036854775807 */
+#define L_MIN_LONG   ((l_long)-9223372036854775807-1) /* 9223372036854775808 0x8000000000000000 */
 
-#define l_status_contread (3)
-#define l_status_waitmore (2)
-#define l_status_luayield (1)
-#define l_status_success  (0)
-#define l_status_luaerr   (-1)
-#define l_status_error    (-2)
-#define l_status_eread    (-3)
-#define l_status_ewrite   (-4)
-#define l_status_elimit   (-5)
-#define l_status_ematch   (-6)
-#define l_status_einval   (-7)
+#define L_SUCCESS  (0)
+#define L_LUAYIELD (1)
+#define L_WAITMORE (2)
+#define L_CONTREAD (3)
+
+#define L_ERROR  (-1)
+#define L_ELUA   (-2)
+#define L_EREAD  (-3)
+#define L_EWRITE (-4)
+#define L_ELIMIT (-5)
+#define L_EMATCH (-6)
+#define L_EINVAL (-7)
 
 /**
  * memory operations
