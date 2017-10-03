@@ -203,32 +203,23 @@ l_raw_alloc_r(void* p, l_int old, l_int newsz) {
   return 0;
 }
 
-void l_raw_free(void* p) {
-  if (p == 0) return;
-  free(p);
+static void*
+l_raw_alloc_f(void* p) {
+  if (p) free(p);
+  return 0;
 }
-
-#define l_malloc(allocfunc, ud, size) allocfunc((ud), 0, (size), 0)
-#define l_calloc(allocfunc, ud, size) allocfunc((ud), 0, (size), 1)
-#define l_ralloc(allocfunc, ud, buffer, oldsize, newsize) allocfunc((ud), (buffer), (oldsize), (newsize))
-#define l_mfree(allocfunc, ud, buffer) allocfunc((ud), (buffer), 0, 0)
 
 L_EXTERN void*
 l_raw_alloc_func(void* userdata, void* buffer, l_int oldsize, l_int newsize)
 {
   (void)userdata;
   if (!buffer) {
-    return newsize ? l_raw_alloc_c(oldsize) : l_raw_alloc_m(oldsize);
+    if (oldsize) return l_raw_alloc_c(newsize);
+    return l_raw_alloc_m(newsize);
   }
-  if (newsize) {
-    return l_raw_alloc_r(buffer, oldsize, newsize);
-  }
-  l_raw_alloc_f(buffer);
-  return 0;
+  if (newsize) return l_raw_alloc_r(buffer, oldsize, newsize);
+  return l_raw_alloc_f(buffer);
 }
-
-
-#endif
 
 L_EXTERN void
 l_core_base_test()
