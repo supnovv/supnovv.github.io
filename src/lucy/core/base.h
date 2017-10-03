@@ -74,8 +74,8 @@
  * memory operations
  */
 
-#define l_mallocX(allocfunc, ud, size) allocfunc((ud), 0, (size), 0)
-#define l_callocX(allocfunc, ud, size) allocfunc((ud), 0, (size), 1)
+#define l_mallocX(allocfunc, ud, size) allocfunc((ud), 0, 0, (size))
+#define l_callocX(allocfunc, ud, size) allocfunc((ud), 0, 1, (size))
 #define l_rallocX(allocfunc, ud, buffer, oldsize, newsize) allocfunc((ud), (buffer), (oldsize), (newsize))
 #define l_mfreeX(allocfunc, ud, buffer) allocfunc((ud), (buffer), 0, 0)
 
