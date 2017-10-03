@@ -13,7 +13,7 @@ l_zero_n(void* start, l_int len)
   if (!start || len <= 0 || len > l_max_rwsize) {
     l_loge_1("size %d", ld(len));
   } else {
-    memset(start, 0, (size_t)len); /* void* memset(void* ptr, int value, size_t num); */
+    memset(start, 0, (size_t)len);
   }
 }
 
@@ -115,34 +115,34 @@ l_out_of_memory(l_int size, int init)
 static l_int
 l_check_alloc_size(l_int size)
 {
-  if (size <= 0 || size + 8 > l_max_rwsize) return 0;
+  if (size <= 0 || size > L_MAX_RWSIZE) return 0;
   return (((size - 1) >> 3) + 1) << 3; /* times of eight */
 }
 
-#define l_malloc(allocfunc, ud, size) allocfunc((ud), 0, (size), 0)
-#define l_calloc(allocfunc, ud, size) allocfunc((ud), 0, (size), 1)
-#define l_ralloc(allocfunc, ud, buffer, oldsize, newsize) allocfunc((ud), (buffer), (oldsize), (newsize))
-#define l_mfree(allocfunc, ud, buffer) allocfunc((ud), (buffer), 0, 0)
+l_assert(l_check_alloc_size(-1) == 0);
+l_assert(l_check_alloc_size(0) == 0);
+l_assert(l_check_alloc_size(1) == 8);
+l_assert(l_check_alloc_size(2) == 8);
+l_assert(l_check_alloc_size(7) == 8);
+l_assert(l_check_alloc_size(8) == 8);
+l_assert(l_check_alloc_size(9) == 16);
+l_assert(l_check_alloc_size(L_MAX_RWSIZE-1) == L_MAX_RWSIZE);
+l_assert(l_check_alloc_size(L_MAX_RWSIZE) == L_MAX_RWSIZE);
+l_assert(l_check_alloc_size(L_MAX_RWSIZE+1) == 0);
 
-L_EXTERN void*
-l_raw_alloc_func(void* userdata, void* buffer, l_int oldsize, l_int newsize)
+static void*
+l_raw_alloc_malloc(l_int size)
 {
-  (void)userdata;
-  (void)buffer;
-  (void)oldsize;
-  (void)newsize;
-  return 0;
-}
-
-
-#if 0
-void* l_raw_malloc(l_int size) {
   void* p = 0;
   l_int n = l_check_alloc_size(size);
-  if (!n) { l_loge_1("large %d", ld(size)); return 0; }
-  p = malloc(l_cast(size_t, n));
-  if (p) return p; /* not init */
-  return l_out_of_memory(n, 0);
+  if (!n) {
+    l_loge_1("large %d", ld(size));
+  } else {
+    if (!(p = malloc(l_cast(size_t, n)))) {
+      p = l_out_of_memory(n, 0);
+    }
+  }
+  return p; /* the memory is not initialized */
 }
 
 void* l_raw_calloc(l_int size) {
@@ -205,6 +205,23 @@ void l_raw_free(void* p) {
   if (p == 0) return;
   free(p);
 }
+
+#define l_malloc(allocfunc, ud, size) allocfunc((ud), 0, (size), 0)
+#define l_calloc(allocfunc, ud, size) allocfunc((ud), 0, (size), 1)
+#define l_ralloc(allocfunc, ud, buffer, oldsize, newsize) allocfunc((ud), (buffer), (oldsize), (newsize))
+#define l_mfree(allocfunc, ud, buffer) allocfunc((ud), (buffer), 0, 0)
+
+L_EXTERN void*
+l_raw_alloc_func(void* userdata, void* buffer, l_int oldsize, l_int newsize)
+{
+  (void)userdata;
+  (void)buffer;
+  (void)oldsize;
+  (void)newsize;
+  return 0;
+}
+
+
 #endif
 
 L_EXTERN void
