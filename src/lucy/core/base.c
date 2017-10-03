@@ -131,7 +131,7 @@ l_assert(l_check_alloc_size(L_MAX_RWSIZE) == L_MAX_RWSIZE);
 l_assert(l_check_alloc_size(L_MAX_RWSIZE+1) == 0);
 
 static void*
-l_raw_alloc_malloc(l_int size)
+l_raw_alloc_m(l_int size)
 {
   void* p = 0;
   l_int n = l_check_alloc_size(size);
@@ -145,7 +145,8 @@ l_raw_alloc_malloc(l_int size)
   return p; /* the memory is not initialized */
 }
 
-void* l_raw_calloc(l_int size) {
+static void*
+l_raw_alloc_c(l_int size) {
   void* p = 0;
   l_int n = l_check_alloc_size(size);
   if (!n) { l_loge_1("large %d", ld(size)); return 0; }
@@ -155,7 +156,8 @@ void* l_raw_calloc(l_int size) {
   return l_out_of_memory(n, 1);
 }
 
-void* l_raw_realloc(void* p, l_int old, l_int newsz) {
+static void*
+l_raw_alloc_r(void* p, l_int old, l_int newsz) {
   void* temp = 0;
   l_int n = l_check_alloc_size(newsz);
   if (!p || old <= 0 || n == 0) { l_loge_1("size %d", ld(newsz)); return 0; }
@@ -215,9 +217,13 @@ L_EXTERN void*
 l_raw_alloc_func(void* userdata, void* buffer, l_int oldsize, l_int newsize)
 {
   (void)userdata;
-  (void)buffer;
-  (void)oldsize;
-  (void)newsize;
+  if (!buffer) {
+    return newsize ? l_raw_alloc_c(oldsize) : l_raw_alloc_m(oldsize);
+  }
+  if (newsize) {
+    return l_raw_alloc_r(buffer, oldsize, newsize);
+  }
+  l_raw_alloc_f(buffer);
   return 0;
 }
 
