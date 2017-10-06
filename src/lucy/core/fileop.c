@@ -173,7 +173,7 @@ l_file_seekFromCurPos(l_file* self, long offset)
 }
 
 L_EXTERN void
-l_file_clearerr(l_file* self)
+l_file_clearErr(l_file* self)
 {
   clearerr((FILE*)self->stream);
 }
