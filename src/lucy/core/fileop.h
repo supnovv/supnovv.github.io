@@ -27,108 +27,44 @@ typedef union {
 #endif
 } l_filedesc;
 
-l_spec_extern(l_file)
-l_file_openRead(const void* name);
-
-l_spec_extern(l_file)
-l_file_openWrite(const void* name);
-
-l_spec_extern(l_file)
-l_file_openAppend(const void* name);
-
-l_spec_extern(l_file)
-l_file_openReadWrite(const void* name);
-
-l_spec_extern(l_file)
-l_file_openReadUnbuffered(const void* name);
-
-l_spec_extern(l_file)
-l_file_openWriteUnbuffered(const void* name);
-
-l_spec_extern(l_file)
-l_file_openAppendUnbuffered(const void* name);
-
-l_spec_extern(l_int)
-l_file_writeStrt(l_file* self, l_strt s);
-
-l_spec_extern(l_int)
-l_file_write(l_file* self, const void* s, l_int len);
-
-l_spec_extern(l_int)
-l_file_read(l_file* self, void* out, l_int len);
-
-l_spec_extern(int)
-l_file_remove(const void* name);
-
-l_spec_extern(int)
-l_file_rename(const void* from, const void* to);
-
-l_spec_extern(void)
-l_file_redirectStdout(const void* name);
-
-l_spec_extern(void)
-l_file_redirectStderr(const void* name);
-
-l_spec_extern(void)
-l_reditect_stdin(const void* name);
-
-l_spec_extern(void)
-l_file_close(l_file* self);
-
-l_spec_extern(void)
-l_file_flush(l_file* self);
-
-l_spec_extern(void)
-l_file_clearerr(l_file* self);
-
-l_spec_extern(void)
-l_file_rewind(l_file* self);
-
-l_spec_extern(void)
-l_file_seekFromBegin(l_file* self, long offset);
-
-l_spec_extern(void)
-l_file_seekFromCurPos(l_file* self, long offset);
-
-l_spec_specif(int)
-l_file_isExist(const void* name);
-
-l_spec_specif(int)
-l_file_isExistIn(l_filedesc dirfd, const void* name);
-
-l_spec_specif(l_long)
-l_file_getSize(const void* name);
-
-l_spec_specif(l_fileattr)
-l_file_getAttr(const void* name);
-
-l_spec_specif(int)
-l_file_getCurrentDir(void (*func)(void* obj, l_strn str), void* obj);
-
-l_spec_specif(l_filedesc)
-l_filedesc_dirfd(const void* name);
-
-l_spec_specif(void)
-l_filedesc_close(l_filedesc* fd);
-
-l_spec_specif(int)
-l_filedesc_isValid(l_filedesc fd);
+L_EXTERN l_file l_file_openRead(const void* name);
+L_EXTERN l_file l_file_openWrite(const void* name);
+L_EXTERN l_file l_file_openAppend(const void* name);
+L_EXTERN l_file l_file_openReadWrite(const void* name);
+L_EXTERN l_file l_file_openReadUnbuffered(const void* name);
+L_EXTERN l_file l_file_openWriteUnbuffered(const void* name);
+L_EXTERN l_file l_file_openAppendUnbuffered(const void* name);
+L_EXTERN l_int l_file_write(l_file* self, l_strt s);
+L_EXTERN l_int l_file_writeLen(l_file* self, const void* s, l_int len);
+L_EXTERN l_int l_file_read(l_file* self, void* out, l_int len);
+L_EXTERN int l_file_remove(const void* name);
+L_EXTERN int l_file_rename(const void* from, const void* to);
+L_EXTERN void l_file_redirectStdout(const void* name);
+L_EXTERN void l_file_redirectStderr(const void* name);
+L_EXTERN void l_file_reditectStdin(const void* name);
+L_EXTERN void l_file_close(l_file* self);
+L_EXTERN void l_file_flush(l_file* self);
+L_EXTERN void l_file_clearerr(l_file* self);
+L_EXTERN void l_file_rewind(l_file* self);
+L_EXTERN void l_file_seekFromBegin(l_file* self, long offset);
+L_EXTERN void l_file_seekFromCurPos(l_file* self, long offset);
+L_EXTERN int l_file_isExist(const void* name);
+L_EXTERN int l_file_isExistIn(l_filedesc dirfd, const void* name);
+L_EXTERN l_long l_file_getSize(const void* name);
+L_EXTERN l_fileattr l_file_getAttr(const void* name);
+L_EXTERN int l_file_getCurrentDir(void (*func)(void* obj, l_strn str), void* obj);
+L_EXTERN l_filedesc l_filedesc_dirfd(const void* name);
+L_EXTERN void l_filedesc_close(l_filedesc* fd);
+L_EXTERN int l_filedesc_isValid(l_filedesc fd);
 
 typedef struct {
   void* stream;
 } l_dirstream;
 
-l_spec_specif(l_dirstream)
-l_dirstream_open(const void* name);
-
-l_spec_specif(void)
-l_dirstream_close(l_dirstream* d);
-
-l_spec_specif(const l_byte*)
-l_dirstream_read(l_dirstream* d);
-
-l_spec_specif(int)
-l_execute_shell_command(const void* command, void (*func)(void* obj, l_strn result), void* obj);
+L_EXTERN l_dirstream l_dirstream_open(const void* name);
+L_EXTERN void l_dirstream_close(l_dirstream* d);
+L_EXTERN const l_byte* l_dirstream_read(l_dirstream* d);
+L_EXTERN int l_execute_shell_command(const void* command, void (*func)(void* obj, l_strn result), void* obj);
 
 #endif /* lucy_core_fileop_h */
 
