@@ -119,17 +119,6 @@ l_check_alloc_size(l_int size)
   return (((size - 1) >> 3) + 1) << 3; /* times of eight */
 }
 
-l_assert(l_check_alloc_size(-1) == 0);
-l_assert(l_check_alloc_size(0) == 0);
-l_assert(l_check_alloc_size(1) == 8);
-l_assert(l_check_alloc_size(2) == 8);
-l_assert(l_check_alloc_size(7) == 8);
-l_assert(l_check_alloc_size(8) == 8);
-l_assert(l_check_alloc_size(9) == 16);
-l_assert(l_check_alloc_size(L_MAX_RWSIZE-1) == L_MAX_RWSIZE);
-l_assert(l_check_alloc_size(L_MAX_RWSIZE) == L_MAX_RWSIZE);
-l_assert(l_check_alloc_size(L_MAX_RWSIZE+1) == 0);
-
 static void*
 l_raw_alloc_m(l_int size)
 {
@@ -234,6 +223,16 @@ l_core_base_test()
 #else
   l_logd_s("L_BUILD_DEBUG false");
 #endif
+  l_assert(l_check_alloc_size(-1) == 0);  
+  l_assert(l_check_alloc_size(0) == 0);  
+  l_assert(l_check_alloc_size(1) == 8);  
+  l_assert(l_check_alloc_size(2) == 8);  
+  l_assert(l_check_alloc_size(7) == 8);  
+  l_assert(l_check_alloc_size(8) == 8);  
+  l_assert(l_check_alloc_size(9) == 16);  
+  l_assert(l_check_alloc_size(L_MAX_RWSIZE-1) == L_MAX_RWSIZE);  
+  l_assert(l_check_alloc_size(L_MAX_RWSIZE) == L_MAX_RWSIZE);  
+  l_assert(l_check_alloc_size(L_MAX_RWSIZE+1) == 0);  
   /* struct/array init */
   l_assert(strt.start == 0);
   l_assert(strt.end == 0);
