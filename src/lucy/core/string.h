@@ -20,38 +20,17 @@ typedef struct {
 
 typedef struct l_thread l_thread;
 
-l_spec_extern(l_string)
-l_empty_string();
-
-l_spec_extern(l_string)
-l_create_string(l_int initsize);
-
-l_spec_extern(l_string)
-l_create_string_from(l_strt from);
-
-l_spec_extern(l_string)
-l_create_limited_string(l_int initsize, l_int maxlimit);
-
-l_spec_extern(l_string)
-l_create_limited_string_from(l_strt from, l_int maxlimit);
-
-l_spec_extern(l_string)
-l_thread_create_string(l_thread* t, l_int initsize);
-
-l_spec_extern(l_string)
-l_thread_create_string_from(l_thread* t, l_strt from);
-
-l_spec_extern(l_string)
-l_thread_create_limited_string(l_thread* t, l_int initsize, l_int maxlimit);
-
-l_spec_extern(l_string)
-l_thread_create_limited_string_from(l_thread* t, l_strt from, l_int maxlimit);
-
-l_spec_extern(void)
-l_thread_string_free(l_thread* thread, l_string* self);
-
-l_spec_extern(void)
-l_string_free(l_string* self);
+L_EXTERN l_string l_string_empty();
+L_EXTERN l_string l_string_create(l_int initsize);
+L_EXTERN l_string l_string_create_from(l_strt from);
+L_EXTERN l_string l_string_create_limited(l_int initsize, l_int maxlimit);
+L_EXTERN l_string l_string_create_limited_from(l_strt from, l_int maxlimit);
+L_EXTERN l_string l_string_thread_create(l_thread* t, l_int initsize);
+L_EXTERN l_string l_string_thread_create_from(l_thread* t, l_strt from);
+L_EXTERN l_string l_string_thread_create_limited(l_thread* t, l_int initsize, l_int maxlimit);
+L_EXTERN l_string l_string_thread_create_limited_from(l_thread* t, l_strt from, l_int maxlimit);
+L_EXTERN void l_string_thread_free(l_thread* thread, l_string* self);
+L_EXTERN void l_string_free(l_string* self);
 
 l_spec_extern(void)
 l_string_clear(l_string* self);
