@@ -10,7 +10,8 @@
 L_EXTERN void
 l_zero_n(void* start, l_int len)
 {
-  if (!start || len <= 0 || len > l_max_rwsize) {
+  if (len == 0) return;
+  if (!start || len < 0 || len > L_MAX_RWSIZE) {
     l_loge_1("size %d", ld(len));
   } else {
     memset(start, 0, (size_t)len);
@@ -20,7 +21,8 @@ l_zero_n(void* start, l_int len)
 L_EXTERN l_byte*
 l_copy_n(const void* from, l_int len, void* to)
 {
-  if (!from || len <= 0 || len > l_max_rwsize) {
+  if (len == 0) return 0;
+  if (!from || len < 0 || len > L_MAX_RWSIZE) {
     l_loge_1("size %d", ld(len));
     return 0;
   }
@@ -58,7 +60,7 @@ l_strt_equal(l_strt a, l_strt b)
 #endif
   l_int len = a.end - a.start;
   if (len != b.end - b.start) return false;
-  if (len < 0 || len > l_max_rwsize) {
+  if (len < 0 || len > L_MAX_RWSIZE) {
     l_loge_1("size %d", ld(len));
     return false;
   }
@@ -69,7 +71,7 @@ L_EXTERN int
 l_strn_equal(l_strn a, l_strn b)
 {
   if (a.len != b.len) return false;
-  if (a.len < 0 || a.len > l_max_rwsize) {
+  if (a.len < 0 || a.len > L_MAX_RWSIZE) {
     l_loge_1("size %d", ld(a.len));
     return false;
   }
@@ -86,7 +88,7 @@ l_strt_contain(l_strt s, int ch)
   return 0;
 #endif
   l_int len = s.end - s.start;
-  if (!s.start || len <= 0 || len > l_max_rwsize) {
+  if (!s.start || len <= 0 || len > L_MAX_RWSIZE) {
     l_loge_1("size %d", ld(len));
     return 0;
   }
@@ -96,7 +98,7 @@ l_strt_contain(l_strt s, int ch)
 L_EXTERN const l_byte*
 l_strn_contain(l_strn s, int ch)
 {
-  if (!s.start || s.len <= 0 || s.len > l_max_rwsize) {
+  if (!s.start || s.len <= 0 || s.len > L_MAX_RWSIZE) {
     l_loge_1("size %d", ld(s.len));
     return 0;
   }
@@ -117,6 +119,12 @@ l_check_alloc_size(l_int size)
 {
   if (size <= 0 || size > L_MAX_RWSIZE) return 0;
   return (((size - 1) >> 3) + 1) << 3; /* times of eight */
+}
+
+static void*
+l_raw_alloc_f(void* p) {
+  if (p) free(p);
+  return 0;
 }
 
 static void*
@@ -177,7 +185,7 @@ l_raw_alloc_r(void* p, l_int old, l_int newsz) {
     if ((temp = l_out_of_memory(n, 0))) {
       l_copy_n(p, old, temp);
       l_zero_n(temp + old, n - old);
-      l_raw_free(p);
+      l_raw_alloc_f(p);
       return temp;
     }
   } else {
@@ -185,16 +193,10 @@ l_raw_alloc_r(void* p, l_int old, l_int newsz) {
     if (temp) return temp;
     if ((temp = l_out_of_memory(n, 0))) {
       l_copy_n(p, n, temp);
-      l_raw_free(p);
+      l_raw_alloc_f(p);
       return temp;
     }
   }
-  return 0;
-}
-
-static void*
-l_raw_alloc_f(void* p) {
-  if (p) free(p);
   return 0;
 }
 
@@ -210,6 +212,20 @@ l_raw_alloc_func(void* userdata, void* buffer, l_int oldsize, l_int newsize)
   return l_raw_alloc_f(buffer);
 }
 
+L_GLOBAL int l_log_level = 2;
+
+L_EXTERN void
+l_logger_setLevel(int level)
+{
+  l_log_level = level;
+}
+
+L_EXTERN int
+l_logger_getLevel()
+{
+  return l_log_level;
+}
+
 L_EXTERN void
 l_core_base_test()
 {
@@ -223,16 +239,16 @@ l_core_base_test()
 #else
   l_logd_s("L_BUILD_DEBUG false");
 #endif
-  l_assert(l_check_alloc_size(-1) == 0);  
-  l_assert(l_check_alloc_size(0) == 0);  
-  l_assert(l_check_alloc_size(1) == 8);  
-  l_assert(l_check_alloc_size(2) == 8);  
-  l_assert(l_check_alloc_size(7) == 8);  
-  l_assert(l_check_alloc_size(8) == 8);  
-  l_assert(l_check_alloc_size(9) == 16);  
-  l_assert(l_check_alloc_size(L_MAX_RWSIZE-1) == L_MAX_RWSIZE);  
-  l_assert(l_check_alloc_size(L_MAX_RWSIZE) == L_MAX_RWSIZE);  
-  l_assert(l_check_alloc_size(L_MAX_RWSIZE+1) == 0);  
+  l_assert(l_check_alloc_size(-1) == 0);
+  l_assert(l_check_alloc_size(0) == 0);
+  l_assert(l_check_alloc_size(1) == 8);
+  l_assert(l_check_alloc_size(2) == 8);
+  l_assert(l_check_alloc_size(7) == 8);
+  l_assert(l_check_alloc_size(8) == 8);
+  l_assert(l_check_alloc_size(9) == 16);
+  l_assert(l_check_alloc_size(L_MAX_RWSIZE-1) == L_MAX_RWSIZE);
+  l_assert(l_check_alloc_size(L_MAX_RWSIZE) == L_MAX_RWSIZE);
+  l_assert(l_check_alloc_size(L_MAX_RWSIZE+1) == 0);
   /* struct/array init */
   l_assert(strt.start == 0);
   l_assert(strt.end == 0);
@@ -264,26 +280,26 @@ l_core_base_test()
   l_assert(sizeof(l_float) == 4 || sizeof(l_float) == 8);
   l_assert(sizeof(l_eightbyte) == 8);
   /* value limit */
-  l_assert(l_max_ubyte == 255);
-  l_assert(l_max_sbyte == 127);
-  l_assert(l_min_sbyte == -127-1);
-  l_assert(l_cast(l_byte, l_min_sbyte) == 0x80);
-  l_assert(l_cast(l_byte, l_min_sbyte) == 128);
-  l_assert(l_max_ushort == 65535);
-  l_assert(l_max_short == 32767);
-  l_assert(l_min_short == -32767-1);
-  l_assert(l_cast(l_ushort, l_min_short) == 32768);
-  l_assert(l_cast(l_ushort, l_min_short) == 0x8000);
-  l_assert(l_max_umedit == 4294967295);
-  l_assert(l_max_medit == 2147483647);
-  l_assert(l_min_medit == -2147483647-1);
-  l_assert(l_cast(l_umedit, l_min_medit) == 2147483648);
-  l_assert(l_cast(l_umedit, l_min_medit) == 0x80000000);
-  l_assert(l_max_ulong == 18446744073709551615ull);
-  l_assert(l_max_long == 9223372036854775807ull);
-  l_assert(l_min_long == -9223372036854775807-1);
-  l_assert(l_cast(l_ulong, l_min_long) == 9223372036854775808ull);
-  l_assert(l_cast(l_ulong, l_min_long) == 0x8000000000000000ull);
+  l_assert(L_MAX_UBYTE == 255);
+  l_assert(L_MAX_SBYTE == 127);
+  l_assert(L_MIN_SBYTE == -127-1);
+  l_assert(l_cast(l_byte, L_MIN_SBYTE) == 0x80);
+  l_assert(l_cast(l_byte, L_MIN_SBYTE) == 128);
+  l_assert(L_MAX_USHORT == 65535);
+  l_assert(L_MAX_SHORT == 32767);
+  l_assert(L_MIN_SHORT == -32767-1);
+  l_assert(l_cast(l_ushort, L_MIN_SHORT) == 32768);
+  l_assert(l_cast(l_ushort, L_MIN_SHORT) == 0x8000);
+  l_assert(L_MAX_UMEDIT == 4294967295);
+  l_assert(L_MAX_MEDIT == 2147483647);
+  l_assert(L_MIN_MEDIT == -2147483647-1);
+  l_assert(l_cast(l_umedit, L_MIN_MEDIT) == 2147483648);
+  l_assert(l_cast(l_umedit, L_MIN_MEDIT) == 0x80000000);
+  l_assert(L_MAX_ULONG == 18446744073709551615ull);
+  l_assert(L_MAX_LONG == 9223372036854775807ull);
+  l_assert(L_MIN_LONG == -9223372036854775807-1);
+  l_assert(l_cast(l_ulong, L_MIN_LONG) == 9223372036854775808ull);
+  l_assert(l_cast(l_ulong, L_MIN_LONG) == 0x8000000000000000ull);
   /* copy test */
   l_copy_n(a, 1, a+1);
   l_assert(a[1] == '0'); a[1] = '1';

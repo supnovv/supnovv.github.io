@@ -1,6 +1,8 @@
-#include "lualib.h"
-#include "lauxlib.h"
-#include "lucycore.h"
+#include <lualib.h>
+#include <lauxlib.h>
+
+#define L_LIBRARY_IMPL
+#include "core/state.h"
 
 /**
  * # Continuations
@@ -110,12 +112,16 @@
  *
  */
 
-static void lucy_perror(lua_State* L, const void* log) {
+static void
+lucy_perror(lua_State* L, const void* log)
+{
   if (log != 0) l_loge_2("%s - %s", ls(log), ls(lua_tostring(L, /* stack index */ -1)));
   lua_pop(L, /* number of elements */ 1); /* pop error object */
 }
 
-static int lucy_loadfile(lua_State* L, const void* file) {
+static int
+lucy_loadfile(lua_State* L, const void* file)
+{
   if (luaL_loadfile(L, (const char*)file) != LUA_OK) {
     lucy_perror(L, "lua_loadfile");
     return false;
@@ -123,7 +129,9 @@ static int lucy_loadfile(lua_State* L, const void* file) {
   return true;
 }
 
-static int lucy_pcall(lua_State* L, int nresults) {
+static int
+lucy_pcall(lua_State* L, int nresults)
+{
   if (lua_pcall(L, /* nargs */ 0, nresults, /* msgh */ 0) != LUA_OK) {
     lucy_perror(L, "lua_pcall");
     return false;
@@ -131,33 +139,42 @@ static int lucy_pcall(lua_State* L, int nresults) {
   return true;
 }
 
-/* execute file and nresults pushed onto stack if success */
-static int lucy_dofile(lua_State* L, const void* file, int nresults) {
+static int /* execute file and nresults pushed onto stack if success */
+lucy_dofile(lua_State* L, const void* file, int nresults)
+{
   if (!lucy_loadfile(L, file)) return false;
   if (!lucy_pcall(L, nresults < 0 ? 0 : nresults)) return false;
   return true;
 }
 
-static int lucy_setfuncenv(lua_State* L, const void* tablename) {
+static int
+lucy_setfuncenv(lua_State* L, const void* tablename)
+{
   int funcindex = lua_gettop(L);
   lua_getglobal(L, (const char*)tablename); /* push a table as a upvalue */
   lua_setupvalue(L, funcindex, /* upvalue index - _ENV is the first upvalue */ 1); /* pop the table */
   return true;
 }
 
-static int lucy_settablefield(lua_State* L, const void* keyname) {
+static int
+lucy_settablefield(lua_State* L, const void* keyname)
+{
   int tableindex = lua_gettop(L) - 1;
   lua_setfield(L, tableindex, (const char*)keyname); /* pop the top value */
   return true;
 }
 
-static void lucy_emptystack(lua_State* L) {
+static void
+lucy_emptystack(lua_State* L)
+{
   lua_pop(L, lua_gettop(L));
 }
 
 #define L_MAX_CONF_NAME_LEN 80
 
-static int lucy_loadconf(lua_State* L, const l_byte* name) {
+static int
+lucy_loadconf(lua_State* L, const l_byte* name)
+{
   const char* libname = "LUCY_GLOBAL_TABLE";
   l_byte keyname[L_MAX_CONF_NAME_LEN+1] = {0};
   l_byte* keyend = 0;
@@ -209,7 +226,9 @@ static int lucy_loadconf(lua_State* L, const l_byte* name) {
   return true;
 }
 
-l_int lucy_intconf(lua_State* L, const void* name) {
+L_EXTERN l_int
+lucy_intconf(lua_State* L, const void* name)
+{
   int startelems = 0;
   l_int result = 0;
 
@@ -226,7 +245,9 @@ l_int lucy_intconf(lua_State* L, const void* name) {
   return result;
 }
 
-int lucy_strconf(lua_State* L, int (*func)(void* stream, l_strt str), void* stream, const void* name) {
+L_EXTERN int
+lucy_strconf(lua_State* L, int (*func)(void* stream, l_strt str), void* stream, const void* name)
+{
   int startelems = 0;
   const char* result = 0;
   size_t len = 0;
@@ -249,7 +270,9 @@ int lucy_strconf(lua_State* L, int (*func)(void* stream, l_strt str), void* stre
   return func(stream, l_strt_e(result, result + len));
 }
 
-static int lucy_loadconf_n(lua_State* L, int n, va_list vl) {
+static int
+lucy_loadconf_n(lua_State* L, int n, va_list vl)
+{
   const char* libname = "LUCY_GLOBAL_TABLE";
   const char* keyname = 0;
   if (n <= 0) return false;
@@ -269,7 +292,9 @@ static int lucy_loadconf_n(lua_State* L, int n, va_list vl) {
   return true;
 }
 
-l_int lucy_intconf_n(lua_State* L, int n, ...) {
+L_EXTERN l_int
+lucy_intconf_n(lua_State* L, int n, ...)
+{
   int startelems = 0;
   l_int result = 0;
   va_list vl;
@@ -289,7 +314,9 @@ l_int lucy_intconf_n(lua_State* L, int n, ...) {
   return result;
 }
 
-int lucy_strconf_n(lua_State* L, int (*func)(void* stream, l_strt str), void* stream, int n, ...) {
+L_EXTERN int
+lucy_strconf_n(lua_State* L, int (*func)(void* stream, l_strt str), void* stream, int n, ...)
+{
   int startelems = 0;
   const char* result = 0;
   size_t len = 0;
@@ -314,7 +341,9 @@ int lucy_strconf_n(lua_State* L, int (*func)(void* stream, l_strt str), void* st
   return func(stream, l_strt_e(result, result + len));
 }
 
-static void l_init_luastate(lua_State* L) {
+static void
+l_init_luastate(lua_State* L)
+{
   const char* libname = "LUCY_GLOBAL_TABLE";
 
   /* open all standard lua libraries first */
@@ -357,7 +386,9 @@ static void l_init_luastate(lua_State* L) {
 #endif
 }
 
-lua_State* l_new_luastate() {
+L_EXTERN lua_State*
+l_new_luastate()
+{
   lua_State* L = luaL_newstate();
   if (L == 0) {
     l_loge_s("luaL_newstate failed");
@@ -367,11 +398,15 @@ lua_State* l_new_luastate() {
   return L;
 }
 
-void l_close_luastate(lua_State* L) {
+L_EXTERN void
+l_close_luastate(lua_State* L)
+{
   if (L) lua_close(L);
 }
 
-int l_service_init_state(l_service* srvc) {
+L_EXTERN int
+l_service_init_state(l_service* srvc)
+{
   lua_State* L = srvc->thread->L;
   srvc->coref = LUA_NOREF;
   /**
@@ -411,15 +446,18 @@ int l_service_init_state(l_service* srvc) {
   return true;
 }
 
-void l_service_free_state(l_service* srvc) {
+L_EXTERN void
+l_service_free_state(l_service* srvc)
+{
   if (srvc->coref == LUA_NOREF) return;
   luaL_unref(srvc->thread->L, LUA_REGISTRYINDEX, srvc->coref); /* do nothing if LUA_NOREF/LUA_REFNIL */
   srvc->co = 0;
   srvc->coref = LUA_NOREF;
 }
 
-/* return 0 OK, 1 YIELD, <0 L_STATUS_LUAERR or error code */
-static int llstateresume(l_service* srvc, int nargs) {
+static int /* return 0 OK, 1 YIELD, <0 L_STATUS_LUAERR or error code */
+llstateresume(l_service* srvc, int nargs)
+{
   /** lua_resume **
   int lua_resume(lua_State* L, lua_State* from, int nargs);
   Starts and resumes a coroutine in the given thread L.
@@ -474,7 +512,9 @@ static int llstateresume(l_service* srvc, int nargs) {
   return L_STATUS_LUAERR;
 }
 
-static int llstatefunc(lua_State* co) {
+static int
+llstatefunc(lua_State* co)
+{
   int status = 0;
   l_service* srvc = 0;
   srvc = (l_service*)lua_touserdata(co, -1);
@@ -488,7 +528,9 @@ static int llstatefunc(lua_State* co) {
   return 0;
 }
 
-int l_service_is_yield(l_service* srvc) {
+L_EXTERN int
+l_service_is_yield(l_service* srvc)
+{
   /**
    * int lua_status(lua_State* L);
    *
@@ -503,11 +545,15 @@ int l_service_is_yield(l_service* srvc) {
   return lua_status(srvc->co) == LUA_YIELD;
 }
 
-int l_service_is_luaok(l_service* srvc) {
+L_EXTERN int
+l_service_is_luaok(l_service* srvc)
+{
   return lua_status(srvc->co) == LUA_OK;
 }
 
-int l_service_set_resume(l_service* srvc, int (*func)(l_service*)) {
+L_EXTERN int
+l_service_set_resume(l_service* srvc, int (*func)(l_service*))
+{
   int status = 0;
 
   if (srvc->co == 0) {
@@ -524,7 +570,9 @@ int l_service_set_resume(l_service* srvc, int (*func)(l_service*)) {
   return true;
 }
 
-int l_service_resume(l_service* srvc) {
+L_EXTERN int
+l_service_resume(l_service* srvc)
+{
   int nargs = 0;
   int costatus = 0;
 
@@ -547,7 +595,9 @@ int l_service_resume(l_service* srvc) {
   return L_STATUS_LUAERR;
 }
 
-static int llstatekfunc(lua_State* co, int status, lua_KContext ctx) {
+static int
+llstatekfunc(lua_State* co, int status, lua_KContext ctx)
+{
   l_service* srvc = (l_service*)ctx;
   l_assert(co == srvc->co); /* co passed here should be equal to srvc->co */
   (void)status; /* status always is LUA_YIELD when kfunc is called after lua_yieldk */
@@ -560,7 +610,9 @@ static int llstatekfunc(lua_State* co, int status, lua_KContext ctx) {
   return 0;
 }
 
-int l_service_yield_with_code(l_service* srvc, int (*kfunc)(l_service*), int code) {
+L_EXTERN int
+l_service_yield_with_code(l_service* srvc, int (*kfunc)(l_service*), int code)
+{
   int status = 0;
   int nresults = 0;
   srvc->kfunc = kfunc;
@@ -584,7 +636,9 @@ int l_service_yield_with_code(l_service* srvc, int (*kfunc)(l_service*), int cod
   return status;
 }
 
-int l_service_yield(l_service* srvc, int (*kfunc)(l_service*)) {
+L_EXTERN int
+l_service_yield(l_service* srvc, int (*kfunc)(l_service*))
+{
   return l_service_yield_with_code(srvc, kfunc, 0);
 }
 
@@ -634,7 +688,9 @@ const char* lua_tostring(lua_State* L, int index); // get cstr or NULL
 lua_State* lua_tothread(lua_State* L, int index); // get thread or NULL
 void* lua_touserdata(lua_State* L, int index); // get userdata or NULL */
 
-static int llstatetestfunc(l_service* srvc) {
+static int
+llstatetestfunc(l_service* srvc)
+{
   static int i = 0;
   switch (i) {
   case 0:
@@ -662,7 +718,9 @@ static int llstatetestfunc(l_service* srvc) {
   return 0;
 }
 
-static int llstatenoyield(l_service* srvc) {
+static int
+llstatenoyield(l_service* srvc)
+{
   static int i = 0;
   (void)srvc;
   switch (i) {
@@ -682,7 +740,9 @@ static int llstatenoyield(l_service* srvc) {
   return 0;
 }
 
-void l_luac_test() {
+L_EXTERN void
+l_luac_test()
+{
   lua_State* L = l_new_luastate();
   l_service srvc;
   l_thread thread;

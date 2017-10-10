@@ -53,18 +53,18 @@ TARGET_IPHONE_SIMULATOR 0        0        1 */
 #define l_plat_windows /* Microsoft Windows */
 #endif
 
-#undef l_newline
-#undef l_nl_size
-#undef l_path_sep
+#undef L_NEWLINE
+#undef L_NL_SIZE
+#undef L_PATH_SEP
 
 #if defined(l_plat_windows)
-#define l_newline "\r\n"
-#define l_nl_size 2
-#define l_path_sep "\\"
+#define L_NEWLINE "\r\n"
+#define L_NL_SIZE 2
+#define L_PATH_SEP "\\"
 #else
-#define l_newline "\n"
-#define l_nl_size 1
-#define l_path_sep "/"
+#define L_NEWLINE "\n"
+#define L_NL_SIZE 1
+#define L_PATH_SEP "/"
 #endif
 
 #undef L_PLAT_IMPL_SIZE

@@ -3,117 +3,278 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <float.h>
-#include "lucycore.h"
 
-typedef struct l_shortstr {
-  l_smplnode node;
-  struct l_shortstr* next;
-  l_byte flags;
-  l_byte extra;
-  l_byte size;
-  l_byte s[1];
-} l_shortstr;
+#define L_LIBRARY_IMPL
+#include "core/string.h"
 
-l_umedit l_string_make_hash(l_strn str, l_umedit seed) {
-  l_int len = str.n;
-  l_int step = (len >> 5) + 1;
-  l_umedit hash = seed ^ l_cast(l_umedit, len);
-  for (; len >= step; len -= step) {
-    hash ^= ((hash<<5) + (hash>>2) + self->s[len - 1];
+#define L_COMMON_BUFHEAD l_smplnode node; l_int bsize;
+#define l_string_ptr(s) ((l_strbuf*)s->impl)
+
+typedef struct {
+  L_COMMON_BUFHEAD
+  l_int size;
+  l_int limit;
+} l_strbuf;
+
+L_PRIVAT l_string l_master_create_string(l_int len, const l_byte* init, l_int maxlimit, l_thread* hint);
+L_PRIVAT void* l_master_ensure_bfsize(l_smplnode* buffer, l_int size);
+L_PRIVAT void l_master_free_buffer(l_smplnode* buffer, l_thread* hint);
+L_PRIVAT void l_master_write_log(l_string* self);
+L_PRIVAT void l_master_flush_log();
+L_PRIVAT l_string* l_master_start_log(const l_byte* tag);
+
+L_PRIVAT void
+l_string_setEnd(l_string* self, l_int len)
+{
+  l_string_ptr(self)->size = len;
+  *(l_string_cstr(self) + len) = 0;
+}
+
+L_EXTERN l_string
+l_string_empty()
+{
+  return l_string_create(0);
+}
+
+L_EXTERN l_string
+l_string_create(l_int initsize)
+{
+  return l_string_createEx(initsize, 0, 0);
+}
+
+L_EXTERN l_string
+l_string_createFrom(l_strt from)
+{
+  return l_string_createFromEx(from, 0, 0);
+}
+
+L_EXTERN l_string
+l_string_createEx(l_int initsize, l_int maxlimit, l_thread* hint)
+{
+  return l_master_create_string(initsize, 0, maxlimit, hint);
+}
+
+L_EXTERN l_string
+l_string_createFromEx(l_strt from, l_int maxlimit, l_thread* hint)
+{
+  return l_master_create_string(from.end - from.start, from.start, maxlimit, hint);
+}
+
+L_EXTERN void
+l_string_free(l_string* self, l_thread* hint)
+{
+  if (self->impl) {
+    l_master_free_buffer(&(l_string_ptr(self)->node), hint);
+    self->impl = 0;
   }
-  return hash;
 }
 
-static int l_shortstr_check_func(void* from, l_smplnode* node) {
-  l_strn* s = (l_strn*)from;
-  l_shortstr* shortstr = (l_shortstr*)node;
-  if (s.n != shortstr.size) return false;
-  return memcmp(s.start, shortstr.s, shortstr.size) == 0;
+L_EXTERN void
+l_string_clear(l_string* self)
+{
+  *l_string_cstr(self) = 0;
+  l_string_ptr(self)->size = 0;
 }
 
-l_shortstr* l_shortstr_create(l_hashtable* table, l_strn from, void* (*allocfunc)(l_int)) {
-  l_umedit hash = 0;
-  l_shortstr* shortstr = 0;
-  l_smplnode* elem = 0;
+L_EXTERN l_byte*
+l_string_cstr(l_string* self)
+{
+  return (l_byte*)(l_string_ptr(self) + 1);
+}
 
-  if (l_strn_is_empty(&from) || from.n > 255) return 0;
+L_EXTERN l_int
+l_string_capacity(l_string* self)
+{
+  return l_string_ptr(self)->bsize - sizeof(l_strbuf) - 1;
+}
 
-  hash = l_string_make_hash(from, table->seed);
-  if ((elem == l_hashtable_find(table, hash, l_shortstr_check_func, &from)) != 0) {
-    return (l_shortstr*)elem;
+L_EXTERN l_int
+l_string_remain(l_string* self)
+{
+  return l_string_capacity(self) - l_string_size(self);
+}
+
+L_EXTERN l_int
+l_string_size(l_string* self)
+{
+  return l_string_ptr(self)->size;
+}
+
+L_EXTERN l_int
+l_string_limit(l_string* self)
+{
+  l_int limit = l_string_ptr(self)->limit;
+  return limit >= 0 ? limit : -limit;
+}
+
+L_EXTERN l_byte*
+l_string_start(l_string* self)
+{
+  return l_string_cstr(self);
+}
+
+L_EXTERN l_byte*
+l_string_end(l_string* self)
+{
+  return l_string_cstr(self) + l_string_size(self);
+}
+
+L_EXTERN l_strt
+l_string_strt(l_string* self)
+{
+  return l_strt_n(l_string_start(self), l_string_ptr(self)->size);
+}
+
+L_EXTERN l_strn
+l_string_strn(l_string* self)
+{
+  return l_strn_n(l_string_start(self), l_string_ptr(self)->size);
+}
+
+L_EXTERN int
+l_string_equal(l_string* self, l_strt s)
+{
+  return l_strt_equal(l_string_strt(self), s);
+}
+
+L_EXTERN int
+l_string_isEmpty(l_string* self)
+{
+  return l_string_ptr(self)->size == 0;
+}
+
+L_EXTERN int
+l_string_ntEmpty(l_string* self)
+{
+  return l_string_ptr(self)->size != 0;
+}
+
+L_EXTERN int
+l_string_ensureCapacity(l_string* self, l_int size)
+{
+  void* buffer = 0;
+  l_int limit = l_string_limit(self);
+  if (limit > 0 && size > limit) {
+    return false;
+  }
+  if (!(buffer = l_master_ensure_bfsize(&(l_string_ptr(self)->node), sizeof(l_strbuf) + size + 1))) {
+    return false;
+  }
+  self->impl = buffer;
+  return true;
+}
+
+L_EXTERN int
+l_string_ensureRemain(l_string* self, l_int remainsize)
+{
+  return l_string_ensureCapacity(self, l_string_size(self) + remainsize);
+}
+
+L_EXTERN int
+l_string_set(l_string* self, l_strt s)
+{
+  return l_string_setLen(self, s.start, s.end - s.start);
+}
+
+L_EXTERN int
+l_string_setLen(l_string* self, const void* s, l_int len)
+{
+  if (!l_string_ensureCapacity(self, len)) {
+    return false;
+  }
+  if (!l_copy_n(s, len, l_string_cstr(self))) {
+    return false;
+  }
+  l_string_setEnd(self, len);
+  return true;
+}
+
+L_EXTERN int
+l_string_append(l_string* self, l_strt s)
+{
+  return l_string_appendLen(self, s.start, s.end - s.start);
+}
+
+L_EXTERN int
+l_string_appendReversed(l_string* self, l_strt s)
+{
+  l_int len = s.end - s.start;
+  l_byte* p = 0;
+
+  if (len <= 0)
+    return false;
+
+  if (!l_string_ensureRemain(self, len))
+    return false;
+
+  p = l_string_end(self);
+  while (s.start < s.end--) {
+    *p++ = *s.end;
   }
 
-  shortstr = (l_shortstr*)allocfunc(sizeof(l_shortstr) + from.n);
-  if (shortstr == 0) return 0;
-
-  shortstr.next = 0;
-  shortstr.flags = shortstr.extra = 0;
-  shortstr.size = from.n;
-  l_copy_n(from.start, from.n, shortstr.s);
-  *(shortstr.s + from.n) = 0;
-
-  l_hashtable_add(table, &shortstr->node, hash);
-  return shortstr;
+  *p = 0;
+  l_string_ptr(self)->size += len;
+  return true;
 }
 
-l_byte l_pnstr_size(l_pnstr* self) {
-  return self->sptr[0];
+L_EXTERN int
+l_string_appendLen(l_string* self, const void* s, l_int len)
+{
+  if (!l_string_ensureRemain(self, len)) {
+    return false;
+  }
+  if (!l_copy_n(s, len, l_string_end(self))) {
+    return false;
+  }
+  l_string_setEnd(self, l_string_size(self) + len);
+  return true;
 }
 
-l_strt l_pnstr_get_strt(l_pnstr* self) {
-  return l_strt_l(self->sptr + 1, l_pnstr_size(self));
+L_EXTERN l_int
+l_string_appendPossible(l_string* self, l_strt s)
+{
+  return l_string_appendLenPossible(self, s.start, s.end - s.start);
 }
 
-l_strn l_pnstr_get_strn(l_pnstr* self) {
-  return l_strn_l(self->sptr + 1, l_pnstr_size(self));
+L_EXTERN l_int
+l_string_appendReversedPossible(l_string* self, l_strt s)
+{
+  l_int remain = l_string_remain(self);
+  l_int len = s.end - s.start;
+  l_byte* p = 0;
+
+  if (remain <= 0 || len <= 0 || !s.start)
+    return 0;
+
+  if (remain < len) {
+    len = remain;
+    s.start = s.end - remain;
+  }
+
+  p = l_string_end(self);
+  while (s.start < s.end--) {
+    *p++ = *s.end;
+  }
+
+  *p = 0;
+  l_string_ptr(self)->size += len;
+  return len;
 }
 
+L_EXTERN l_int
+l_string_appendLenPossible(l_string* self, const void* s, l_int len)
+{
+  l_int remain = l_string_remain(self);
+  if (remain <= 0 || len <= 0)
+    return 0;
 
+  if (remain < len) len = remain;
 
-static l_byte* l_strbuf_cstr(l_strbuf* self) {
-  return (l_byte*)(self + 1);
-}
+  if (!l_copy_n(s, len, l_string_end(self)))
+    return 0;
 
-static l_int l_strbuf_capacity(l_strbuf* self) {
-  return self->bsize - sizeof(l_strbuf);
-}
-
-l_string l_thread_create_string(l_thread* thread, l_int initsize) {
-  return l_thread_create_limited_string(thread, initsize, 0);
-}
-
-l_string l_thread_create_string_from(l_thread* thread, l_strt from) {
-  return l_thread_create_limited_string_from(thread, from, 0);
-}
-
-l_string l_empty_string() {
-  return l_create_string(0);
-}
-
-l_string l_create_string(l_int initsize) {
-  return l_thread_create_string(0, initsize);
-}
-
-l_string l_create_string_from(l_strt from) {
-  return l_thread_create_string_from(0, from);
-}
-
-l_string l_create_limited_string(l_int initsize, l_int maxlimit) {
-  return l_thread_create_limited_string(0, initsize, maxlimit);
-}
-
-l_string l_create_limited_string_from(l_strt from, l_int maxlimit) {
-  return l_thread_create_limited_string_from(0, from, maxlimit);
-}
-
-void l_string_free(l_string* self) {
-  l_thread_string_free(0, self);
-}
-
-void l_string_clear(l_string* self) {
-  l_strbuf* p = self->b;
-  *l_strbuf_cstr(p) = 0;
-  p->size = 0;
+  l_string_setEnd(self, l_string_size(self) + len);
+  return len;
 }
 
 #define L_FORMAT_HEX     0x01000000
@@ -130,95 +291,54 @@ void l_string_clear(l_string* self) {
 #define L_FORMAT_UPPER   0x00800000
 #define L_FORMAT_REVERSE 0x00008000
 #define L_FORMAT_MASKS   0xff808000
-#define L_STRING_PRINT_LOG 0x01
 
-static l_umedit l_right_most_bit(l_umedit n) {
-  return n & (-n);
-}
+static void
+l_string_format_out(l_string* self, l_strt s)
+{
+  l_int len = s.end - s.start;
+  if (len <= 0)
+    return;
 
-static int l_log_level = 2;
-
-static void l_write_log_to_file(l_string* self) {
-  l_strbuf* b = self->b;
-  if (b->size > 0) {
-    l_thread* thread = (l_thread*)((l_byte*)self - offsetof(l_thread, log));
-    l_write_file(&thread->logfile, l_strbuf_cstr(b), b->size);
-    if (l_log_level >= 4 && thread->logfile.stream != stdout && thread->logfile.stream != stderr) {
-      l_filestream file = {stdout};
-      l_write_file(&file, l_strbuf_cstr(b), b->size);
-    }
-  }
-  *(l_strbuf_cstr(b)) = 0;
-  b->size = 0;
-}
-
-void l_thread_flush_log(l_thread* self) {
-  l_write_log_to_file(&self->log);
-}
-
-static void l_string_format_out(l_string* self, l_strt s) {
-  if (self->b->flags & L_STRING_PRINT_LOG) {
-    l_strbuf* b = self->b;
-    l_int len = s.end - s.start;
-    if (len <= 0) return;
-
-    if (l_string_remain(self) < len + 1) { /* 1 is for zero-terminated char */
-      l_write_log_to_file(self);
-
-      if (l_string_remain(self) < len + 1) {
-        l_thread* thread = (l_thread*)((l_byte*)self - offsetof(l_thread, log));
-        l_write_file(&thread->logfile, s.start, len);
-        l_logw_2("buffer too small %d len %d", ld(l_string_capacity(self)), ld(len));
-        return;
-      }
-    }
-
-    l_copy_from(s, l_string_end(self));
-    b->size += len;
-    *(l_string_end(self)) = 0;
-
-  } else {
+  if (l_string_ptr(self)->limit >=0) {
     l_string_append(self, s);
+    return;
+  }
+
+  for (; ;) {
+    s.start += l_string_appendPossible(self, s);
+
+    if (l_string_remain(self) > 0)
+      break;
+
+    l_master_write_log(self);
   }
 }
 
-static void l_string_format_out_reverse(l_string* self, l_strt s) {
-  l_strbuf* b = self->b;
-  l_rune* dest = 0;
+static void
+l_string_format_out_reverse(l_string* self, l_strt s)
+{
   l_int len = s.end - s.start;
   if (len <= 0) return;
 
-  if (self->b->flags & L_STRING_PRINT_LOG) {
-
-    if (l_string_remain(self) < len + 1) {
-      l_write_log_to_file(self);
-
-      if (l_string_remain(self) < len + 1) {
-        l_thread* thread = (l_thread*)((l_byte*)self - offsetof(l_thread, log));
-        l_write_file(&thread->logfile, s.start, len);
-        l_logw_2("buffer too small %d len %d", ld(l_string_capacity(self)), ld(len));
-        return;
-      }
-    }
-
-  } else {
-    if (!l_string_ensure_remain(self, len + 1)) {
-      l_loge_1("len %d", ld(len));
-      return;
-    }
+  if (l_string_ptr(self)->limit >= 0) {
+    l_string_appendReversed(self, s);
+    return;
   }
 
-  dest = l_string_end(self);
-  while (s.start < s.end--) {
-    *dest++ = *s.end;
-  }
+  for (; ;) {
+    s.end -= l_string_appendReversedPossible(self, s);
 
-  *dest = 0;
-  b->size += len;
+    if (l_string_remain(self) > 0)
+      break;
+
+    l_master_write_log(self);
+  }
 }
 
-static void l_string_format_fill_and_out(l_string* self, l_rune* a, l_rune* p, l_umedit flags) {
-  l_rune fill = l_cast(l_rune, flags & 0xff);
+static void
+l_string_format_fill_and_out(l_string* self, l_byte* a, l_byte* p, l_umedit flags)
+{
+  l_byte fill = l_cast(l_byte, flags & 0xff);
   int width = ((flags & 0x7f00) >> 8);
   int reverse = (flags & L_FORMAT_REVERSE) != 0;
   int left = (flags & L_FORMAT_LEFT) != 0;
@@ -229,7 +349,7 @@ static void l_string_format_fill_and_out(l_string* self, l_rune* a, l_rune* p, l
     if (!fill) fill = ' ';
 
     if (reverse == left) {
-      l_rune* end = a + width;
+      l_byte* end = a + width;
 
       /* [d,c,b,a,x,0, , ] -> [ , ,d,c,b,a,x,0]
          [0,x,a,b,c,d, , ] -> [ , ,0,x,a,b,c,d] */
@@ -245,37 +365,43 @@ static void l_string_format_fill_and_out(l_string* self, l_rune* a, l_rune* p, l
   }
 
   if (reverse) {
-    l_string_format_out_reverse(self, l_strt_e(a, p));
+    l_string_format_out_reverse(self, l_strt_from(a, p));
   } else {
-    l_string_format_out(self, l_strt_e(a, p));
+    l_string_format_out(self, l_strt_from(a, p));
   }
 }
 
-static void l_string_format_string(l_string* self, l_strt s, l_umedit flags) {
+static void
+l_string_format_string(l_string* self, l_strt s, l_umedit flags)
+{
   int width = ((flags & 0x7f00) >> 8);
   l_int len = s.end - s.start;
   if (len >= width) {
     l_string_format_out(self, s);
   } else {
-    l_rune a[128];
+    l_byte a[128];
     memcpy(a, s.start, len);
     l_string_format_fill_and_out(self, a, a + len, flags);
   }
 }
 
-static void l_string_format_char(l_string* self, l_ulong a, l_umedit flags) {
-  l_rune ch = l_cast(l_rune, a&0xff);
+static void
+l_string_format_char(l_string* self, l_ulong a, l_umedit flags)
+{
+  l_byte ch = l_cast(l_byte, a&0xff);
   if ((flags & L_FORMAT_UPPER) && ch >= 'a' && ch <= 'z') {
     ch -= 32;
   }
-  l_string_format_string(self, l_strt_l(&ch, 1), flags);
+  l_string_format_string(self, l_strt_n(&ch, 1), flags);
 }
 
-static void l_string_format_true(l_string* self, l_ulong a, l_umedit flags) {
+static void
+l_string_format_bool(l_string* self, l_ulong a, l_umedit flags)
+{
   if (a) {
-    l_string_format_string(self, (flags & L_FORMAT_UPPER) ? l_literal_strt("TRUE") : l_literal_strt("true"), flags);
+    l_string_format_string(self, (flags & L_FORMAT_UPPER) ? l_strt_literal("TRUE") : l_strt_literal("true"), flags);
   } else {
-    l_string_format_string(self, (flags & L_FORMAT_UPPER) ? l_literal_strt("FALSE") : l_literal_strt("false"), flags);
+    l_string_format_string(self, (flags & L_FORMAT_UPPER) ? l_strt_literal("FALSE") : l_strt_literal("false"), flags);
   }
 }
 
@@ -296,7 +422,7 @@ static void l_string_format_true(l_string* self, l_ulong a, l_umedit flags) {
  * [XXX1XXXX] alphanum and _         (ch & 0x10)
  * [XX1XXXXX] alphanum and _ and -   (ch & 0x20)
  */
-const l_rune l_rune_class_table[] = {
+L_GLOBAL const l_byte l_char_class_table[] = {
   0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
   0x80,0x80,0x80,0x80,0x80,0x80,0x80,0x80, 0x80,0x80,0x80,0x80,0x80,0x20,0x80,0x80, 0x3d,0x3d,0x3d,0x3d,0x3d,0x3d,0x3d,0x3d, 0x3d,0x3d,0x80,0x80,0x80,0x80,0x80,0x80, /* (20) - (3d) 0 ~ 9 */
   0x80,0x3e,0x3e,0x3e,0x3e,0x3e,0x3e,0x3a, 0x3a,0x3a,0x3a,0x3a,0x3a,0x3a,0x3a,0x3a, 0x3a,0x3a,0x3a,0x3a,0x3a,0x3a,0x3a,0x3a, 0x3a,0x3a,0x3a,0x80,0x80,0x80,0x80,0x30, /* (3e,3a) A ~ Z (30) _ */
@@ -307,15 +433,17 @@ const l_rune l_rune_class_table[] = {
   0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00
 };
 
-static const l_rune* l_hex_runes[] = {
-  l_rstr("0123456789abcdef"), l_rstr("0123456789ABCDEF")
+L_GLOBAL const l_byte* l_hex_digits[] = {
+  l_cstr("0123456789abcdef"), l_cstr("0123456789ABCDEF")
 };
 
-l_int l_string_parse_dec(l_strt s) {
+L_EXTERN l_int
+l_string_parseDec(l_strt s)
+{
   l_int times = 1;
   l_int value = 0;
-  const l_rune* start = 0;
-  const l_rune* end = 0;
+  const l_byte* start = 0;
+  const l_byte* end = 0;
   int negative = false;
 
   while (s.start < s.end) {
@@ -339,11 +467,13 @@ l_int l_string_parse_dec(l_strt s) {
   return (negative ? -value : value);
 }
 
-l_int l_string_parse_hex(l_strt s) {
+L_EXTERN l_int
+l_string_parseHex(l_strt s)
+{
   l_int times = 1;
   l_int value = 0;
-  const l_rune* start = 0;
-  const l_rune* end = 0;
+  const l_byte* start = 0;
+  const l_byte* end = 0;
   int negative = false;
 
   while (s.start < s.end) {
@@ -375,12 +505,14 @@ l_int l_string_parse_hex(l_strt s) {
 }
 
 
-static void l_string_format_ulong(l_string* self, l_ulong n, l_umedit flags) {
-  /* 64-bit unsigned int max value 18446744073709552046 (20 runes) */
-  l_rune a[127];
-  l_rune basechar = 0;
-  l_rune* p = a;
-  const l_rune* hex = 0;
+static void
+l_string_format_ulong(l_string* self, l_ulong n, l_umedit flags)
+{
+  /* 64-bit unsigned int max value 18446744073709552046 (20 chars) */
+  l_byte a[127];
+  l_byte basechar = 0;
+  l_byte* p = a;
+  const l_byte* hex = 0;
   l_umedit precise = ((flags & 0x7f0000) >> 16);
   l_umedit base = 0;
 
@@ -396,7 +528,7 @@ static void l_string_format_ulong(l_string* self, l_ulong n, l_umedit flags) {
     break;
 
   case L_FORMAT_HEX:
-    hex = l_hex_runes[(flags & L_FORMAT_UPPER) != 0];
+    hex = l_hex_digits[(flags & L_FORMAT_UPPER) != 0];
     *p++ = hex[n & 0x0f];
     while ((n >>= 4)) {
       *p++ = hex[n & 0x0f];
@@ -449,7 +581,9 @@ static void l_string_format_ulong(l_string* self, l_ulong n, l_umedit flags) {
   l_string_format_fill_and_out(self, a, p, flags | L_FORMAT_REVERSE);
 }
 
-static void l_string_format_long(l_string* self, l_long a, l_umedit flags) {
+static void
+l_string_format_long(l_string* self, l_long a, l_umedit flags)
+{
   l_ulong n = a;
   if (a < 0) {
     n = (-a);
@@ -458,9 +592,11 @@ static void l_string_format_long(l_string* self, l_long a, l_umedit flags) {
   l_string_format_ulong(self, n, flags);
 }
 
-l_rune* l_string_print_ulong(l_ulong n, l_rune* p) {
-  l_rune a[80];
-  l_rune* s = a;
+L_EXTERN l_byte*
+l_string_print_ulong(l_ulong n, l_byte* p)
+{
+  l_byte a[80];
+  l_byte* s = a;
 
   *s++ = (n % 10) + '0';
 
@@ -475,7 +611,9 @@ l_rune* l_string_print_ulong(l_ulong n, l_rune* p) {
   return p;
 }
 
-static l_rune* l_string_print_fraction(double f, l_rune* p, int precise) {
+static l_byte*
+l_string_print_fraction(double f, l_byte* p, int precise)
+{
   l_ulong ipart = 0;
 
   if (f < DBL_EPSILON) {
@@ -486,18 +624,20 @@ static l_rune* l_string_print_fraction(double f, l_rune* p, int precise) {
   if (precise == 0) precise = 80;
   while (f >= DBL_EPSILON && precise-- > 0) {
     ipart = l_cast(l_ulong, f * 10);
-    *p++ = l_cast(l_rune, ipart + '0');
+    *p++ = l_cast(l_byte, ipart + '0');
     f = f * 10 - ipart;
   }
 
   return p;
 }
 
-static void l_string_format_float(l_string* self, l_value v, l_umedit flags) {
-  l_rune a[144];
-  l_rune sign = 0;
-  l_rune* p = a;
-  l_rune* dot = 0;
+static void
+l_string_format_float(l_string* self, l_value v, l_umedit flags)
+{
+  l_byte a[144];
+  l_byte sign = 0;
+  l_byte* p = a;
+  l_byte* dot = 0;
   l_ulong fraction = 0;
   l_ulong mantissa = 0;
   int exponent = 0;
@@ -602,25 +742,11 @@ static void l_string_format_float(l_string* self, l_value v, l_umedit flags) {
   l_string_format_fill_and_out(self, a, p, flags);
 }
 
-void l_set_log_level(int level) {
-  l_log_level = level;
-}
-
-int l_get_log_level() {
-  return l_log_level;
-}
-
-void l_assert_func_pass(const void* tag, const void* expr) {
-  l_logger_func_1(tag, "assert pass: %s", lp(expr));
-}
-
-void l_assert_func_fail(const void* tag, const void* expr) {
-  l_logger_func_1(tag, "assert fail: %s", lp(expr));
-}
-
-static const l_rune* l_string_format_a_value(l_string* self, const l_rune* start, const l_rune* end, l_value a) {
-  l_umedit flags = 0; /* start pointer to '%' and next rune is not a '%' */
-  const l_rune* cur = start;
+static const l_byte*
+l_string_format_a_value(l_string* self, const l_byte* start, const l_byte* end, l_value a)
+{
+  l_umedit flags = 0; /* start pointer to '%' and next char is not a '%' */
+  const l_byte* cur = start;
   /**
    * s - const void*          ls(a) lp(a)
    * f - double               lf(a)
@@ -666,13 +792,13 @@ static const l_rune* l_string_format_a_value(l_string* self, const l_rune* start
       continue;
 
     case '0': case '~': case '-': case '=': case '#':
-      flags |= *cur; /* fill rune */
+      flags |= *cur; /* fill char */
       continue;
 
     case '1': case '2': case '3': case '4':
     case '5': case '6': case '7': case '8': case '9': {
         l_umedit width = *cur - '0';
-        l_rune ch = 0;
+        l_byte ch = 0;
         if (cur + 1 < end && (ch = *(cur + 1)) >= '0' && ch <= '9') {
           /* cur + 1 is the 2nd digit */
           width = width * 10 + ch - '0';
@@ -699,7 +825,7 @@ static const l_rune* l_string_format_a_value(l_string* self, const l_rune* start
         if (*(cur+3) == 't') {
           l_string_format_string(self, *((l_strt*)a.p), flags);
         } else {
-          l_string_format_string(self, l_strn_to_strt((l_strn*)a.p), flags);
+          l_string_format_string(self, l_strn_strt((l_strn*)a.p), flags);
         }
         return cur + 4;
       }
@@ -729,7 +855,7 @@ static const l_rune* l_string_format_a_value(l_string* self, const l_rune* start
       flags |= L_FORMAT_UPPER;
       /* fallthrough */
     case 't':
-      l_string_format_true(self, (int)a.u, flags);
+      l_string_format_bool(self, (int)a.u, flags);
       return cur + 1;
 
     case 'B':
@@ -763,15 +889,17 @@ static const l_rune* l_string_format_a_value(l_string* self, const l_rune* start
     break;
   }
 
-  l_string_format_out(self, l_strt_e(start, end));
+  l_string_format_out(self, l_strt_from(start, end));
   return 0;
 }
 
-static int l_string_format_v_impl(l_string* self, const l_rune* fmt, va_list vl) {
+static int
+l_string_format_v_impl(l_string* self, const l_byte* fmt, int n, va_list vl)
+{
   int nfmts = 0;
-  int nargs = self->b->nargs;
-  const l_rune* cur = fmt;
-  const l_rune* end = cur + strlen((char*)fmt);
+  int nargs = n;
+  const l_byte* cur = fmt;
+  const l_byte* end = cur + strlen((char*)fmt);
 
   if (nargs <= 0 || nargs > 9) {
     l_string_format_out(self, l_strt_c(fmt));
@@ -784,7 +912,7 @@ static int l_string_format_v_impl(l_string* self, const l_rune* fmt, va_list vl)
       continue;
     }
 
-    l_string_format_out(self, l_strt_e(fmt, cur));
+    l_string_format_out(self, l_strt_from(fmt, cur));
 
     if (cur + 1 < end && *(cur + 1) == '%') {
       fmt = cur + 1;
@@ -806,17 +934,19 @@ static int l_string_format_v_impl(l_string* self, const l_rune* fmt, va_list vl)
   }
 
   if (fmt < end) {
-    l_string_format_out(self, l_strt_e(fmt, end));
+    l_string_format_out(self, l_strt_from(fmt, end));
   }
 
   return nfmts;
 }
 
-int l_string_format_n_impl(l_string* self, const void* fmt, int n, l_value* a) {
+L_EXTERN int
+l_string_format_n_impl(l_string* self, const void* fmt, int n, l_value* a)
+{
   int nfmts = 0;
-  const l_rune* cur = 0;
-  const l_rune* end = 0;
-  const l_rune* beg = 0;
+  const l_byte* cur = 0;
+  const l_byte* end = 0;
+  const l_byte* beg = 0;
 
   if (!fmt) return 0;
 
@@ -825,7 +955,7 @@ int l_string_format_n_impl(l_string* self, const void* fmt, int n, l_value* a) {
     return 0;
   }
 
-  cur = l_rstr(fmt);
+  cur = l_cstr(fmt);
   end = cur + strlen((char*)fmt);
   beg = cur;
 
@@ -835,7 +965,7 @@ int l_string_format_n_impl(l_string* self, const void* fmt, int n, l_value* a) {
       continue;
     }
 
-    l_string_format_out(self, l_strt_e(beg, cur));
+    l_string_format_out(self, l_strt_from(beg, cur));
 
     if (cur + 1 < end && *(cur + 1) == '%') {
       beg = cur + 1;
@@ -857,473 +987,125 @@ int l_string_format_n_impl(l_string* self, const void* fmt, int n, l_value* a) {
   }
 
   if (beg < end) {
-    l_string_format_out(self, l_strt_e(beg, cur));
+    l_string_format_out(self, l_strt_from(beg, cur));
   }
 
   return nfmts;
 }
 
-int l_string_format_impl(l_string* self, const void* fmt, ...) {
+static int
+l_string_format_impl(l_string* self, const void* fmt, int n, ...)
+{
   int nfmts = 0;
   va_list vl;
 
   if (!fmt) return 0;
 
-  va_start(vl, fmt);
-  nfmts = l_string_format_v_impl(self, l_rstr(fmt), vl);
+  va_start(vl, n);
+  nfmts = l_string_format_v_impl(self, l_cstr(fmt), n, vl);
   va_end(vl);
 
   return nfmts;
 }
 
-void l_logger_func_impl(const void* tag, const void* fmt, ...) {
-  int level = l_rstr(tag)[0] - '0';
-  int nargs = l_rstr(tag)[1];
-  l_thread* thread = 0;
+L_PRIVAT void
+l_logger_func_impl(const void* tag, const void* fmt, ...)
+{
+  int level = l_cstr(tag)[0] - '0';
+  int nargs = l_cstr(tag)[1];
   l_string* log = 0;
   va_list vl;
 
-  if (level < 0 || level > l_log_level) return;
-
-  thread = l_thread_self();
-  if (!thread) {
-    printf("%s00 %s ~\n", ((char*)tag) + 2, (char*)fmt);
+  if (!fmt || level < 0 || level > l_logger_getLevel()) {
     return;
   }
 
-  log = &thread->log;
-  log->b->flags |= L_STRING_PRINT_LOG;
-  l_string_format_out(log, l_strt_c(l_rstr(tag) + 2));
-  l_string_format_ulong(log, thread->index, (2 << 16));
-  l_string_format_out(log, l_literal_strt(" "));
-
-  if (!fmt) return;
+  log = l_master_start_log(l_cstr(tag) + 2);
 
   if (nargs == 'n') {
     va_start(vl, fmt);
     nargs = va_arg(vl, l_int);
     l_string_format_n_impl(log, fmt, nargs, va_arg(vl, l_value*));
     va_end(vl);
-    return;
+  } else {
+    va_start(vl, fmt);
+    l_string_format_v_impl(log, l_cstr(fmt), nargs-'0', vl);
+    va_end(vl);
   }
 
-  va_start(vl, fmt);
-  log->b->nargs = nargs - '0';
-  l_string_format_v_impl(log, l_rstr(fmt), vl);
-  va_end(vl);
-
-  l_string_format_out(log, l_strt_l(L_NEWLINE, L_NL_SIZE));
-  if (l_log_level >= 4) l_write_log_to_file(log);
+  l_string_format_out(log, l_strt_n(L_NEWLINE, L_NL_SIZE));
 }
 
-#define L_BLANK_MAX_LEN (3)
-#define L_NUM_OF_SPACES (23)
-#define L_NUM_OF_NEWLINES (6)
-#define L_NUM_OF_BLANKS (29)
-
-typedef struct {
-  l_umedit m; /* string match this rune */
-  l_umedit e; /* string ended with this rune */
-} l_runeinfo;
-
-typedef struct { /* 4 * 256 * 2 = 2048 (2KB) */
-  l_runeinfo a[256];
-} l_runetable;
-
-static const l_strn l_blanks[] = {
-  l_literal_strn("\x09"), /* \t */
-  l_literal_strn("\x0b"), /* \v */
-  l_literal_strn("\x0c"), /* \f */
-  /* Zs 'Separator, Space' Category - www.fileformat.info/info/unicode/category/Zs/list.htm */
-  l_literal_strn("\x20"), /* 0x20 space */
-  l_literal_strn("\xc2\xa0"), /* 0xA0 no-break space */
-  l_literal_strn("\xe1\x9a\x80"), /* 0x1680 ogham space mark */
-  l_literal_strn("\xe2\x80\xaf"), /* 0x202F narrow no-break space */
-  l_literal_strn("\xe2\x81\x9f"), /* 0x205F medium mathematical space */
-  l_literal_strn("\xe3\x80\x80"), /* 0x3000 ideographic space (chinese blank character) */
-  l_literal_strn("\xe2\x80\x80"), /* 0x2000 en quad */
-  l_literal_strn("\xe2\x80\x81"), /* 0x2001 em quad */
-  l_literal_strn("\xe2\x80\x82"), /* 0x2002 en space */
-  l_literal_strn("\xe2\x80\x83"), /* 0x2003 em space */
-  l_literal_strn("\xe2\x80\x84"), /* 0x2004 three-per-em space */
-  l_literal_strn("\xe2\x80\x85"), /* 0x2005 four-per-em space */
-  l_literal_strn("\xe2\x80\x86"), /* 0x2006 six-per-em space */
-  l_literal_strn("\xe2\x80\x87"), /* 0x2007 figure space */
-  l_literal_strn("\xe2\x80\x88"), /* 0x2008 punctuation space */
-  l_literal_strn("\xe2\x80\x89"), /* 0x2009 thin space */
-  l_literal_strn("\xe2\x80\x8a"), /* 0x200A hair space */
-  /* byte order marks */
-  l_literal_strn("\xfe\xff"),
-  l_literal_strn("\xff\xfe"),
-  l_literal_strn("\xef\xbb\xbf"),
-  /* new lines */
-  l_literal_strn("\x0a\x0d"), /* \n\r */
-  l_literal_strn("\x0d\x0a"), /* \r\n */
-  l_literal_strn("\x0a"), /* \r */
-  l_literal_strn("\x0d"), /* \n */
-  l_literal_strn("\xe2\x80\xa8"), /* line separator 0x2028 00100000_00101000 -> 1110'0010_10'000000_10'101000 (0xE280A8) */
-  l_literal_strn("\xe2\x80\xa9")  /* paragraph separator 0x2029 00100000_00101001 */
-};
-
-static l_stringmap l_space_map; /* used to match a space */
-static l_stringmap l_newline_map; /* used to match a newline */
-static l_stringmap l_blank_map; /* used to match a blank, blank is a space or a newline */
-
-const l_stringmap* l_string_space_map() {
-  l_stringmap* map = &l_space_map;
-  if (map->t) return map;
-  *map = l_string_new_map(L_BLANK_MAX_LEN, l_blanks, L_NUM_OF_SPACES, true);
-  return map;
+L_EXTERN void
+l_logger_flush()
+{
+  l_master_flush_log();
 }
 
-const l_stringmap* l_string_newline_map() {
-  l_stringmap* map = &l_newline_map;
-  if (map->t) return map;
-  *map = l_string_new_map(L_BLANK_MAX_LEN, l_blanks + L_NUM_OF_SPACES, L_NUM_OF_NEWLINES, true);
-  return map;
+L_EXTERN int
+l_string_format_1(l_string* self, const void* fmt, l_value a)
+{
+  return l_string_format_impl(self, fmt, 1, a);
 }
 
-const l_stringmap* l_string_blank_map() {
-  l_stringmap* map = &l_blank_map;
-  if (map->t) return map;
-  *map = l_string_new_map(L_BLANK_MAX_LEN, l_blanks, L_NUM_OF_BLANKS, true);
-  return map;
+L_EXTERN int
+l_string_format_2(l_string* self, const void* fmt, l_value a, l_value b)
+{
+  return l_string_format_impl(self, fmt, 2, a, b);
 }
 
-/* char classes
-%a - all letters              %A - the complement of %a
-%d - all digits               %D
-%x - all hexadecimal digits   %X
-%l - all lowercase letters    %L
-%u - all uppercase letters    %U
-%. - all chars
-%% - '%'
-%[ - '['
-%] - ']'
-%^ - '^'
-[chars] - character set
-[^chars] - the complement of [chars]
-*/
-
-void l_string_set_map(l_stringmap* self, const l_strn* str, l_int numofstr, int casesensitive) {
-  int stridx = 0, charidx = 0;
-  const l_rune* s = 0;
-  l_runetable* t = (l_runetable*)(self->t);
-  l_rune ch = 0;
-
-  l_zero_n(self->t, sizeof(l_runetable) * self->size);
-
-  for (; stridx < numofstr; ++stridx) {
-
-    if (stridx + 1 > self->maxnumofstr) {
-      l_loge_s("too many strings");
-      break;
-    }
-
-    s = str[stridx].start;
-    if (s == 0 || s[0] == 0) continue;
-
-    charidx = 0;
-    while ((ch = s[charidx])) {
-
-      if (charidx + 1 > self->size) {
-        l_loge_s("string too long");
-        ++charidx;
-        break;
-      }
-
-      /* the string match this char */
-      t[charidx].a[ch].m |= (1 << stridx);
-      if (!casesensitive) {
-        if (ch >= 'a' && ch <= 'z') t[charidx].a[ch-32].m |= (1 << stridx);
-        else if (ch >= 'A' && ch <= 'Z') t[charidx].a[ch+32].m |= (1 << stridx);
-      }
-
-      ++charidx;
-    }
-
-    /* the string ended with this char */
-    ch = s[--charidx];
-    t[charidx].a[ch].e |= (1 << stridx);
-    if (!casesensitive) {
-      if (ch >= 'a' && ch <= 'z') t[charidx].a[ch-32].e |= (1 << stridx);
-      else if (ch >= 'A' && ch <= 'Z') t[charidx].a[ch+32].e |= (1 << stridx);
-    }
-  }
+L_EXTERN int
+l_string_format_3(l_string* self, const void* fmt, l_value a, l_value b,
+    l_value c)
+{
+  return l_string_format_impl(self, fmt, 3, a, b, c);
 }
 
-l_stringmap l_string_new_map(l_int maxstrlen, const l_strn* str, l_int numofstr, int casesensitive) {
-  l_stringmap map = {0};
-  if (maxstrlen <= 0 || str == 0) return map;
-  map.t = (l_runetable*)l_raw_malloc(sizeof(l_runetable) * maxstrlen);
-  map.size = maxstrlen;
-  map.maxnumofstr = 32;
-  l_string_set_map(&map, str, numofstr, casesensitive);
-  return map;
+L_EXTERN int
+l_string_format_4(l_string* self, const void* fmt, l_value a, l_value b,
+    l_value c, l_value d)
+{
+  return l_string_format_impl(self, fmt, 4, a, b, c, d);
 }
 
-void l_string_free_map(l_stringmap* self) {
-  if (self->t == 0) return;
-  l_raw_free(self->t);
-  self->t = 0;
-  self->size = 0;
+L_EXTERN int
+l_string_format_5(l_string* self, const void* fmt, l_value a, l_value b,
+    l_value c, l_value d, l_value e)
+{
+  return l_string_format_impl(self, fmt, 5, a, b, c, d, e);
 }
 
-static const l_rune* const l_string_too_short = (const l_rune* const)(l_int)(1);
-
-static int l_power_of_two_bit_pos(l_umedit n) {
-  switch (n) {
-  case 0x00000001: return 0;
-  case 0x00000002: return 1;
-  case 0x00000004: return 2;
-  case 0x00000008: return 3;
-  case 0x00000010: return 4;
-  case 0x00000020: return 5;
-  case 0x00000040: return 6;
-  case 0x00000080: return 7;
-  case 0x00000100: return 8;
-  case 0x00000200: return 9;
-  case 0x00000400: return 10;
-  case 0x00000800: return 11;
-  case 0x00001000: return 12;
-  case 0x00002000: return 13;
-  case 0x00004000: return 14;
-  case 0x00008000: return 15;
-  case 0x00010000: return 16;
-  case 0x00020000: return 17;
-  case 0x00040000: return 18;
-  case 0x00080000: return 19;
-  case 0x00100000: return 20;
-  case 0x00200000: return 21;
-  case 0x00400000: return 22;
-  case 0x00800000: return 23;
-  case 0x01000000: return 24;
-  case 0x02000000: return 25;
-  case 0x04000000: return 26;
-  case 0x08000000: return 27;
-  case 0x10000000: return 28;
-  case 0x20000000: return 29;
-  case 0x40000000: return 30;
-  case 0x80000000: return 31;
-  default: break;
-  }
-  l_loge_s("invalid number");
-  return 0;
+L_EXTERN int
+l_string_format_6(l_string* self, const void* fmt, l_value a, l_value b,
+    l_value c, l_value d, l_value e, l_value f)
+{
+  return l_string_format_impl(self, fmt, 6, a, b, c, d, e, f);
 }
 
-/* return 0 doesn't match, -1 too short, >s match success */
-const l_rune* l_string_match_ex(const l_stringmap* map, l_strt s, l_int* strid, l_int* matched_len) {
-  l_umedit prevmatch = 0xFFFFFFFF, curmatch = 0;
-  l_umedit matches = 0, headmatch = 0;
-  l_runetable* t = 0;
-  l_int i = 0, len = s.end - s.start;
-  l_rune ch = 0;
-  const l_rune* p = 0;
-
-  /* example - (1) aabbcc (2) aabb (3) aa (4)zzbbcc
-  (a) curmatch = 0b0111;
-  (a) curmatch = 0b0111; t->e['a'] = 0b0100; headmatch = 0b0001;
-  (b) curmatch = 0b0011;
-  (b) curmatch = 0b0011; t->e['b'] = 0b1010; headmatch = 0b0001;
-  (c) curmatch = 0b0001;
-  (c) curmatch = 0b0001; t->e['c'] = 0b1001; headmatch = 0b0001;
-  */
-
-  if (len <= 0) {
-    return l_string_too_short;
-  }
-
-  if (map->size < len) {
-    len = map->size;
-  }
-
-  while (i < len) {
-    t = ((l_runetable*)(map->t)) + i;
-    ch = s.start[i];
-
-    curmatch = prevmatch & t->a[ch].m;
-    if (!curmatch) {
-      if (p) {
-        headmatch = l_right_most_bit(matches);
-        goto MatchSuccess;
-      }
-      return 0;
-    }
-
-    if (t->a[ch].e & curmatch) {
-      p = s.start + i + 1;
-      matches = t->a[ch].e & curmatch;
-      headmatch = l_right_most_bit(curmatch);
-      if (matches & headmatch) {
-        goto MatchSuccess;
-      }
-    }
-
-    prevmatch = curmatch;
-    ++i;
-  }
-
-  if (p) {
-    headmatch = l_right_most_bit(matches);
-    goto MatchSuccess;
-  }
-
-  return l_string_too_short; /* too short to match */
-
-MatchSuccess:
-  if (strid) *strid = l_power_of_two_bit_pos(headmatch);
-  if (matched_len) *matched_len = p - s.start;
-  return p;
+L_EXTERN int
+l_string_format_7(l_string* self, const void* fmt, l_value a, l_value b,
+    l_value c, l_value d, l_value e, l_value f, l_value g)
+{
+  return l_string_format_impl(self, fmt, 7, a, b, c, d, e, f, g);
 }
 
-const l_rune* l_string_match(const l_stringmap* map, l_strt s) {
-  return l_string_match_ex(map, s, 0, 0);
+L_EXTERN int
+l_string_format_8(l_string* self, const void* fmt, l_value a, l_value b,
+    l_value c, l_value d, l_value e, l_value f, l_value g, l_value h)
+{
+  return l_string_format_impl(self, fmt, 8, a, b, c, d, e, f, g, h);
 }
 
-/* match exactly n times, return 0 or l_string_too_short for fail */
-const l_rune* l_string_match_ntimes(const l_stringmap* map, int n, l_strt s) {
-  const l_rune* e = s.start;
-  int i = 0;
-  while (i++ < n) {
-    if ((e = l_string_match(map, s)) == 0 || e == l_string_too_short) return 0;
-    s.start = e;
-  }
-  return e;
+L_EXTERN int
+l_string_format_9(l_string* self, const void* fmt, l_value a, l_value b,
+    l_value c, l_value d, l_value e, l_value f, l_value g, l_value h, l_value i)
+{
+  return l_string_format_impl(self, fmt, 9, a, b, c, d, e, f, g, h, i);
 }
 
-const l_rune* l_string_match_repeat(const l_stringmap* map, l_strt s) {
-  const l_rune* e = 0;
-  while ((e = l_string_match(map, s)) != 0 && e != l_string_too_short) {
-    s.start = e;
-  }
-  return s.start;
-}
-
-/* return 0 - too short to match, otherwise success */
-const l_rune* l_string_match_until(const l_stringmap* map, l_strt s, l_rune** last_match_start) {
-  const l_rune* e = 0;
-  while ((e = l_string_match(map, s)) == 0) { /* continue loop when unmatched */
-    ++s.start;
-  }
-  if (last_match_start) *last_match_start = (l_rune*)s.start;
-  return (e == l_string_too_short ? 0 : e);
-}
-
-const l_rune* l_string_skip_space_and_match_until(const l_stringmap* map, l_strt s, l_rune** first_non_space_pos) {
-  const l_rune* e = 0;
-  l_rune* last_match_start = 0;
-
-  while ((e = l_string_match(l_string_space_map(), s)) != 0 && e != l_string_too_short) {
-    s.start = e; /* skip space */
-  }
-
-  if (e == l_string_too_short) return 0; /* last space is not complete */
-  if (first_non_space_pos) *first_non_space_pos = (l_rune*)s.start;
-  if (!(e = l_string_match_until(map, s, &last_match_start))) {
-    return last_match_start;
-  }
-  return e;
-}
-
-/* return 0 - match failed; otherwise success, strid and mlen are set */
-const l_rune* l_string_skip_space_and_match(const l_stringmap* map, l_strt s, l_int* strid, l_int* matched_len) {
-  const l_rune* e = 0;
-  while ((e = l_string_match(l_string_space_map(), s)) != 0 && e != l_string_too_short) {
-    s.start = e; /* skip space */
-  }
-
-  e = l_string_match_ex(map, s, strid, matched_len);
-  if (e == 0 || e == l_string_too_short) return 0;
-  return e;
-}
-
-const l_rune* l_string_trim_head(l_strt s) {
-  const l_rune* e = 0;
-  while ((e = l_string_match(l_string_space_map(), s)) != 0 && e != l_string_too_short) {
-    s.start = e; /* skip space */
-  }
-  return s.start;
-}
-
-const l_rune* l_string_skip_space_and_match_sub(l_strt sub, l_strt s) {
-  const l_rune* e = 0;
-  while ((e = l_string_match(l_string_space_map(), s)) != 0 && e != l_string_too_short) {
-    s.start = e; /* skip space */
-  }
-
-  if (s.end - s.start < sub.end - sub.start) return 0;
-  while (sub.start < sub.end) {
-    if (*sub.start++ != *s.start++) return 0;
-  }
-  return s.start;
-}
-
-void l_string_test() {
-  const l_strn methods[] = {l_literal_strn("GET"), l_literal_strn("HEAD"), l_literal_strn("POST")};
-  const l_strn orderedchice[] = {l_literal_strn("mankind"), l_literal_strn("man"), l_literal_strn("got"),
-      l_literal_strn("gotten"), l_literal_strn("pick"), l_literal_strn("tick"), l_literal_strn("cook")};
-  const l_rune subject[] = "gEtoHEAdopOStogeoend";
-  const l_rune* s = 0;
-  l_stringmap map;
-  l_string str = l_create_string(8);
-
-  l_string_format_1(&str, "%f", lf(3.1415926));
-  l_logd_1("%f", lf(3.1415926));
-  printf("[D] %.80f\n", 3.1415926);
-  l_assert(l_string_equal(&str, l_literal_strt("3.14159260000000006840537025709636509418487548828125")));
-
-  l_assert(l_right_most_bit(0x0000) == 0x0000);
-  l_assert(l_right_most_bit(0x0001) == 0x0001);
-  l_assert(l_right_most_bit(0x0010) == 0x0010);
-  l_assert(l_right_most_bit(0x0011) == 0x0001);
-  l_assert(l_right_most_bit(0x0100) == 0x0100);
-  l_assert(l_right_most_bit(0x0101) == 0x0001);
-  l_assert(l_right_most_bit(0x0110) == 0x0010);
-  l_assert(l_right_most_bit(0x0111) == 0x0001);
-  l_assert(l_right_most_bit(0x1000) == 0x1000);
-  l_assert(l_right_most_bit(0x1001) == 0x0001);
-  l_assert(l_right_most_bit(0x1010) == 0x0010);
-  l_assert(l_right_most_bit(0x1011) == 0x0001);
-  l_assert(l_right_most_bit(0x1100) == 0x0100);
-  l_assert(l_right_most_bit(0x1101) == 0x0001);
-  l_assert(l_right_most_bit(0x1110) == 0x0010);
-  l_assert(l_right_most_bit(0x1111) == 0x0001);
-
-  map = l_string_new_map(8, methods, 3, false);
-  s = l_string_match(&map, l_strt_l(subject, 3));
-  l_logd_1("get - %s", ls(s));
-  s = l_string_match(&map, l_strt_l(subject+1, 3));
-  l_assert(s == 0);
-  s = l_string_match(&map, l_strt_l(subject+4, 3));
-  l_assert(s == l_string_too_short);
-  s = l_string_match(&map, l_strt_l(subject+4, 4));
-  l_logd_1("head - %s", ls(s));
-  s = l_string_match(&map, l_strt_l(subject+9, 3));
-  l_assert(s == l_string_too_short);
-  s = l_string_match(&map, l_strt_l(subject+9, 5));
-  l_logd_1("post - %s", ls(s));
-  s = l_string_match(&map, l_strt_l(subject+14, 3));
-  l_assert(s == 0);
-
-  l_string_set_map(&map, orderedchice, 7, true);
-  s = l_string_match(&map, l_literal_strt("mankind"));
-  l_assert(*s == 0);
-  s = l_string_match(&map, l_literal_strt("mankin"));
-  l_assert(*s == 'k');
-  s = l_string_match(&map, l_literal_strt("gotten"));
-  l_assert(*s == 't');
-  s = l_string_match(&map, l_literal_strt("pon"));
-  l_assert(s == 0);
-  s = l_string_match(&map, l_literal_strt("con"));
-  l_assert(s == 0);
-  s = l_string_match(&map, l_literal_strt("tiok"));
-  l_assert(s == 0);
-  s = l_string_match(&map, l_literal_strt("tick"));
-  l_assert(*s == 0);
-
-  l_string_free_map(&map);
-  l_string_free(&str);
-
+L_EXTERN void
+l_string_test()
+{
   l_assert(l_check_is_dec_digit('0') && l_check_is_hex_digit('0'));
   l_assert(l_check_is_dec_digit('1') && l_check_is_hex_digit('1'));
   l_assert(l_check_is_dec_digit('2') && l_check_is_hex_digit('2'));

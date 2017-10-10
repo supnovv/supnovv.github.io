@@ -4,11 +4,8 @@
 
 typedef struct l_shortstr l_shortstr;
 
-l_spec_extern(l_shortstr*)
-l_create_shortstr(l_byte size, const void* str, void* (*allocfunc)(l_int));
-
-l_spec_extern(void)
-l_destroy_shortstr(l_shortstr* self, void (*freefunc)(void*));
+L_EXTERN l_shortstr* l_shortstr_create(l_byte size, const void* s, l_allocfunc func);
+L_EXTERN void l_shortstr_free(l_shortstr* self, l_allocfunc func);
 
 #endif /* lucy_core_shortstr_h */
 

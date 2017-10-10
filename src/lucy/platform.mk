@@ -39,7 +39,7 @@ D = .so
 L = .a
 
 AUTOOBJ = autoconf$(O)
-COREOBJ = core/base$(O) # core/string$(O) core/state$(O) core/service$(O) core/master$(O) osi/linuxcore$(O)
+COREOBJ = core/base$(O) core/fileop$(O) core/queue$(O) core/table$(O) core/string$(O) core/match$(O) core/master$(O) core/state$(O) #osi/linuxcore$(O)
 SOCKOBJ = osi/linuxsock$(O)
 HTTPOBJ = net/http$(O)
 TESTOBJ = $(COREOBJ) # core/test$(O) $(COREOBJ) # $(SOCKOBJ) $(HTTPOBJ)
@@ -88,7 +88,7 @@ core/state.o: core/state.c lucycore.h
 $(AUTOOBJ): autoconf.c core/prefix.h osi/plationf.h osi/platsock.h
 $(COREIND): autoconf.h lucycore.h core/prefix.h osi/plationf.h osi/platsock.h osi/linuxpref.h
 $(PLATSRC): osi/linuxcore.c osi/linuxionf.c osi/linuxpoll.c
-$(COREOBJ): core/base.c core/string.c core/state.c core/service.c core/master.c $(PLATSRC) $(COREIND) 
+$(COREOBJ): core/base.c core/string.c core/state.c core/master.c $(PLATSRC) $(COREIND)
 $(SOCKOBJ): osi/linuxsock.c $(COREIND)
 $(HTTPOBJ): net/http.c net/http.h $(COREIND)
 

@@ -1,53 +1,29 @@
 #ifndef lucy_core_master_h
 #define lucy_core_master_h
+#include "core/base.h"
 
 typedef struct lua_State lua_State;
 typedef struct l_service l_service;
+typedef struct l_thread l_thread;
 
-typedef struct l_thread {
-  l_linknode node;
-  l_umedit weight;
-  l_ushort index;
-  /* shared with master */
-  l_mutex* svmtx;
-  l_mutex* mutex;
-  l_condv* condv;
-  l_squeue* rxmq;
-  int msgwait;
-  /* thread own use */
-  lua_State* L;
-  l_squeue* txmq;
-  l_squeue* txms;
-  l_string log;
-  l_file logfile;
-  void* frbq;
-  l_thrid id;
-  int (*start)();
-  void* block;
-} l_thread;
+L_GLOBAL l_thrkey l_thrkey_g;
+L_THREAD_LOCAL_DECL(l_thread* l_the_thread);
 
-l_extern l_thrkey L_thread_key;
-l_extern_thread_local(l_thread* L_thread_ptr);
-
-l_inline l_thread* l_thread_self() {
-#if defined(l_thread_local_supported)
-  return L_thread_ptr;
+L_INLINE l_thread*
+l_thread_self()
+{
+#if defined(L_THREAD_LOCAL_SUPPORTED)
+  return l_the_thread;
 #else
-  return (l_thread*)l_thrkey_get_data(&L_thread_key);
+  return (l_thread*)l_thrkey_getData(&l_thrkey_g);
 #endif
 }
 
-l_inline lua_State* l_get_luastate() {
-  return l_thread_self()->L;
-}
-
-l_extern l_thread* l_thread_master();
-l_extern int l_thread_start(l_thread* self, int (*start)());
-l_extern int l_thread_join(l_thread* self);
-l_extern void l_thread_flush_log(l_thread* self);
-l_extern void l_thread_exit();
-l_extern void l_process_exit();
-
+L_EXTERN int l_thread_start(l_thread* self, int (*start)());
+L_EXTERN int l_thread_join(l_thread* self);
+L_EXTERN void l_thread_exit();
+L_EXTERN l_thread* l_thread_master();
+L_EXTERN lua_State* l_thread_luaState();
 
 #define L_MESSAGE_START_SERVICE 0x01
 #define L_MESSAGE_START_SRVCRSP 0x02
@@ -63,7 +39,7 @@ l_extern void l_process_exit();
 #define L_MESSAGE_CONNIND 0x7f
 #define L_MIN_USER_MSGID  0x80
 
-typedef struct l_message {
+typedef struct {
   L_COMMON_BUFHEAD
   l_service* srvc;
   l_umedit dstid;
@@ -130,59 +106,36 @@ typedef struct {
   l_long s64;
 } l_message_s64;
 
-l_extern l_message* l_create_message(l_thread* thread, l_umedit type, l_int size);
-l_extern void l_free_message(l_thread* thread, l_message* msg);
-l_extern void l_free_message_queue(l_thread* thread, l_squeue* mq);
-l_extern void l_send_message(l_thread* thread, l_umedit destid, l_message* msg);
-l_extern void l_send_message_tp(l_thread* thread, l_umedit destid, l_umedit type);
-l_extern void l_send_message_fd(l_thread* thread, l_umedit destid, l_umedit type, l_handle fd);
-l_extern void l_send_message_ptr(l_thread* thread, l_umedit destid, l_umedit type, void* ptr);
-l_extern void l_send_message_u32(l_thread* thread, l_umedit destid, l_umedit type, l_umedit u32);
-l_extern void l_send_message_u64(l_thread* thread, l_umedit destid, l_umedit type, l_ulong u64);
-l_extern void l_send_message_s32(l_thread* thread, l_umedit destid, l_umedit type, l_medit s32);
-l_extern void l_send_message_s64(l_thread* thread, l_umedit destid, l_umedit type, l_long s64);
-l_extern void l_send_ioevent_message(l_thread* thread, l_umedit destid, l_umedit type, l_handle fd, l_umedit masks);
-l_extern void l_send_service_message(l_thread* thread, l_umedit destid, l_umedit type, l_umedit svid, l_handle fd);
-l_extern void l_send_bootstrap_message(l_thread* thread, int (*bootstrap)());
-
+L_EXTERN l_message* l_message_create(l_thread* thread, l_umedit type, l_int size);
+L_EXTERN void l_message_free(l_thread* thread, l_message* msg);
+L_EXTERN void l_message_freeQueue(l_thread* thread, l_squeue* mq);
+L_EXTERN void l_message_send(l_thread* thread, l_umedit destid, l_message* msg);
+L_EXTERN void l_message_sendType(l_thread* thread, l_umedit destid, l_umedit type);
+L_EXTERN void l_message_sendHandle(l_thread* thread, l_umedit destid, l_umedit type, l_handle fd);
+L_EXTERN void l_message_sendPtr(l_thread* thread, l_umedit destid, l_umedit type, void* ptr);
+L_EXTERN void l_message_sendU32(l_thread* thread, l_umedit destid, l_umedit type, l_umedit u32);
+L_EXTERN void l_message_sendU64(l_thread* thread, l_umedit destid, l_umedit type, l_ulong u64);
+L_EXTERN void l_message_sendS32(l_thread* thread, l_umedit destid, l_umedit type, l_medit s32);
+L_EXTERN void l_message_sendS64(l_thread* thread, l_umedit destid, l_umedit type, l_long s64);
+L_EXTERN void l_message_sendEvent(l_thread* thread, l_umedit destid, l_umedit type, l_handle fd, l_umedit masks);
+L_EXTERN void l_message_sendService(l_thread* thread, l_umedit destid, l_umedit type, l_umedit svid, l_handle fd);
+L_EXTERN void l_message_sendBootstrap(l_thread* thread, int (*bootstrap)());
 
 #define L_SERVICE_MASTER_ID (0) /* worker's default svid is its index (16-bit) */
 #define L_SERVICE_BOOTSTRAP (0xffff+1)
 
-typedef struct l_service {
-  L_COMMON_BUFHEAD
-  l_ioevent* ioev; /* guard by svmtx */
-  l_ioevent event; /* guard by svmtx */
-  l_byte stop_rx_msg; /* service is closing, guard by svmtx */
-  l_byte mflgs; /* only accessed by master */
-  /* thread own use */
-  l_byte wflgs; /* only accessed by a worker */
-  l_umedit svid; /* only set once when init, so can freely access it */
-  l_thread* thread; /* only set once when init, so can freely access it */
-  int (*entry)(l_service*, l_message*); /* service entry function */
-  void (*destroy)(l_service*); /* destroy function for child structure's fields if necessary */
-  /* coroutine */
-  lua_State* co;
-  int (*func)(l_service*);
-  int (*kfunc)(l_service*);
-  int coref;
-} l_service;
-
-l_extern l_service* l_create_service(l_int size, int (*entry)(l_service*, l_message*), void (*destroy)(l_service*));
-l_extern l_service* l_create_service_in_same_thread(l_int size, int (*entry)(l_service*, l_message*), void (*destroy)(l_service*));
-l_extern int l_free_unstarted_service(l_service* srvc);
-l_extern void l_start_service(l_service* srvc);
-l_extern void l_start_listener_service(l_service* srvc, l_handle sock);
-l_extern void l_start_initiator_service(l_service* srvc, l_handle sock);
-l_extern void l_start_receiver_service(l_service* srvc, l_handle sock);
-l_extern void l_close_service(l_service* srvc);
-l_extern void l_close_event(l_service* srvc);
-
-
-l_extern int startmainthread(int (*start)());
-l_extern int startmainthreadcv(int (*start)(), int argc, char** argv);
-l_extern void l_master_exit();
-
+L_EXTERN l_service* l_create_service(l_int size, int (*entry)(l_service*, l_message*), void (*destroy)(l_service*));
+L_EXTERN l_service* l_create_service_in_same_thread(l_int size, int (*entry)(l_service*, l_message*), void (*destroy)(l_service*));
+L_EXTERN int l_free_unstarted_service(l_service* srvc);
+L_EXTERN void l_start_service(l_service* srvc);
+L_EXTERN void l_start_listener_service(l_service* srvc, l_handle sock);
+L_EXTERN void l_start_initiator_service(l_service* srvc, l_handle sock);
+L_EXTERN void l_start_receiver_service(l_service* srvc, l_handle sock);
+L_EXTERN void l_close_service(l_service* srvc);
+L_EXTERN void l_close_event(l_service* srvc);
+L_EXTERN int startmainthread(int (*start)());
+L_EXTERN int startmainthreadcv(int (*start)(), int argc, char** argv);
+L_EXTERN void l_master_exit();
 
 #endif /* lucy_core_master_h */
 

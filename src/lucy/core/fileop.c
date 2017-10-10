@@ -1,3 +1,8 @@
+#include <stdio.h>
+#include <errno.h>
+#include <string.h>
+
+#define L_LIBRARY_IMPL
 #include "core/fileop.h"
 
 static l_file
@@ -62,7 +67,7 @@ l_file_openReadUnbuffered(const void* name)
 L_EXTERN l_file
 l_file_openWriteUnbuffered(const void* name)
 {
-  l_filestream fs = llopenfile(name, "wb");
+  l_file fs = llopenfile(name, "wb");
   if (!fs.stream) return fs;
   setbuf((FILE*)fs.stream, 0);
   return fs;
@@ -82,11 +87,11 @@ l_file_remove(const void* name)
 {
   if (!name) {
     l_loge_s("empty name");
-    return L_STATUS_EINVAL;
+    return L_EINVAL;
   }
   if (remove((const char*)name) != 0) {
     l_loge_1("remove %s", lserror(errno));
-    return L_STATUS_ERROR;
+    return L_ERROR;
   }
   return 0;
 }
@@ -105,11 +110,11 @@ l_file_rename(const void* from, const void* to)
   the specific system and library implementation. */
   if (!from || !to) {
     l_loge_s("empty name");
-    return L_STATUS_EINVAL;
+    return L_EINVAL;
   }
   if (rename((const char*)from, (const char*)to) != 0) {
     l_loge_1("rename %s", lserror(errno));
-    return L_STATUS_ERROR;
+    return L_ERROR;
   }
   return 0;
 }
@@ -179,16 +184,10 @@ l_file_clearErr(l_file* self)
 }
 
 L_EXTERN l_int
-l_file_write(l_file* self, l_strt s)
-{
-  return l_write_file(self, s.start, s.end - s.start);
-}
-
-L_EXTERN l_int
 l_file_writeLen(l_file* self, const void* s, l_int len)
 {
   l_int n = 0;
-  if (!s || len <= 0 || len > l_max_rdwr_size) {
+  if (!s || len <= 0 || len > L_MAX_RWSIZE) {
     l_loge_1("invalid %d", ld(len));
     return 0;
   }
@@ -200,10 +199,16 @@ l_file_writeLen(l_file* self, const void* s, l_int len)
 }
 
 L_EXTERN l_int
+l_file_write(l_file* self, l_strt s)
+{
+  return l_file_writeLen(self, s.start, s.end - s.start);
+}
+
+L_EXTERN l_int
 l_file_read(l_file* self, void* out, l_int len)
 {
   l_int n = 0;
-  if (!out || len <= 0 || len > l_max_rdwr_size) {
+  if (!out || len <= 0 || len > L_MAX_RWSIZE) {
     l_loge_1("invalid %d", ld(len));
     return 0;
   }

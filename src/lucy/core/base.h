@@ -4,10 +4,12 @@
 #include "core/prefix.h"
 
 #undef L_EXTERN
+#undef L_PRIVAT
 #undef L_GLOBAL
 #undef L_INLINE
 #undef L_THREAD_LOCAL
 #undef L_THREAD_LOCAL_DECL
+#undef L_THREAD_LOCAL_SUPPORTED
 
 #if defined(L_BUILD_SHARED)
   #if defined(__GNUC__)
@@ -23,21 +25,21 @@
   #define L_EXTERN extern
 #endif
 
+#define L_PRIVAT L_EXTERN
 #define L_GLOBAL static
 #define L_INLINE static
 
 #if defined(l_cmpl_gcc)
-  #define L_THREAD_LOCAL __thread
-  #define L_THREAD_LOCAL_DECL extern __thread
+  #define L_THREAD_LOCAL(...) __thread __VA_ARGS__
+  #define L_THREAD_LOCAL_DECL(...) extern __thread __VA_ARGS__
+  #define L_THREAD_LOCAL_SUPPORTED
 #elif defined(l_cmpl_msc)
-  #define L_THREAD_LOCAL __declspec(thread)
-  #define L_THREAD_LOCAL_DECL extern __declspec(thread)
-#endif
-
-#if defined(L_BUILD_DEBUG)
-  #define L_DEBUG_HERE(...) { __VA_ARGS__ }
+  #define L_THREAD_LOCAL(...) __declspec(thread) __VA_ARGS__
+  #define L_THREAD_LOCAL_DECL(...) extern __declspec(thread) __VA_ARGS__
+  #define L_THREAD_LOCAL_SUPPORTED
 #else
-  #define L_DEBUG_HERE(...)
+  #define L_THREAD_LOCAL(...)
+  #define L_THREAD_LOCAL_DECL(...)
 #endif
 
 #define l_cast(type, a) ((type)(a))
@@ -74,102 +76,23 @@
  * memory operations
  */
 
-#define l_mallocX(allocfunc, ud, size) allocfunc((ud), 0, 0, (size))
-#define l_callocX(allocfunc, ud, size) allocfunc((ud), 0, 1, (size))
-#define l_rallocX(allocfunc, ud, buffer, oldsize, newsize) allocfunc((ud), (buffer), (oldsize), (newsize))
-#define l_mfreeX(allocfunc, ud, buffer) allocfunc((ud), (buffer), 0, 0)
+#define l_mallocEx(allocfunc, ud, size) allocfunc((ud), 0, 0, (size))
+#define l_callocEx(allocfunc, ud, size) allocfunc((ud), 0, 1, (size))
+#define l_rallocEx(allocfunc, ud, buffer, oldsize, newsize) allocfunc((ud), (buffer), (oldsize), (newsize))
+#define l_mfreeEx(allocfunc, ud, buffer) allocfunc((ud), (buffer), 0, 0)
 
-#define l_malloc(allocfunc, size) l_mallocX(allocfunc, 0, (size))
-#define l_calloc(allocfunc, size) l_callocX(allocfunc, 0, (size))
-#define l_ralloc(allocfunc, buffer, oldsize, newsize) l_rallocX(allocfunc, 0, (buffer), (oldsize), (newsize))
-#define l_mfree(allocfunc, buffer) l_mfreeX(allocfunc, 0, (buffer))
+#define l_malloc(allocfunc, size) l_mallocEx(allocfunc, 0, (size))
+#define l_calloc(allocfunc, size) l_callocEx(allocfunc, 0, (size))
+#define l_ralloc(allocfunc, buffer, oldsize, newsize) l_rallocEx(allocfunc, 0, (buffer), (oldsize), (newsize))
+#define l_mfree(allocfunc, buffer) l_mfreeEx(allocfunc, 0, (buffer))
 
-#define l_raw_malloc(size) l_malloc(l_raw_alloc_func, 0, size)
-#define l_raw_calloc(size) l_calloc(l_raw_alloc_func, 0, size)
-#define l_raw_ralloc(buffer, oldsize, newsize) l_ralloc(l_raw_alloc_func, 0, buffer, oldsize, newsize)
-#define l_raw_mfree(buffer) l_mfree(l_raw_alloc_func, 0, buffer)
+#define l_raw_malloc(size) l_malloc(l_raw_alloc_func, size)
+#define l_raw_calloc(size) l_calloc(l_raw_alloc_func, size)
+#define l_raw_ralloc(buffer, oldsize, newsize) l_ralloc(l_raw_alloc_func, buffer, oldsize, newsize)
+#define l_raw_mfree(buffer) l_mfree(l_raw_alloc_func, buffer)
 
 typedef void* (*l_allocfunc)(void* userdata, void* buffer, l_int oldsize, l_int newsize);
 L_EXTERN void* l_raw_alloc_func(void* userdata, void* buffer, l_int oldsize, l_int newsize);
-
-/**
- * simple link list
- */
-
-typedef struct l_smplnode {
-  struct l_smplnode* next;
-} l_smplnode;
-
-L_INLINE void
-l_smplnode_init(l_smplnode* node)
-{
-  node->next = node;
-}
-
-L_INLINE void
-l_smplnode_init(l_smplnode* node)
-{
-  node->next = node;
-}
-
-L_INLINE int
-l_smplnode_isEmpty(l_smplnode* node)
-{
-  return node->next == node;
-}
-
-L_INLINE void
-l_smplnode_insertAfter(l_smplnode* node, l_smplnode* newnode)
-{
-  newnode->next = node->next;
-  node->next = newnode;
-}
-
-L_INLINE l_smplnode*
-l_smplnode_removeNext(l_smplnode* node)
-{
-  l_smplnode* p = node->next;
-  node->next = p->next;
-  return p;
-}
-
-/**
- * bidirectional link list
- */
-
-typedef struct l_linknode {
-  struct l_linknode* next;
-  struct l_linknode* prev;
-} l_linknode;
-
-L_INLINE void
-l_linknode_init(l_linknode* node)
-{
-  node->next = node->prev = node;
-}
-
-L_INLINE int
-l_linknode_isEmpty(l_linknode* node)
-{
-  return (node->next == node);
-}
-
-L_INLINE void
-l_linknode_insertAfter(l_linknode* node, l_linknode* newnode)
-{
-  newnode->next = node->next;
-  node->next = newnode;
-  newnode->prev = node;
-  newnode->next->prev = newnode;
-}
-
-L_INLINE l_linknode*
-l_linknode_remove(l_linknode* node)
-{
-  node->prev->next = node->next;
-  node->next->prev = node->prev;
-  return node;
-}
 
 /**
  * basic string
@@ -206,7 +129,7 @@ l_strt_n(const void* s, l_int len)
 }
 
 L_INLINE l_strt
-l_strt_substr(const void* s, l_int from, l_int to)
+l_strt_sub(const void* s, l_int from, l_int to)
 {
   return l_strt_from(l_cstr(s) + from, l_cstr(s) + to);
 }
@@ -218,7 +141,7 @@ l_strt_isEmpty(const l_strt* s)
 }
 
 L_INLINE l_strn
-l_strt_tostrn(const l_strt* s)
+l_strt_strn(const l_strt* s)
 {
   return (l_strn){s->start, s->end - s->start};
 }
@@ -236,7 +159,7 @@ l_strn_n(const void* s, l_int len)
 }
 
 L_INLINE l_strn
-l_strn_substr(const void* s, l_int from, l_int to)
+l_strn_sub(const void* s, l_int from, l_int to)
 {
   return l_strn_from(l_cstr(s) + from, l_cstr(s) + to);
 }
@@ -248,7 +171,7 @@ l_strn_isEmpty(const l_strn* s)
 }
 
 L_INLINE l_strt
-l_strn_tostrt(const l_strn* s)
+l_strn_strt(const l_strn* s)
 {
   return l_strt_n(s->start, s->len);
 }
@@ -265,42 +188,6 @@ L_EXTERN const l_byte* l_strt_contain(l_strt s, int ch);
 L_EXTERN const l_byte* l_strn_contain(l_strn s, int ch);
 
 /**
- * time and date
- *
- * The 64-bit signed integer's biggest value is 9223372036854775807.
- * For seconds/milliseconds/microseconds/nanoseconds, it can
- * represent more than 291672107014/291672107/291672/291 years.
- * The 32-bit signed integer's biggest value is 2147483647.
- * For seconds/milliseconds/microseconds/nanoseconds, it can
- * represent more than 67-year/24-day/35-min/2-sec.
- */
-
-#define l_nsecs_per_second (1000000000L)
-
-typedef struct {
-  l_long sec;
-  l_umedit nsec;
-} l_time;
-
-typedef struct {
-  l_umedit year; /* 38-bit, can represent 274877906943 years */
-  l_umedit nsec; /* nanoseconds that less than 1 sec */
-  l_ushort yday; /* 1 ~ 366 */
-  l_byte high;   /* extra bits for year */
-  l_byte wdmon;  /* 1~12, high 4-bit is wday (0~6, 0 is sunday) */
-  l_byte day;    /* 1~31 */
-  l_byte hour;   /* 0~23 */
-  l_byte min;    /* 0~59 */
-  l_byte sec;    /* 0~61, 60 and 61 are the leap seconds */
-} l_date;
-
-L_EXTERN l_time l_time_system();
-L_EXTERN l_time l_time_monotonic();
-L_EXTERN l_date l_date_system();
-L_EXTERN l_date l_date_fromsecs(l_long utcsecs);
-L_EXTERN l_date l_date_fromtime(l_time utc);
-
-/**
  * assert and logging
  */
 
@@ -308,7 +195,17 @@ L_EXTERN l_date l_date_fromtime(l_time utc);
 #define L_X_MKSTR(a) L_MKSTR(a)
 #define L_MKFLSTR __FILE__ " (" L_X_MKSTR(__LINE__) ") "
 
-#define l_assert(e) ((e) ? l_assert_pass_func("41[D] " L_MKFLSTR, (#e)) : l_assert_fail_func("01[E] " L_MKFLSTR, (#e))) /* 0:assert */
+#if defined(L_BUILD_DEBUG)
+  #define L_DEBUG_HERE(...) { __VA_ARGS__ }
+  #define l_assert_pass_func(expr) l_logger_func_impl("41[D] " L_MKFLSTR, "assert pass: %s", lp(expr))
+  #define l_assert_fail_func(expr) l_logger_func_impl("01[E] " L_MKFLSTR, "assert fail: %s", lp(expr))
+#else
+  #define L_DEBUG_HERE(...)
+  #define l_assert_pass_func(expr) ((void)0)
+  #define l_assert_fail_func(expr) l_logger_func_impl("01[E] " L_MKFLSTR, "assert fail: %s", lp(expr))
+#endif
+
+#define l_assert(e) ((e) ? l_assert_pass_func(#e) : l_assert_fail_func(#e)) /* 0:assert */
 #define l_loge_s(s)                   l_logger_func_s("10[E] " L_MKFLSTR, (s)) /* 1:error */
 #define l_loge_1(fmt,a)               l_logger_func_1("11[E] " L_MKFLSTR, (fmt), a)
 #define l_loge_n(fmt,n,a)             l_logger_func_n("1n[E] " L_MKFLSTR, (fmt), n,a)
@@ -360,6 +257,7 @@ L_EXTERN l_date l_date_fromtime(l_time utc);
 #define lb(a) lu(a)
 #define lo(a) lu(a)
 #define lx(a) lu(a)
+#define lserror(n) lp(strerror(n))
 
 typedef union {
   l_long d;
@@ -404,9 +302,10 @@ lstrn(const l_strn* s)
   return lp(s);
 }
 
-L_EXTERN void l_assert_pass_func(const void* tag, const void* expr);
-L_EXTERN void l_assert_fail_func(const void* tag, const void* expr);
-L_EXTERN void l_logger_func_impl(const void* tag, const void* fmt, ...);
+L_EXTERN int l_logger_getLevel();
+L_EXTERN void l_logger_setLevel(int n);
+L_EXTERN void l_logger_flush();
+L_PRIVAT void l_logger_func_impl(const void* tag, const void* fmt, ...);
 
 L_INLINE void
 l_logger_func_s(const void* tag, const void* s)
@@ -479,8 +378,119 @@ l_logger_func_n(const void* tag, const void* s, l_int n, const l_value* a)
   l_logger_func_impl(tag, s, n, a);
 }
 
-L_EXTERN void l_logger_setLevel(int level);
-L_EXTERN int l_logger_getLevel();
+/**
+ * simple link list
+ */
+
+typedef struct l_smplnode {
+  struct l_smplnode* next;
+} l_smplnode;
+
+L_INLINE void
+l_smplnode_init(l_smplnode* node)
+{
+  node->next = node;
+}
+
+L_INLINE int
+l_smplnode_isEmpty(l_smplnode* node)
+{
+  return node->next == node;
+}
+
+L_INLINE void
+l_smplnode_insertAfter(l_smplnode* node, l_smplnode* newnode)
+{
+  newnode->next = node->next;
+  node->next = newnode;
+}
+
+L_INLINE l_smplnode*
+l_smplnode_removeNext(l_smplnode* node)
+{
+  l_smplnode* p = node->next;
+  node->next = p->next;
+  return p;
+}
+
+/**
+ * bidirectional link list
+ */
+
+typedef struct l_linknode {
+  struct l_linknode* next;
+  struct l_linknode* prev;
+} l_linknode;
+
+L_INLINE void
+l_linknode_init(l_linknode* node)
+{
+  node->next = node->prev = node;
+}
+
+L_INLINE int
+l_linknode_isEmpty(l_linknode* node)
+{
+  return (node->next == node);
+}
+
+L_INLINE void
+l_linknode_insertAfter(l_linknode* node, l_linknode* newnode)
+{
+  newnode->next = node->next;
+  node->next = newnode;
+  newnode->prev = node;
+  newnode->next->prev = newnode;
+}
+
+L_INLINE l_linknode*
+l_linknode_remove(l_linknode* node)
+{
+  node->prev->next = node->next;
+  node->next->prev = node->prev;
+  return node;
+}
+
+/**
+ * The 64-bit signed integer's biggest value is 9223372036854775807.
+ * For seconds/milliseconds/microseconds/nanoseconds, it can
+ * represent more than 291672107014/291672107/291672/291 years.
+ * The 32-bit signed integer's biggest value is 2147483647.
+ * For seconds/milliseconds/microseconds/nanoseconds, it can
+ * represent more than 67-year/24-day/35-min/2-sec.
+ */
+
+#define l_nsecs_per_second (1000000000L)
+
+typedef struct {
+  l_long sec;
+  l_umedit nsec;
+} l_time;
+
+typedef struct {
+  l_umedit year; /* 38-bit, can represent 274877906943 years */
+  l_umedit nsec; /* nanoseconds that less than 1 sec */
+  l_ushort yday; /* 1 ~ 366 */
+  l_byte high;   /* extra bits for year */
+  l_byte wdmon;  /* 1~12, high 4-bit is wday (0~6, 0 is sunday) */
+  l_byte day;    /* 1~31 */
+  l_byte hour;   /* 0~23 */
+  l_byte min;    /* 0~59 */
+  l_byte sec;    /* 0~61, 60 and 61 are the leap seconds */
+} l_date;
+
+L_EXTERN l_time l_time_system();
+L_EXTERN l_time l_time_monotonic();
+L_EXTERN l_date l_date_system();
+L_EXTERN l_date l_date_fromUtcSecs(l_long utcsecs);
+L_EXTERN l_date l_date_fromUtcTime(l_time utc);
+
+L_INLINE l_umedit
+l_right_most_bit(l_umedit n)
+{
+  return n & (-n);
+}
+
 L_EXTERN void l_process_exit();
 L_EXTERN void l_core_base_test();
 
