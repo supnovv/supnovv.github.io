@@ -379,7 +379,7 @@ l_thread_release(l_thread* thread)
  * service
  */
 
-#define L_MIN_SERVICE_ID (1024*1024)
+#define L_MIN_SERVICE_ID  (1024)
 #define L_SERVICE_STARTED  0x01
 #define L_SERVICE_CLOSING  0x02
 #define L_SERVICE_STOPRX   0x04
@@ -532,7 +532,7 @@ typedef struct l_service {
 } l_service;
 
 L_GLOBAL l_mutex l_srvc_mtx;
-L_GLOBAL l_umedit l_svid_seed; /* shared by all threads */
+L_GLOBAL l_ushort l_svid_seed; /* shared by all threads */
 L_GLOBAL l_srvctable l_srvc_table; /* only accessed by master */
 
 static void
@@ -554,16 +554,16 @@ l_master_del_service(l_umedit svid)
 }
 
 static l_umedit
-l_master_gen_service_id()
+l_master_getRawServiceId()
 {
   l_mutex* mtx = &l_srvc_mtx;
   l_umedit svid = 0;
 
   l_mutex_lock(mtx);
-  svid = ++l_svid_seed;
-  if (svid < L_MIN_SERVICE_ID) {
-    svid = L_svid_seed = L_MIN_SERVICE_ID;
+  if (++l_svid_seed < L_MIN_SERVICE_ID) {
+    l_svid_seed = L_MIN_SERVICE_ID;
   }
+  svid = l_svid_seed;
   l_mutex_unlock(mtx);
 
   return svid;
@@ -586,7 +586,7 @@ l_service_create(l_int size, int (*entry)(l_service*, l_message*), void (*destro
     return 0;
   }
 
-  l_service_ptr(&buffer)->svid = l_master_gen_service_id();
+  l_service_ptr(&buffer)->svid = l_master_getRawServiceId();
   l_service_ptr(&buffer)->thread = thread;
   l_service_ptr(&buffer)->entry = entry;
   l_service_ptr(&buffer)->destroy = destroy;
@@ -726,11 +726,20 @@ L_EXTERN void /* send message to dest service, it is may be in current thread */
 l_message_send(l_thread* selfthread, l_umedit destid, l_message* msg) {
   msg->srvc = 0;
   msg->dstid = destid;
-  if (destid == L_SERVICE_MASTER_ID) {
+
+  if ((destid & 0xffff) == 0) {
     l_squeue_push(selfthread->txms, &msg->HEAD.node);
-  } else {
-    l_squeue_push(selfthread->txmq, &msg->HEAD.node);
+    return;
   }
+
+  if ((destid >> 16) == selfhread->index) {
+    l_thread_lock(selfthread);
+    l_squeue_push(&selfthread->rxmq, &msg->HEAD.node);
+    l_thread_unlock(selfthread);
+    return;
+  }
+
+  l_squeue_push(selfthread->txmq, &msg->HEAD.node);
 }
 
 static void /* worker flush messages to global in worker thread */
@@ -1150,6 +1159,8 @@ l_master_handleMessage(l_squeue* frmq)
         } else {
           srvc->thread = l_thread_acquire();
         }
+
+        srvc->svid = (((l_umedit)srvc->thread->index) << 16) | (srvc->svid & 0xffff);
 
         l_logm_1("start service %d", ld(srvc->svid));
 
