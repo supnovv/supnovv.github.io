@@ -121,7 +121,9 @@ l_thread_init(l_thread* t, l_config* conf)
   t->weight = t->msgwait = 0;
 }
 
-static void l_thread_free(l_thread* t) {
+static void
+l_thread_free(l_thread* t)
+{
   l_smplnode* node = 0;
   l_squeue* frbq = 0;
 
@@ -161,7 +163,9 @@ static void l_thread_free(l_thread* t) {
   }
 }
 
-static void* l_thread_func(void* para) {
+static void*
+l_thread_func(void* para)
+{
   int n = 0;
   l_thread* self = (l_thread*)para;
 #if defined(L_THREAD_LOCAL_SUPPORTED)
@@ -176,16 +180,22 @@ static void* l_thread_func(void* para) {
   return (void*)(l_int)n;
 }
 
-int l_thread_start(l_thread* self, int (*start)()) {
+static int
+l_thread_start(l_thread* self, int (*start)())
+{
   self->start = start;
   return l_raw_thread_create(&self->id, l_thread_func, self);
 }
 
-void l_thread_exit() {
+static void
+l_thread_exit()
+{
   l_raw_thread_exit();
 }
 
-int l_thread_join(l_thread* self) {
+static int
+l_thread_join(l_thread* self)
+{
   return l_raw_thread_join(&self->id);
 }
 
@@ -257,7 +267,7 @@ l_buffer_init(l_buffer* buffer, l_int size, l_thread* hint)
   if (size < sizeof(L_BUFHEAD))
     size = sizeof(L_BUFHEAD);
 
-  if ((buffer->p = l_raw_calloc(size)) {
+  if ((buffer->p = l_raw_calloc(size))) {
     l_buffer_ptr(buffer)->bsize = size;
     return true;
   }
@@ -334,29 +344,35 @@ l_master_start_log(const l_byte* tag)
   }
 
   log = &thread->log;
-  l_string_format_out(log, tag));
-  l_string_format_ulong(log, thread->index, (2 << 16));
-  l_string_format_out(log, l_strt_literal(" "));
+  l_string_format_s(log, l_strt_c(tag), 0);
+  l_string_format_u(log, thread->index, L_PRECISE(2));
+  l_string_format_s(log, l_strt_literal(" "), 0);
   return log;
 }
 
-static l_thread* l_threadpool_acquire() {
-  l_thread* thread = (l_thread*)l_priorq_pop(&L_thread_prq);
+static l_thread*
+l_thread_acquire()
+{
+  l_thread* thread = (l_thread*)l_priorq_pop(&l_thread_pool);
   thread->weight += 1;
-  l_priorq_push(&L_thread_prq, &thread->node);
+  l_priorq_push(&l_thread_pool, &thread->node);
   return thread;
 }
 
-static void l_threadpool_acquire_specific(l_thread* thread) {
+static void
+l_thread_acquireSpecific(l_thread* thread)
+{
   thread->weight += 1;
-  l_priorq_remove(&L_thread_prq, &thread->node);
-  l_priorq_push(&L_thread_prq, &thread->node);
+  l_priorq_remove(&l_thread_pool, &thread->node);
+  l_priorq_push(&l_thread_pool, &thread->node);
 }
 
-static void l_threadpool_release(l_thread* thread) {
+static void
+l_thread_release(l_thread* thread)
+{
   thread->weight -= 1;
-  l_priorq_remove(&L_thread_prq, &thread->node);
-  l_priorq_push(&L_thread_prq, &thread->node);
+  l_priorq_remove(&l_thread_pool, &thread->node);
+  l_priorq_push(&l_thread_pool, &thread->node);
 }
 
 /**
@@ -1130,9 +1146,9 @@ l_master_handleMessage(l_squeue* frmq)
         l_service* srvc = (l_service*)((l_message_ptr*)msg)->ptr;
         /* attach thread first */
         if (srvc->thread) {
-          l_threadpool_acquire_specific(srvc->thread);
+          l_thread_acquireSpecific(srvc->thread);
         } else {
-          srvc->thread = l_threadpool_acquire();
+          srvc->thread = l_thread_acquire();
         }
 
         l_logm_1("start service %d", ld(srvc->svid));
@@ -1175,7 +1191,7 @@ l_master_handleMessage(l_squeue* frmq)
         }
 
         if (!srvc) break;
-        l_threadpool_release(srvc->thread); /* L_MESSAGE_CLOSE_SRVCRSP is the last msg */
+        l_thread_release(srvc->thread); /* L_MESSAGE_CLOSE_SRVCRSP is the last msg */
         l_send_message_ptr(master, srvc->svid, L_MESSAGE_CLOSE_SRVCRSP, srvc);
       }
       break;
@@ -1325,9 +1341,9 @@ l_master_loop(int (*start)())
         l_thread_unlock(thread);
         continue;
       }
-
       thread->msgwait = 1;
       l_thread_unlock(thread);
+
       l_condv_signal(thread->condv);
     }
 

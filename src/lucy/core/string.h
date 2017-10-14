@@ -2,6 +2,18 @@
 #define lucy_string_h
 #include "core/base.h"
 
+#define L_FORMAT_HEX     0x01000000
+#define L_FORMAT_OCT     0x02000000
+#define L_FORMAT_BIN     0x04000000
+#define L_FORMAT_LEFT    0x08000000
+#define L_FORMAT_POSSIGN 0x20000000
+#define L_FORMAT_BLKSIGN 0x40000000
+#define L_FORMAT_N0B0O0X 0x80000000
+#define L_FORMAT_UPPER   0x00800000
+#define L_PRECISE(n) ((((n) & 0x7f) | 0x80) << 16)
+#define L_WIDTH(n) (((n) & 0x7f) << 8)
+#define L_FILL(n) ((n) & 0x7f)
+
 #define lstring(s) lp(l_string_cstr(s))
 
 typedef struct {
@@ -40,7 +52,13 @@ L_EXTERN l_int l_string_appendLenPossible(l_string* self, const void* s, l_int l
 L_EXTERN l_int l_string_appendReversedPossible(l_string* self, l_strt s);
 L_EXTERN l_int l_string_parseDec(l_strt s);
 L_EXTERN l_int l_string_parseHex(l_strt s);
-L_EXTERN int l_string_format_n(l_string* self, const void* fmt, int n, l_value* a);
+L_EXTERN void l_string_format_s(l_string* self, l_strt s, l_umedit flags);
+L_EXTERN void l_string_format_c(l_string* self, int ch, l_umedit flags);
+L_EXTERN void l_string_format_b(l_string* self, int truefalse, l_umedit flags);
+L_EXTERN void l_string_format_u(l_string* self, l_ulong a, l_umedit flags);
+L_EXTERN void l_string_format_d(l_string* self, l_long a, l_umedit flags);
+L_EXTERN void l_string_format_f(l_string* self, double a, l_umedit flags);
+L_EXTERN int l_string_format_n(l_string* self, const void* fmt, l_int n, l_value* a);
 L_EXTERN int l_string_format_1(l_string* self, const void* fmt, l_value a);
 L_EXTERN int l_string_format_2(l_string* self, const void* fmt, l_value a, l_value b);
 L_EXTERN int l_string_format_3(l_string* self, const void* fmt, l_value a, l_value b,

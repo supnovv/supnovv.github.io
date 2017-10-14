@@ -290,6 +290,7 @@ l_string_appendLenPossible(l_string* self, const void* s, l_int len)
   return len;
 }
 
+#if 0
 #define L_FORMAT_HEX     0x01000000
 #define L_FORMAT_OCT     0x02000000
 #define L_FORMAT_BIN     0x04000000
@@ -304,6 +305,14 @@ l_string_appendLenPossible(l_string* self, const void* s, l_int len)
 #define L_FORMAT_UPPER   0x00800000
 #define L_FORMAT_REVERSE 0x00008000
 #define L_FORMAT_MASKS   0xff808000
+#else
+#define L_FORAMT_BSMASKS 0x07000000
+#define L_FORMAT_NEGSIGN 0x10000000
+#define L_FORMAT_SNMASKS 0x70000000
+#define L_FORMAT_PRECISE 0x00800000
+#define L_FORMAT_REVERSE 0x00008000
+#define L_FORMAT_MASKS   0xff808000
+#endif
 
 static void
 l_string_format_out(l_string* self, l_strt s)
@@ -351,7 +360,7 @@ l_string_format_out_reverse(l_string* self, l_strt s)
 static void
 l_string_format_fill_and_out(l_string* self, l_byte* a, l_byte* p, l_umedit flags)
 {
-  l_byte fill = l_cast(l_byte, flags & 0xff);
+  l_byte fill = (l_byte)(flags & 0x7f);
   int width = ((flags & 0x7f00) >> 8);
   int reverse = (flags & L_FORMAT_REVERSE) != 0;
   int left = (flags & L_FORMAT_LEFT) != 0;
@@ -385,37 +394,37 @@ l_string_format_fill_and_out(l_string* self, l_byte* a, l_byte* p, l_umedit flag
 }
 
 static void
-l_string_format_string(l_string* self, l_strt s, l_umedit flags)
+l_string_format_s(l_string* self, l_strt s, l_umedit flags)
 {
-  int width = ((flags & 0x7f00) >> 8);
+  int width = ((flags & 0x7f00) >> 8); /* max. width is 7f (127) */
   l_int len = s.end - s.start;
   if (len >= width) {
     l_string_format_out(self, s);
-  } else {
-    l_byte a[128];
+  } else if (len > 0) {
+    l_byte a[128]; /* len < width <= 127 */
     memcpy(a, s.start, len);
     l_string_format_fill_and_out(self, a, a + len, flags);
   }
 }
 
 static void
-l_string_format_char(l_string* self, l_ulong a, l_umedit flags)
+l_string_format_c(l_string* self, l_ulong a, l_umedit flags)
 {
   l_byte ch = l_cast(l_byte, a&0xff);
   if ((flags & L_FORMAT_UPPER) && ch >= 'a' && ch <= 'z') {
     ch -= 32;
   }
-  l_string_format_string(self, l_strt_n(&ch, 1), flags);
+  l_string_format_s(self, l_strt_n(&ch, 1), flags);
 }
 
 static void
-l_string_format_bool(l_string* self, l_ulong a, l_umedit flags)
+l_string_format_b(l_string* self, l_ulong a, l_umedit flags)
 {
   if (a) {
-    l_string_format_string(self, (flags & L_FORMAT_UPPER) ? l_strt_literal("TRUE") : l_strt_literal("true"), flags);
-  } else {
-    l_string_format_string(self, (flags & L_FORMAT_UPPER) ? l_strt_literal("FALSE") : l_strt_literal("false"), flags);
+    l_string_format_s(self, (flags & L_FORMAT_UPPER) ? l_strt_literal("TRUE") : l_strt_literal("true"), flags);
+    return;
   }
+  l_string_format_s(self, (flags & L_FORMAT_UPPER) ? l_strt_literal("FALSE") : l_strt_literal("false"), flags);
 }
 
 /**
@@ -519,7 +528,7 @@ l_string_parseHex(l_strt s)
 
 
 static void
-l_string_format_ulong(l_string* self, l_ulong n, l_umedit flags)
+l_string_format_u(l_string* self, l_ulong n, l_umedit flags)
 {
   /* 64-bit unsigned int max value 18446744073709552046 (20 chars) */
   l_byte a[127];
@@ -595,14 +604,14 @@ l_string_format_ulong(l_string* self, l_ulong n, l_umedit flags)
 }
 
 static void
-l_string_format_long(l_string* self, l_long a, l_umedit flags)
+l_string_format_d(l_string* self, l_long a, l_umedit flags)
 {
   l_ulong n = a;
   if (a < 0) {
     n = (-a);
     flags |= L_FORMAT_NEGSIGN;
   }
-  l_string_format_ulong(self, n, flags);
+  l_string_format_u(self, n, flags);
 }
 
 L_EXTERN l_byte*
@@ -645,7 +654,7 @@ l_string_print_fraction(double f, l_byte* p, int precise)
 }
 
 static void
-l_string_format_float(l_string* self, l_value v, l_umedit flags)
+l_string_format_f(l_string* self, l_value v, l_umedit flags)
 {
   l_byte a[144];
   l_byte sign = 0;
@@ -836,39 +845,39 @@ l_string_format_a_value(l_string* self, const l_byte* start, const l_byte* end, 
     case 's':
       if (end - cur >= 4 && *(cur+1) == 't' && *(cur+2) == 'r' && (*(cur+3) == 't' || *(cur+3) == 'n')) {
         if (*(cur+3) == 't') {
-          l_string_format_string(self, *((l_strt*)a.p), flags);
+          l_string_format_s(self, *((l_strt*)a.p), flags);
         } else {
-          l_string_format_string(self, l_strn_strt((l_strn*)a.p), flags);
+          l_string_format_s(self, l_strn_strt((l_strn*)a.p), flags);
         }
         return cur + 4;
       }
-      l_string_format_string(self, l_strt_c(a.p), flags);
+      l_string_format_s(self, l_strt_c(a.p), flags);
       return cur + 1;
 
     case 'f': case 'F':
-      l_string_format_float(self, a, flags);
+      l_string_format_f(self, a, flags);
       return cur + 1;
 
     case 'u': case 'U':
-      l_string_format_ulong(self, a.u, flags);
+      l_string_format_u(self, a.u, flags);
       return cur + 1;
 
     case 'd': case 'D':
-      l_string_format_long(self, a.d, flags);
+      l_string_format_d(self, a.d, flags);
       return cur + 1;
 
     case 'C':
       flags |= L_FORMAT_UPPER;
       /* fallthrough */
     case 'c':
-      l_string_format_char(self, (int)a.u, flags);
+      l_string_format_c(self, (int)a.u, flags);
       return cur + 1;
 
     case 'T':
       flags |= L_FORMAT_UPPER;
       /* fallthrough */
     case 't':
-      l_string_format_bool(self, (int)a.u, flags);
+      l_string_format_b(self, (int)a.u, flags);
       return cur + 1;
 
     case 'B':
@@ -876,7 +885,7 @@ l_string_format_a_value(l_string* self, const l_byte* start, const l_byte* end, 
       /* fallthrough */
     case 'b':
       flags |= L_FORMAT_BIN;
-      l_string_format_ulong(self, a.u, flags);
+      l_string_format_u(self, a.u, flags);
       return cur + 1;
 
     case 'O':
@@ -884,7 +893,7 @@ l_string_format_a_value(l_string* self, const l_byte* start, const l_byte* end, 
       /* fallthrough */
     case 'o':
       flags |= L_FORMAT_OCT;
-      l_string_format_ulong(self, a.u, flags);
+      l_string_format_u(self, a.u, flags);
       return cur + 1;
 
     case 'X': case 'P':
@@ -892,7 +901,7 @@ l_string_format_a_value(l_string* self, const l_byte* start, const l_byte* end, 
       /* fallthrough */
     case 'x': case 'p':
       flags |= L_FORMAT_HEX;
-      l_string_format_ulong(self, a.u, flags);
+      l_string_format_u(self, a.u, flags);
       return cur + 1;
 
     default:
