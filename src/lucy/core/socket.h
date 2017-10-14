@@ -40,7 +40,7 @@ L_EXTERN void l_plat_sock_test();
 #define L_IOEVENT_FLAG_LISTEN  0x02
 #define L_IOEVENT_FLAG_CONNECT 0x04
 
-typedef struct l_ioevent {
+typedef struct {
   l_handle fd;
   l_umedit udata;
   l_ushort masks;

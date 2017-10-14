@@ -8,12 +8,11 @@ typedef struct {
 typedef struct l_hashtable {
   l_umedit nslot;
   l_umedit nelem;
-  l_umedit seed;
   l_hashslot slot[1];
 } l_hashtable;
 
 L_EXTERN l_hashtable*
-l_hashtable_create(l_byte sizebits, l_umedit seed)
+l_hashtable_create(l_byte sizebits)
 {
   l_umedit size = 0;
   l_hashtable* table = 0;
@@ -27,7 +26,6 @@ l_hashtable_create(l_byte sizebits, l_umedit seed)
   table = (l_hashtable*)l_raw_calloc(sizeof(l_hashtable) + sizeof(l_hashslot) * size);
   table->nslot = size;
   table->nelem = 0;
-  table->seed = seed;
 
   return table;
 }

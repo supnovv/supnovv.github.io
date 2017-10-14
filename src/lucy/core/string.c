@@ -5,25 +5,29 @@
 #include <float.h>
 
 #define L_LIBRARY_IMPL
+#define l_string_ptr(s) ((l_strbuf*)s->p)
 #include "core/string.h"
 
-#define L_COMMON_BUFHEAD l_smplnode node; l_int bsize;
-#define l_string_ptr(s) ((l_strbuf*)s->impl)
+typedef struct {
+  l_smplnode node;
+  l_int bsize;
+} L_BUFHEAD;
 
 typedef struct {
-  L_COMMON_BUFHEAD
+  L_BUFHEAD HEAD;
   l_int size;
   l_int limit;
 } l_strbuf;
 
-L_PRIVAT l_string l_master_create_string(l_int len, const l_byte* init, l_int maxlimit, l_thread* hint);
-L_PRIVAT void* l_master_ensure_bfsize(l_smplnode* buffer, l_int size);
-L_PRIVAT void l_master_free_buffer(l_smplnode* buffer, l_thread* hint);
+typedef struct l_buffer l_buffer;
 L_PRIVAT void l_master_write_log(l_string* self);
 L_PRIVAT void l_master_flush_log();
 L_PRIVAT l_string* l_master_start_log(const l_byte* tag);
+L_PRIVAT int l_buffer_ensureCapacity(l_buffer* buffer, l_int capacity);
+L_PRIVAT int l_buffer_init(l_buffer* buffer, l_int size, l_thread* hint); /* size is total size of the structure */
+L_PRIVAT void l_buffer_free(l_buffer* buffer, l_thread* hint);
 
-L_PRIVAT void
+static void
 l_string_setEnd(l_string* self, l_int len)
 {
   l_string_ptr(self)->size = len;
@@ -37,36 +41,56 @@ l_string_empty()
 }
 
 L_EXTERN l_string
-l_string_create(l_int initsize)
+l_string_create(l_int size)
 {
-  return l_string_createEx(initsize, 0, 0);
+  return l_string_createEx(size, 0);
 }
 
 L_EXTERN l_string
-l_string_createFrom(l_strt from)
+l_string_createFrom(l_strn from)
 {
-  return l_string_createFromEx(from, 0, 0);
+  return l_string_createFromEx(0, from, 0);
 }
 
 L_EXTERN l_string
-l_string_createEx(l_int initsize, l_int maxlimit, l_thread* hint)
+l_string_createEx(l_int size, l_thread* hint)
 {
-  return l_master_create_string(initsize, 0, maxlimit, hint);
+  return l_string_createFromEx(size, l_strn_empty(), hint);
 }
 
 L_EXTERN l_string
-l_string_createFromEx(l_strt from, l_int maxlimit, l_thread* hint)
+l_string_createFromEx(l_int size, l_strn from, l_thread* hint)
 {
-  return l_master_create_string(from.end - from.start, from.start, maxlimit, hint);
+  l_string s;
+
+  if (size < 0) size = 0;
+  if (size <= from.len)
+    size = from.len + 1;
+  else /* 1 for zero terminated byte */
+    size += 1;
+
+  size += sizeof(l_strbuf);
+  if (!l_buffer_init((l_buffer*)&s, size, hint)) {
+    return (l_string){0};
+  }
+
+  if (l_copy_n(from.start, from.len, l_string_start(&s))) {
+    l_string_setEnd(&s, from.len);
+  }
+  return s;
+}
+
+L_EXTERN void
+l_string_setLimit(l_string* self, l_int limit)
+{
+  if (limit < 0) limit = 0;
+  l_string_ptr(&s)->limit = limit;
 }
 
 L_EXTERN void
 l_string_free(l_string* self, l_thread* hint)
 {
-  if (self->impl) {
-    l_master_free_buffer(&(l_string_ptr(self)->node), hint);
-    self->impl = 0;
-  }
+  l_buffer_free((l_buffer*)self, hint);
 }
 
 L_EXTERN void
@@ -74,12 +98,6 @@ l_string_clear(l_string* self)
 {
   *l_string_cstr(self) = 0;
   l_string_ptr(self)->size = 0;
-}
-
-L_EXTERN l_byte*
-l_string_cstr(l_string* self)
-{
-  return (l_byte*)(l_string_ptr(self) + 1);
 }
 
 L_EXTERN l_int
@@ -110,7 +128,7 @@ l_string_limit(l_string* self)
 L_EXTERN l_byte*
 l_string_start(l_string* self)
 {
-  return l_string_cstr(self);
+  return (l_byte*)(l_string_ptr(self) + 1);
 }
 
 L_EXTERN l_byte*
@@ -152,16 +170,11 @@ l_string_ntEmpty(l_string* self)
 L_EXTERN int
 l_string_ensureCapacity(l_string* self, l_int size)
 {
-  void* buffer = 0;
   l_int limit = l_string_limit(self);
   if (limit > 0 && size > limit) {
     return false;
   }
-  if (!(buffer = l_master_ensure_bfsize(&(l_string_ptr(self)->node), sizeof(l_strbuf) + size + 1))) {
-    return false;
-  }
-  self->impl = buffer;
-  return true;
+  return l_buffer_ensureCapacity((l_buffer*)self, size + 1 + sizeof(l_strbuf));
 }
 
 L_EXTERN int

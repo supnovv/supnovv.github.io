@@ -117,7 +117,8 @@ l_out_of_memory(l_int size, int init)
 static l_int
 l_check_alloc_size(l_int size)
 {
-  if (size <= 0 || size > L_MAX_RWSIZE) return 0;
+  if (size > L_MAX_RWSIZE) return 0;
+  if (size <= 0) return 8;
   return (((size - 1) >> 3) + 1) << 3; /* times of eight */
 }
 
@@ -153,7 +154,7 @@ l_raw_alloc_c(l_int size) {
   return l_out_of_memory(n, 1);
 }
 
-static void*
+static void* /* if alloc failed, need keep p unchanged */
 l_raw_alloc_r(void* p, l_int old, l_int newsz) {
   void* temp = 0;
   l_int n = l_check_alloc_size(newsz);
@@ -224,6 +225,12 @@ L_EXTERN int
 l_logger_getLevel()
 {
   return l_log_level;
+}
+
+L_EXTERN void
+l_process_exit()
+{
+  exit(EXIT_FAILURE);
 }
 
 L_EXTERN void

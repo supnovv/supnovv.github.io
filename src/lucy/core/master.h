@@ -40,7 +40,7 @@ L_EXTERN lua_State* l_thread_luaState();
 #define L_MIN_USER_MSGID  0x80
 
 typedef struct {
-  L_COMMON_BUFHEAD
+  L_BUFHEAD HEAD;
   l_service* srvc;
   l_umedit dstid;
   l_umedit type;
@@ -48,7 +48,7 @@ typedef struct {
 
 typedef struct {
   l_message head;
-  l_handle fd;
+  l_filedesc fd;
   l_umedit masks;
   l_sockaddr remote;
 } l_connind_message;
@@ -62,7 +62,7 @@ typedef struct {
 typedef struct {
   l_message head;
   l_umedit svid;
-  l_handle fd;
+  l_filedesc sock;
 } l_service_message;
 
 typedef struct {
@@ -72,7 +72,7 @@ typedef struct {
 
 typedef struct {
   l_message head;
-  l_handle fd;
+  l_filedesc fd;
 } l_message_fd;
 
 typedef struct {
@@ -124,10 +124,10 @@ L_EXTERN void l_message_sendBootstrap(l_thread* thread, int (*bootstrap)());
 #define L_SERVICE_MASTER_ID (0) /* worker's default svid is its index (16-bit) */
 #define L_SERVICE_BOOTSTRAP (0xffff+1)
 
-L_EXTERN l_service* l_create_service(l_int size, int (*entry)(l_service*, l_message*), void (*destroy)(l_service*));
-L_EXTERN l_service* l_create_service_in_same_thread(l_int size, int (*entry)(l_service*, l_message*), void (*destroy)(l_service*));
-L_EXTERN int l_free_unstarted_service(l_service* srvc);
-L_EXTERN void l_start_service(l_service* srvc);
+L_EXTERN l_service* l_service_create(l_int size, int (*entry)(l_service*, l_message*), void (*destroy)(l_service*));
+L_EXTERN int l_service_free(l_service* srvc);
+L_EXTERN void l_service_start(l_service* srvc);
+L_EXTERN void l_service_startEx(l_service* srvc, l_thread* thread);
 L_EXTERN void l_start_listener_service(l_service* srvc, l_handle sock);
 L_EXTERN void l_start_initiator_service(l_service* srvc, l_handle sock);
 L_EXTERN void l_start_receiver_service(l_service* srvc, l_handle sock);

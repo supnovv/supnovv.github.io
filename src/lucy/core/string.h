@@ -5,7 +5,7 @@
 #define lstring(s) lp(l_string_cstr(s))
 
 typedef struct {
-  void* impl;
+  void* p;
 } l_string;
 
 typedef struct l_thread l_thread;
@@ -17,7 +17,6 @@ L_EXTERN l_string l_string_createEx(l_int initsize, l_int maxlimit, l_thread* hi
 L_EXTERN l_string l_string_createFromEx(l_strt from, l_int maxlimit, l_thread* hint);
 L_EXTERN void l_string_free(l_string* self, l_thread* hint);
 L_EXTERN void l_string_clear(l_string* self);
-L_EXTERN l_byte* l_string_cstr(l_string* self);
 L_EXTERN l_int l_string_capacity(l_string* self); /* exclude the last byte */
 L_EXTERN l_int l_string_remain(l_string* self); /* exclude the last byte */
 L_EXTERN l_int l_string_size(l_string* self);
