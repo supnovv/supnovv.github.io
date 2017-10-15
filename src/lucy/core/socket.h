@@ -1,13 +1,14 @@
 #ifndef lucy_core_socket_h
 #define lucy_core_socket_h
 #include "core/base.h"
+#include "core/fileop.h"
 
 typedef struct {
   L_PLAT_IMPL_SIZE(L_SOCKADDR_SIZE);
 } l_sockaddr;
 
 typedef struct {
-  l_handle sock;
+  l_filedesc sock;
   l_sockaddr remote;
 } l_sockconn;
 
@@ -18,7 +19,7 @@ L_EXTERN void l_socket_startup(); /* socket global init */
 L_EXTERN l_filedesc l_socket_listen(const l_sockaddr* addr, int backlog);
 L_EXTERN void l_socket_accept(l_filedesc sock, void (*cb)(void*, l_sockconn*), void* ud);
 L_EXTERN void l_socket_close(l_filedesc sock);
-L_EXTERN void l_socket_shutdown(l_filedesc sock, l_rune r_w_a);
+L_EXTERN void l_socket_shutdown(l_filedesc sock, l_byte r_w_a);
 L_EXTERN void l_socketconn_init(l_sockconn* self, l_strt ip, l_ushort port);
 L_EXTERN int l_socket_connect(l_sockconn* conn);
 L_EXTERN int l_socket_is_open(l_filedesc sock);
@@ -41,14 +42,14 @@ L_EXTERN void l_plat_sock_test();
 #define L_IOEVENT_FLAG_CONNECT 0x04
 
 typedef struct {
-  l_handle fd;
+  l_filedesc fd;
   l_umedit udata;
   l_ushort masks;
   l_ushort flags;
 } l_ioevent;
 
 typedef struct {
-  L_PLAT_IMPL_SIZE(L_IONFMGR_SIZE);
+  L_PLAT_IMPL_SIZE(L_EVENTMGR_SIZE);
 } l_eventmgr;
 
 L_EXTERN int l_eventmgr_init(l_eventmgr* self);

@@ -7,6 +7,7 @@
 #define L_LIBRARY_IMPL
 #define l_string_ptr(s) ((l_strbuf*)s->p)
 #include "core/string.h"
+#include "core/fileop.h"
 
 typedef struct {
   l_smplnode node;
@@ -20,9 +21,9 @@ typedef struct {
 } l_strbuf;
 
 typedef struct l_buffer l_buffer;
-L_PRIVAT void l_master_write_log(l_string* self);
-L_PRIVAT void l_master_flush_log();
-L_PRIVAT l_string* l_master_start_log(const l_byte* tag);
+L_PRIVAT void l_master_writeLog(l_string* log);
+L_PRIVAT void l_master_flushLog(l_thread* hint);
+L_PRIVAT l_string* l_master_startLog(const l_byte* tag, l_thread* hint);
 L_PRIVAT int l_buffer_ensureCapacity(l_buffer* buffer, l_int capacity);
 L_PRIVAT int l_buffer_init(l_buffer* buffer, l_int size, l_thread* hint); /* size is total size of the structure */
 L_PRIVAT void l_buffer_free(l_buffer* buffer, l_thread* hint);
@@ -31,7 +32,7 @@ static void
 l_string_setEnd(l_string* self, l_int len)
 {
   l_string_ptr(self)->size = len;
-  *(l_string_cstr(self) + len) = 0;
+  *(l_string_start(self) + len) = 0;
 }
 
 L_EXTERN l_string
@@ -83,8 +84,23 @@ l_string_createFromEx(l_int size, l_strn from, l_thread* hint)
 L_EXTERN void
 l_string_setLimit(l_string* self, l_int limit)
 {
+  l_int capacity = l_string_capacity(self);
   if (limit < 0) limit = 0;
-  l_string_ptr(&s)->limit = limit;
+  if (limit < capacity) limit = capacity;
+  l_string_ptr(self)->limit = limit;
+}
+
+L_PRIVAT void
+l_string_initLog(l_string* log, l_int limit, l_thread* hint)
+{
+  if (limit < 8) limit = 8;
+  if (l_string_ptr(log)) {
+    l_int capacity = l_string_capacity(log);
+    if (limit < capacity) limit = capacity;
+  } else {
+    *log = l_string_createEx(limit, hint);
+  }
+  l_string_ptr(log)->limit = -limit; /* set negative limit */
 }
 
 L_EXTERN void
@@ -96,14 +112,14 @@ l_string_free(l_string* self, l_thread* hint)
 L_EXTERN void
 l_string_clear(l_string* self)
 {
-  *l_string_cstr(self) = 0;
+  *l_string_start(self) = 0;
   l_string_ptr(self)->size = 0;
 }
 
 L_EXTERN l_int
 l_string_capacity(l_string* self)
 {
-  return l_string_ptr(self)->bsize - sizeof(l_strbuf) - 1;
+  return l_string_ptr(self)->HEAD.bsize - sizeof(l_strbuf) - 1;
 }
 
 L_EXTERN l_int
@@ -134,7 +150,7 @@ l_string_start(l_string* self)
 L_EXTERN l_byte*
 l_string_end(l_string* self)
 {
-  return l_string_cstr(self) + l_string_size(self);
+  return l_string_start(self) + l_string_size(self);
 }
 
 L_EXTERN l_strt
@@ -195,7 +211,7 @@ l_string_setLen(l_string* self, const void* s, l_int len)
   if (!l_string_ensureCapacity(self, len)) {
     return false;
   }
-  if (!l_copy_n(s, len, l_string_cstr(self))) {
+  if (!l_copy_n(s, len, l_string_start(self))) {
     return false;
   }
   l_string_setEnd(self, len);
@@ -317,9 +333,11 @@ l_string_appendLenPossible(l_string* self, const void* s, l_int len)
 static void
 l_string_format_out(l_string* self, l_strt s)
 {
-  l_int len = s.end - s.start;
-  if (len <= 0)
+  if (!self) {
+    l_file out = {stdout};
+    l_file_write(&out, s);
     return;
+  }
 
   if (l_string_ptr(self)->limit >=0) {
     l_string_append(self, s);
@@ -328,19 +346,22 @@ l_string_format_out(l_string* self, l_strt s)
 
   for (; ;) {
     s.start += l_string_appendPossible(self, s);
-
     if (l_string_remain(self) > 0)
       break;
-
-    l_master_write_log(self);
+    l_master_writeLog(self);
   }
 }
 
 static void
 l_string_format_out_reverse(l_string* self, l_strt s)
 {
-  l_int len = s.end - s.start;
-  if (len <= 0) return;
+  if (!self) {
+    l_file out = {stdout};
+    while (s.start < s.end--) {
+      l_file_put(&out, *s.end);
+    }
+    return;
+  }
 
   if (l_string_ptr(self)->limit >= 0) {
     l_string_appendReversed(self, s);
@@ -349,11 +370,9 @@ l_string_format_out_reverse(l_string* self, l_strt s)
 
   for (; ;) {
     s.end -= l_string_appendReversedPossible(self, s);
-
     if (l_string_remain(self) > 0)
       break;
-
-    l_master_write_log(self);
+    l_master_writeLog(self);
   }
 }
 
@@ -393,7 +412,7 @@ l_string_format_fill_and_out(l_string* self, l_byte* a, l_byte* p, l_umedit flag
   }
 }
 
-static void
+L_EXTERN void
 l_string_format_s(l_string* self, l_strt s, l_umedit flags)
 {
   int width = ((flags & 0x7f00) >> 8); /* max. width is 7f (127) */
@@ -407,8 +426,8 @@ l_string_format_s(l_string* self, l_strt s, l_umedit flags)
   }
 }
 
-static void
-l_string_format_c(l_string* self, l_ulong a, l_umedit flags)
+L_EXTERN void
+l_string_format_c(l_string* self, int a, l_umedit flags)
 {
   l_byte ch = l_cast(l_byte, a&0xff);
   if ((flags & L_FORMAT_UPPER) && ch >= 'a' && ch <= 'z') {
@@ -417,8 +436,8 @@ l_string_format_c(l_string* self, l_ulong a, l_umedit flags)
   l_string_format_s(self, l_strt_n(&ch, 1), flags);
 }
 
-static void
-l_string_format_b(l_string* self, l_ulong a, l_umedit flags)
+L_EXTERN void
+l_string_format_b(l_string* self, int a, l_umedit flags)
 {
   if (a) {
     l_string_format_s(self, (flags & L_FORMAT_UPPER) ? l_strt_literal("TRUE") : l_strt_literal("true"), flags);
@@ -527,7 +546,7 @@ l_string_parseHex(l_strt s)
 }
 
 
-static void
+L_EXTERN void
 l_string_format_u(l_string* self, l_ulong n, l_umedit flags)
 {
   /* 64-bit unsigned int max value 18446744073709552046 (20 chars) */
@@ -603,7 +622,7 @@ l_string_format_u(l_string* self, l_ulong n, l_umedit flags)
   l_string_format_fill_and_out(self, a, p, flags | L_FORMAT_REVERSE);
 }
 
-static void
+L_EXTERN void
 l_string_format_d(l_string* self, l_long a, l_umedit flags)
 {
   l_ulong n = a;
@@ -654,7 +673,7 @@ l_string_print_fraction(double f, l_byte* p, int precise)
 }
 
 static void
-l_string_format_f(l_string* self, l_value v, l_umedit flags)
+l_string_format_float(l_string* self, l_value v, l_umedit flags)
 {
   l_byte a[144];
   l_byte sign = 0;
@@ -764,6 +783,12 @@ l_string_format_f(l_string* self, l_value v, l_umedit flags)
   l_string_format_fill_and_out(self, a, p, flags);
 }
 
+L_EXTERN void
+l_string_format_f(l_string* self, double a, l_umedit flags)
+{
+  l_string_format_float(self, lf(a), flags);
+}
+
 static const l_byte*
 l_string_format_a_value(l_string* self, const l_byte* start, const l_byte* end, l_value a)
 {
@@ -855,7 +880,7 @@ l_string_format_a_value(l_string* self, const l_byte* start, const l_byte* end, 
       return cur + 1;
 
     case 'f': case 'F':
-      l_string_format_f(self, a, flags);
+      l_string_format_float(self, a, flags);
       return cur + 1;
 
     case 'u': case 'U':
@@ -1042,7 +1067,7 @@ l_logger_func_impl(const void* tag, const void* fmt, ...)
     return;
   }
 
-  log = l_master_start_log(l_cstr(tag) + 2);
+  log = l_master_startLog(l_cstr(tag)+2, 0);
 
   if (nargs == 'n') {
     va_start(vl, fmt);
@@ -1061,7 +1086,7 @@ l_logger_func_impl(const void* tag, const void* fmt, ...)
 L_EXTERN void
 l_logger_flush()
 {
-  l_master_flush_log();
+  l_master_flushLog(0);
 }
 
 L_EXTERN int

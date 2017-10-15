@@ -4,7 +4,7 @@ test = {
   d = 40;
 }
 
-workers = 1
+workers = 0
 -- log_buffer_size = 1024*8
 -- service_table_size = 10 -- 2^10
 -- thread_max_free_memory = 1024

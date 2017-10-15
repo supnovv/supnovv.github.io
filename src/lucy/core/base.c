@@ -234,6 +234,15 @@ l_process_exit()
 }
 
 L_EXTERN void
+l_process_atexit(void (*func)(void))
+{
+  if (!func) return;
+  if (atexit(func) != 0) {
+    l_loge_1("atexit %s", lserror(errno));
+  }
+}
+
+L_EXTERN void
 l_core_base_test()
 {
   char buffer[] = "012345678";

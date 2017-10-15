@@ -37,6 +37,8 @@ L_EXTERN l_file l_file_openAppendUnbuffered(const void* name);
 L_EXTERN l_int l_file_write(l_file* self, l_strt s);
 L_EXTERN l_int l_file_writeLen(l_file* self, const void* s, l_int len);
 L_EXTERN l_int l_file_read(l_file* self, void* out, l_int len);
+L_EXTERN l_int l_file_put(l_file* self, l_byte ch);
+L_EXTERN int l_file_get(l_file* self);
 L_EXTERN int l_file_remove(const void* name);
 L_EXTERN int l_file_rename(const void* from, const void* to);
 L_EXTERN void l_redirect_stdout(const void* name);

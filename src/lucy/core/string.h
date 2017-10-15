@@ -23,10 +23,11 @@ typedef struct {
 typedef struct l_thread l_thread;
 
 L_EXTERN l_string l_string_empty();
-L_EXTERN l_string l_string_create(l_int initsize);
-L_EXTERN l_string l_string_createFrom(l_strt from);
-L_EXTERN l_string l_string_createEx(l_int initsize, l_int maxlimit, l_thread* hint);
-L_EXTERN l_string l_string_createFromEx(l_strt from, l_int maxlimit, l_thread* hint);
+L_EXTERN l_string l_string_create(l_int size);
+L_EXTERN l_string l_string_createFrom(l_strn from);
+L_EXTERN l_string l_string_createEx(l_int size, l_thread* hint);
+L_EXTERN l_string l_string_createFromEx(l_int size, l_strn from, l_thread* hint);
+L_EXTERN void l_string_setLimit(l_string* self, l_int limit);
 L_EXTERN void l_string_free(l_string* self, l_thread* hint);
 L_EXTERN void l_string_clear(l_string* self);
 L_EXTERN l_int l_string_capacity(l_string* self); /* exclude the last byte */

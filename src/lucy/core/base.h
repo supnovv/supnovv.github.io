@@ -492,6 +492,7 @@ l_right_most_bit(l_umedit n)
 }
 
 L_EXTERN void l_process_exit();
+L_EXTERN void l_process_atexit(void (*func)(void));
 L_EXTERN void l_core_base_test();
 
 #endif /* lucy_core_base_h */

@@ -188,7 +188,6 @@ l_file_writeLen(l_file* self, const void* s, l_int len)
 {
   l_int n = 0;
   if (!s || len <= 0 || len > L_MAX_RWSIZE) {
-    l_loge_1("invalid %d", ld(len));
     return 0;
   }
   if ((n = (l_int)fwrite(s, 1, (size_t)len, (FILE*)self->stream)) != len) {
@@ -196,6 +195,16 @@ l_file_writeLen(l_file* self, const void* s, l_int len)
     if (n <= 0) return 0;
   }
   return n;
+}
+
+L_EXTERN l_int
+l_file_put(l_file* self, l_byte ch)
+{
+  if (fwrite(&ch, 1, 1, (FILE*)self->stream) != 1) {
+    l_loge_1("fwrite %s", lserror(errno));
+    return 0;
+  }
+  return 1;
 }
 
 L_EXTERN l_int
@@ -209,7 +218,6 @@ l_file_read(l_file* self, void* out, l_int len)
 {
   l_int n = 0;
   if (!out || len <= 0 || len > L_MAX_RWSIZE) {
-    l_loge_1("invalid %d", ld(len));
     return 0;
   }
   if ((n = (l_int)fread(out, 1, (size_t)len, (FILE*)self->stream)) != len) {

@@ -4,7 +4,7 @@
 
 typedef struct l_hashtable l_hashtable;
 
-L_EXTERN l_hashtable* l_hashtable_create(l_byte sizebits, l_umedit seed);
+L_EXTERN l_hashtable* l_hashtable_create(l_byte sizebits);
 L_EXTERN int l_hashtable_add(l_hashtable* self, l_smplnode* elem, l_umedit hash);
 L_EXTERN l_smplnode* l_hashtable_find(l_hashtable* self, l_umedit hash, int (*check)(void*, l_smplnode*), void* obj);
 L_EXTERN l_smplnode* l_hashtable_del(l_hashtable* self, l_umedit hash, int (*check)(void*, l_smplnode*), void* obj);
