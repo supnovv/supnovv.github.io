@@ -517,7 +517,7 @@ L_GLOBAL l_squeue l_msg_rxq; /* shared by all thread */
 L_GLOBAL l_mutex l_msg_mtx;
 
 L_EXTERN l_message*
-l_message_create(l_umedit msgid, l_int size, l_thread* hint)
+l_message_create(l_int size, l_thread* hint)
 {
   l_buffer buffer;
 
@@ -530,7 +530,6 @@ l_message_create(l_umedit msgid, l_int size, l_thread* hint)
     return 0;
   }
 
-  l_message_ptr(&buffer)->msgid = msgid;
   return l_message_ptr(&buffer);
 }
 
@@ -551,9 +550,12 @@ l_message_freeQueue(l_squeue* mq, l_thread* hint)
 }
 
 static void /* send message to dest service from current thread */
-l_message_send_impl(l_thread* from, l_ulong destid, l_message* msg)
+l_message_send_msg_impl(l_thread* from, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64, l_message* msg)
 {
   msg->dest = destid;
+  msg->msgid = msgid;
+  msg->data = u32;
+  msg->extra = u64;
 
   if (from->index != 0 && (destid >> 32) == from->index) {
     l_thread_lock(from);
@@ -608,55 +610,52 @@ l_master_getMessages(l_thread* master, l_squeue* outq)
 }
 
 L_EXTERN void
-l_message_send(l_thread* from, l_ulong destid, l_umedit msgid, l_message* msg)
+l_message_sendEx(l_thread* from, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64, l_message* msg)
 {
-  msg->msgid = msgid + L_MESSAGE_START_ID;
-  l_message_send_impl(from, destid, msg);
+  l_message_send_msg_impl(from, destid, msgid + L_MESSAGE_START_ID, u32, u64, msg);
 }
 
 static void
-l_message_sendDataImpl(l_thread* thread, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64)
+l_message_send_impl(l_thread* thread, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64)
 {
-  l_message* msg = l_message_create(msgid, sizeof(l_message), thread);
-  msg->data = u32;
-  msg->extra = u64;
-  l_message_send_impl(thread, destid, msg);
+  l_message* msg = l_message_create(sizeof(l_message), thread);
+  l_message_send_msg_impl(thread, destid, msgid, u32, u64, msg);
 }
 
 L_EXTERN void
-l_message_sendData(l_thread* thread, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64)
+l_message_send(l_thread* thread, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64)
 {
-  l_message_sendDataImpl(thread, destid, msgid + L_MESSAGE_START_ID, u32, u64);
+  l_message_send_impl(thread, destid, msgid + L_MESSAGE_START_ID, u32, u64);
 }
 
 static void
 l_message_startService(l_thread* thread, l_service* srvc)
 {
-  l_message_sendDataImpl(thread, L_SERVICE_MASTER, L_MSGID_SRVC_START_REQ, 0, l_msg_castp(srvc));
+  l_message_send_impl(thread, L_SERVICE_MASTER, L_MSGID_SRVC_START_REQ, 0, l_msg_castp(srvc));
 }
 
 static void
 l_message_closeService(l_thread* thread, l_umedit svid)
 {
-  l_message_sendDataImpl(thread, L_SERVICE_MASTER, L_MSGID_SRVC_CLOSE_REQ, svid, 0);
+  l_message_send_impl(thread, L_SERVICE_MASTER, L_MSGID_SRVC_CLOSE_REQ, svid, 0);
 }
 
 static void
 l_message_closeServiceSocket(l_thread* thread, l_umedit svid, l_filedesc sock)
 {
-  l_message_sendDataImpl(thread, L_SERVICE_MASTER, L_MSGID_SRVC_CLOSE_SOCK, svid, l_msg_castfd(sock));
+  l_message_send_impl(thread, L_SERVICE_MASTER, L_MSGID_SRVC_CLOSE_SOCK, svid, l_msg_castfd(sock));
 }
 
 static void
 l_message_masterExit(l_thread* thread)
 {
-  l_message_sendDataImpl(thread, L_SERVICE_MASTER, L_MSGID_MASTER_EXIT_REQ, 0, 0);
+  l_message_send_impl(thread, L_SERVICE_MASTER, L_MSGID_MASTER_EXIT_REQ, 0, 0);
 }
 
 static void
 l_message_startBootstrap(l_thread* thread, int (*bootstrap)())
 {
-  l_message_sendDataImpl(thread, L_SERVICE_BOOTSTRAP, L_MSGID_START_BOOTSTRAP, 0, l_msg_castfunc(bootstrap));
+  l_message_send_impl(thread, L_SERVICE_BOOTSTRAP, L_MSGID_START_BOOTSTRAP, 0, l_msg_castfunc(bootstrap));
 }
 
 /**
@@ -1137,12 +1136,7 @@ l_master_wakeup()
 static void
 l_message_masterHandleConnectionResponse(l_umedit dstid, l_ioevent* ev)
 {
-  l_thread* master = l_thread_master();
-  l_message* msg = l_message_create(L_MSGID_SOCK_CONN_RSP, sizeof(l_ioevent_message), master);
-  l_ioevent_message* p = (l_ioevent_message*)msg;
-  p->fd = ev->fd;
-  p->masks = ev->masks;
-  l_message_send_impl(master, dstid, msg);
+  l_message_send_impl(l_thread_master(), dstid, L_MSGID_SOCK_CONN_RSP, ev->masks, l_msg_castfd(ev->fd));
 }
 
 static void
@@ -1150,11 +1144,18 @@ l_message_masterAcceptConnection(void* ud, l_sockconn* conn)
 {
   l_service* sv = (l_service*)ud;
   l_thread* master = l_thread_master();
-  l_message* msg = l_message_create(L_MSGID_SOCK_CONN_IND, sizeof(l_connind_message), master);
-  l_connind_message* p = (l_connind_message*)msg;
-  p->fd = conn->sock;
-  p->remote = conn->remote;
-  l_message_send_impl(master, sv->svid, msg);
+  int family = l_sockaddr_family(&conn->remote);
+  if (family == L_SOCKADDR_IPV4) {
+
+  } else if (family == L_SOCKADDR_IPV6) {
+    l_message* msg = l_message_create(sizeof(l_connind_message), master);
+    l_connind_message* p = (l_connind_message*)msg;
+    p->fd = conn->sock;
+    p->remote = conn->remote;
+    l_message_send_msg_impl(master, sv->svid, L_MSGID_SOCK_CONN_IND, msg);
+  } else {
+    l_loge_s("invalid address family");
+  }
 }
 
 static void

@@ -44,10 +44,8 @@ typedef struct {
 
 typedef struct {
   l_message head;
-  l_filedesc fd;
-  l_umedit masks;
-  l_sockaddr remote;
-} l_connind_message;
+  l_byte addr[16];
+} l_ipv6connind_message;
 
 L_INLINE l_ulong
 l_msg_castp(void* p)
