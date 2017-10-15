@@ -37,7 +37,7 @@ typedef struct {
 typedef struct {
   L_BUFHEAD HEAD;
   l_ulong dest;
-  l_umedit type;
+  l_umedit msgid;
   l_umedit data;
   l_ulong extra;
 } l_message;
@@ -49,58 +49,27 @@ typedef struct {
   l_sockaddr remote;
 } l_connind_message;
 
-typedef struct {
-  l_message head;
-  l_filedesc fd;
-  l_umedit masks;
-} l_ioevent_message;
+L_INLINE l_ulong
+l_msg_castp(void* p)
+{
+  return (l_ulong)(l_uint)p;
+}
 
-typedef struct {
-  l_message head;
-  l_umedit svid;
-  l_filedesc sock;
-} l_service_message;
+L_INLINE l_ulong
+l_msg_castfd(l_filedesc fd)
+{
+#if defined(l_plat_windows)
+  return (l_ulong)fd.winfd;
+#else
+  return (l_ulong)fd.unifd;
+#endif
+}
 
-typedef struct {
-  l_message head;
-  int (*bootstrap)();
-} l_bootstrap_message;
-
-typedef struct {
-  l_message head;
-  l_filedesc fd;
-} l_message_fd;
-
-typedef struct {
-  l_message head;
-  void* ptr;
-} l_message_ptr;
-
-typedef struct {
-  l_message head;
-  void* ptr;
-  l_int n;
-} l_message_ptrn;
-
-typedef struct {
-  l_message head;
-  l_umedit u32;
-} l_message_u32;
-
-typedef struct {
-  l_message head;
-  l_medit s32;
-} l_message_s32;
-
-typedef struct {
-  l_message head;
-  l_ulong u64;
-} l_message_u64;
-
-typedef struct {
-  l_message head;
-  l_long s64;
-} l_message_s64;
+L_INLINE l_ulong
+l_msg_castfunc(int (*func)())
+{
+  return (l_ulong)(l_uint)(void*)func;
+}
 
 L_EXTERN l_message* l_message_create(l_thread* thread, l_umedit type, l_int size);
 L_EXTERN void l_message_free(l_thread* thread, l_message* msg);

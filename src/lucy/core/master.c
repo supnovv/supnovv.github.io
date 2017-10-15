@@ -495,20 +495,10 @@ l_thread_release(l_thread* thread)
 }
 
 /**
- * service
- *
- * service is single linked in the service hash table after it created.
- * service is freed as a free buffer after it is completed.
+ * message
  */
 
-#define L_SERVICE_MASTER    0x00
-#define L_SERVICE_BOOTSTRAP 0xffff+1
-#define L_SERVICE_START_ID  0xffff+2
-#define L_SERVICE_STARTED   0x01
-#define L_SERVICE_CLOSING   0x02
-#define L_SERVICE_STOPRX    0x04
-#define L_SERVICE_SOCKET    0x08
-
+#define l_message_ptr(b) ((l_message*)b->p)
 #define L_MSGID_SRVC_START_REQ  0x01
 #define L_MSGID_SRVC_START_RSP  0x02
 #define L_MSGID_SRVC_CLOSE_REQ  0x03
@@ -522,6 +512,167 @@ l_thread_release(l_thread* thread)
 #define L_MSGID_SOCK_CONN_RSP   0x0b
 #define L_MSGID_SOCK_CONN_IND   0x0c
 #define L_MESSAGE_START_ID      0xff+1
+
+L_GLOBAL l_squeue l_msg_rxq; /* shared by all thread */
+L_GLOBAL l_mutex l_msg_mtx;
+
+L_EXTERN l_message*
+l_message_create(l_umedit msgid, l_int size, l_thread* hint)
+{
+  l_buffer buffer;
+
+  if (size < (l_int)sizeof(l_message)) {
+    l_loge_1("size %d", ld(size));
+    return 0;
+  }
+
+  if (!l_buffer_init(&buffer, size, hint)) {
+    return 0;
+  }
+
+  l_message_ptr(&buffer)->msgid = msgid;
+  return l_message_ptr(&buffer);
+}
+
+L_EXTERN void
+l_message_free(l_message* msg, l_thread* hint)
+{
+  l_buffer buffer = {&msg->HEAD};
+  l_buffer_free(&buffer, hint);
+}
+
+L_EXTERN void
+l_message_freeQueue(l_squeue* mq, l_thread* hint)
+{
+  l_message* msg = 0;
+  while ((msg = (l_message*)l_squeue_pop(mq))) {
+    l_message_free(msg, hint);
+  }
+}
+
+static void /* send message to dest service from current thread */
+l_message_send_impl(l_thread* from, l_ulong destid, l_message* msg)
+{
+  msg->dest = destid;
+
+  if (from->index != 0 && (destid >> 32) == from->index) {
+    l_thread_lock(from);
+    l_squeue_push(&from->rxmq, &msg->HEAD.node);
+    l_thread_unlock(from);
+    return;
+  }
+
+  if ((destid & 0xffffffff) == 0) { /* master svid is 0 */
+    l_squeue_push(from->txms, &msg->HEAD.node);
+  } else {
+    l_squeue_push(from->txmq, &msg->HEAD.node);
+  }
+}
+
+static void /* worker flush messages to global in worker thread */
+l_worker_flushMessages(l_thread* self)
+{
+  l_mutex* mtx = &l_msg_mtx;
+  l_squeue* txmq = self->txmq;
+  l_squeue* txms = self->txms;
+  int sent = false;
+
+  if (!l_squeue_isEmpty(txms)) {
+    l_thread* master = l_thread_master();
+    l_thread_lock(master);
+    l_squeue_pushQueue(master->rxmq, txms);
+    l_thread_unlock(master);
+    sent = true;
+  }
+
+  if (!l_squeue_isEmpty(txmq)) {
+    l_mutex_lock(mtx);
+    l_squeue_pushQueue(&l_msg_rxq, txmq);
+    l_mutex_unlock(mtx);
+    sent = true;
+  }
+
+  if (sent) {
+    l_master_wakeup();
+  }
+}
+
+static void /* master get messages from global in master thread */
+l_master_getMessages(l_thread* master, l_squeue* outq)
+{
+  l_mutex* mtx = &l_msg_mtx;
+  l_mutex_lock(mtx);
+  l_squeue_pushQueue(outq, &l_msg_rxq); /* messages from other threads */
+  l_mutex_unlock(mtx);
+  l_squeue_pushQueue(outq, master->txmq); /* messages master send to workers */
+}
+
+L_EXTERN void
+l_message_send(l_thread* from, l_ulong destid, l_umedit msgid, l_message* msg)
+{
+  msg->msgid = msgid + L_MESSAGE_START_ID;
+  l_message_send_impl(from, destid, msg);
+}
+
+static void
+l_message_sendDataImpl(l_thread* thread, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64)
+{
+  l_message* msg = l_message_create(msgid, sizeof(l_message), thread);
+  msg->data = u32;
+  msg->extra = u64;
+  l_message_send_impl(thread, destid, msg);
+}
+
+L_EXTERN void
+l_message_sendData(l_thread* thread, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64)
+{
+  l_message_sendDataImpl(thread, destid, msgid + L_MESSAGE_START_ID, u32, u64);
+}
+
+static void
+l_message_startService(l_thread* thread, l_service* srvc)
+{
+  l_message_sendDataImpl(thread, L_SERVICE_MASTER, L_MSGID_SRVC_START_REQ, 0, l_msg_castp(srvc));
+}
+
+static void
+l_message_closeService(l_thread* thread, l_umedit svid)
+{
+  l_message_sendDataImpl(thread, L_SERVICE_MASTER, L_MSGID_SRVC_CLOSE_REQ, svid, 0);
+}
+
+static void
+l_message_closeServiceSocket(l_thread* thread, l_umedit svid, l_filedesc sock)
+{
+  l_message_sendDataImpl(thread, L_SERVICE_MASTER, L_MSGID_SRVC_CLOSE_SOCK, svid, l_msg_castfd(sock));
+}
+
+static void
+l_message_masterExit(l_thread* thread)
+{
+  l_message_sendDataImpl(thread, L_SERVICE_MASTER, L_MSGID_MASTER_EXIT_REQ, 0, 0);
+}
+
+static void
+l_message_startBootstrap(l_thread* thread, int (*bootstrap)())
+{
+  l_message_sendDataImpl(thread, L_SERVICE_BOOTSTRAP, L_MSGID_START_BOOTSTRAP, 0, l_msg_castfunc(bootstrap));
+}
+
+/**
+ * service
+ *
+ * service is single linked in the service hash table after it created.
+ * service is freed as a free buffer after it is completed.
+ */
+
+#define L_SERVICE_MASTER    0x00
+#define L_SERVICE_BOOTSTRAP 0xffff+1
+#define L_SERVICE_START_ID  0xffff+2
+#define L_SERVICE_STARTED   0x01
+#define L_SERVICE_CLOSING   0x02
+#define L_SERVICE_STOPRX    0x04
+#define L_SERVICE_SOCKET    0x08
 
 typedef struct l_service {
   L_BUFHEAD HEAD;
@@ -740,7 +891,7 @@ l_service_free(l_service* srvc)
     return false;
   }
 
-  buffer->p = &srvc->HEAD;
+  buffer.p = &srvc->HEAD;
   l_buffer_free(&buffer, l_thread_self());
   return true;
 }
@@ -823,192 +974,6 @@ void l_service_closeSocket(l_service* srvc) {
 
   if (sock == -1) return;
   l_message_closeServiceSocket(self, srvc->svid, sock);
-}
-
-/**
- * message
- */
-
-static void
-l_message_startService(l_thread* thread, l_service* srvc)
-{
-  l_message_sendptr(thread, L_SERVICE_MASTER_ID, L_MSGID_SRVC_START_REQ, srvc);
-}
-
-static void
-l_message_closeService(l_thread* thread, l_umedit svid)
-{
-  l_message_send(thread, L_SERVICE_MASTER_ID, L_MSGID_SRVC_CLOSE_REQ, svid, -1);
-}
-
-static void
-l_message_closeServiceSocket(l_thread* thread, l_umedit svid, l_filedesc sock)
-{
-  l_service_message* msg = (l_service_message*)l_create_message(thread, type, sizeof(l_service_message));
-  msg->svid = svid;
-  msg->fd = sock;
-  l_send_message(thread, L_SERVICE_MASTER_ID, &msg->head);
-}
-
-static void
-l_message_masterExit(l_thread* selfthread)
-{
-  l_message_sendtype(selfthread, L_SERVICE_MASTER_ID, L_MSGID_MASTER_EXIT_REQ);
-}
-
-L_GLOBAL l_squeue l_msg_rxq; /* shared by all thread */
-L_GLOBAL l_mutex l_msg_mtx;
-
-L_EXTERN void /* send message to dest service from current thread */
-l_message_send(l_thread* from, l_ulong destid, l_message* msg) {
-  msg->dest = destid;
-
-  if (from->index != 0 && (destid >> 32) == from->index) {
-    l_thread_lock(from);
-    l_squeue_push(&from->rxmq, &msg->HEAD.node);
-    l_thread_unlock(from);
-    return;
-  }
-
-  if ((destid & 0xffffffff) == 0) { /* master svid is 0 */
-    l_squeue_push(from->txms, &msg->HEAD.node);
-  } else {
-    l_squeue_push(from->txmq, &msg->HEAD.node);
-  }
-}
-
-static void /* worker flush messages to global in worker thread */
-l_worker_flushMessages(l_thread* self)
-{
-  l_mutex* mtx = &l_msg_mtx;
-  l_squeue* txmq = self->txmq;
-  l_squeue* txms = self->txms;
-  int sent = false;
-
-  if (!l_squeue_isEmpty(txms)) {
-    l_thread* master = l_thread_master();
-    l_thread_lock(master);
-    l_squeue_pushQueue(master->rxmq, txms);
-    l_thread_unlock(master);
-    sent = true;
-  }
-
-  if (!l_squeue_isEmpty(txmq)) {
-    l_mutex_lock(mtx);
-    l_squeue_pushQueue(&l_msg_rxq, txmq);
-    l_mutex_unlock(mtx);
-    sent = true;
-  }
-
-  if (sent) {
-    l_master_wakeup();
-  }
-}
-
-static void /* master get messages from global in master thread */
-l_master_getMessages(l_thread* master, l_squeue* outq)
-{
-  l_mutex* mtx = &l_msg_mtx;
-  l_mutex_lock(mtx);
-  l_squeue_pushQueue(outq, &l_msg_rxq); /* messages from other threads */
-  l_mutex_unlock(mtx);
-  l_squeue_pushQueue(outq, master->txmq); /* messages master send to workers */
-}
-
-#define l_message_ptr(b) ((l_message*)b->p)
-
-L_EXTERN l_message*
-l_message_create(l_umedit type, l_int size, l_thread* hint) {
-  l_buffer buffer;
-
-  if (size < (l_int)sizeof(l_message)) {
-    l_loge_1("size %d", ld(size));
-    return 0;
-  }
-
-  if (!l_buffer_init(&buffer, size, hint)) {
-    return 0;
-  }
-
-  l_message_ptr(&buffer)->type = type;
-  return l_message_ptr(&buffer);
-}
-
-L_EXTERN void
-l_message_free(l_message* msg, l_thread* hint) {
-  l_buffer buffer = {&msg->HEAD};
-  l_buffer_free(&buffer, hint);
-}
-
-L_EXTERN void
-l_message_freeQueue(l_squeue* mq, l_thread* hint) {
-  l_message* msg = 0;
-  while ((msg = (l_message*)l_squeue_pop(mq))) {
-    l_message_free(msg, hint);
-  }
-}
-
-void l_send_message_tp(l_thread* thread, l_umedit destid, l_umedit type) {
-  l_message* msg = l_create_message(thread, type, sizeof(l_message));
-  l_send_message(thread, destid, msg);
-}
-
-void l_send_message_fd(l_thread* thread, l_umedit destid, l_umedit type, l_handle fd) {
-  l_message_fd* msg = (l_message_fd*)l_create_message(thread, type, sizeof(l_message_fd));
-  msg->fd = fd;
-  l_send_message(thread, destid, &msg->head);
-}
-
-void l_send_message_ptr(l_thread* thread, l_umedit destid, l_umedit type, void* ptr) {
-  l_message_ptr* msg = (l_message_ptr*)l_create_message(thread, type, sizeof(l_message_ptr));
-  msg->ptr = ptr;
-  l_send_message(thread, destid, &msg->head);
-}
-
-void l_send_message_s32(l_thread* thread, l_umedit destid, l_umedit type, l_medit s32) {
-  l_message_s32* msg = (l_message_s32*)l_create_message(thread, type, sizeof(l_message_s32));
-  msg->s32 = s32;
-  l_send_message(thread, destid, &msg->head);
-}
-
-void l_send_message_u32(l_thread* thread, l_umedit destid, l_umedit type, l_umedit u32) {
-  l_message_u32* msg = (l_message_u32*)l_create_message(thread, type, sizeof(l_message_u32));
-  msg->u32 = u32;
-  l_send_message(thread, destid, &msg->head);
-}
-
-void l_send_message_s64(l_thread* thread, l_umedit destid, l_umedit type, l_long s64) {
-  l_message_s64* msg = (l_message_s64*)l_create_message(thread, type, sizeof(l_message_s64));
-  msg->s64 = s64;
-  l_send_message(thread, destid, &msg->head);
-}
-
-void l_send_message_u64(l_thread* thread, l_umedit destid, l_umedit type, l_ulong u64) {
-  l_message_u64* msg = (l_message_u64*)l_create_message(thread, type, sizeof(l_message_u64));
-  msg->u64 = u64;
-  l_send_message(thread, destid, &msg->head);
-}
-
-void l_send_ioevent_message(l_thread* thread, l_umedit destid, l_umedit type, l_handle fd, l_umedit masks) {
-  l_ioevent_message* msg = (l_ioevent_message*)l_create_message(thread, type, sizeof(l_ioevent_message));
-  msg->fd = fd;
-  msg->masks = masks;
-  l_send_message(thread, destid, &msg->head);
-}
-
-void l_send_service_message(l_thread* thread, l_umedit destid, l_umedit type, l_umedit svid, l_handle fd) {
-  l_service_message* msg = (l_service_message*)l_create_message(thread, type, sizeof(l_service_message));
-  msg->svid = svid;
-  msg->fd = fd;
-  l_send_message(thread, destid, &msg->head);
-}
-
-static void
-l_message_bootstrap(l_thread* thread, int (*bootstrap)())
-{
-  l_bootstrap_message* msg = (l_bootstrap_message*)l_create_message(thread, L_MSGID_START_BOOTSTRAP, sizeof(l_bootstrap_message));
-  msg->bootstrap = bootstrap;
-  l_send_message(thread, L_SERVICE_BOOTSTRAP, &msg->head);
 }
 
 /**
@@ -1173,11 +1138,11 @@ static void
 l_message_masterHandleConnectionResponse(l_umedit dstid, l_ioevent* ev)
 {
   l_thread* master = l_thread_master();
-  l_message* msg = l_create_message(master, L_MSGID_SOCK_CONN_RSP, sizeof(l_ioevent_message));
+  l_message* msg = l_message_create(L_MSGID_SOCK_CONN_RSP, sizeof(l_ioevent_message), master);
   l_ioevent_message* p = (l_ioevent_message*)msg;
   p->fd = ev->fd;
   p->masks = ev->masks;
-  l_send_message(master, dstid, msg);
+  l_message_send_impl(master, dstid, msg);
 }
 
 static void
@@ -1185,11 +1150,11 @@ l_message_masterAcceptConnection(void* ud, l_sockconn* conn)
 {
   l_service* sv = (l_service*)ud;
   l_thread* master = l_thread_master();
-  l_message* msg = l_create_message(master, L_MSGID_SOCK_CONN_IND, sizeof(l_connind_message));
+  l_message* msg = l_message_create(L_MSGID_SOCK_CONN_IND, sizeof(l_connind_message), master);
   l_connind_message* p = (l_connind_message*)msg;
   p->fd = conn->sock;
   p->remote = conn->remote;
-  l_send_message(master, sv->svid, msg);
+  l_message_send_impl(master, sv->svid, msg);
 }
 
 static void
