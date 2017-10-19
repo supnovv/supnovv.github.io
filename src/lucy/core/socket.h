@@ -3,6 +3,9 @@
 #include "core/base.h"
 #include "core/fileop.h"
 
+#define L_SOCKADDR_IPV4 0x01
+#define L_SOCKADDR_IPV6 0x02
+
 typedef struct {
   L_PLAT_IMPL_SIZE(L_SOCKADDR_SIZE);
 } l_sockaddr;
@@ -12,10 +15,12 @@ typedef struct {
   l_sockaddr remote;
 } l_sockconn;
 
+L_EXTERN int l_sockaddr_family(l_sockaddr* self);
 L_EXTERN int l_sockaddr_init(l_sockaddr* self, l_strt ip, l_ushort port);
 L_EXTERN l_ushort l_sockaddr_port(l_sockaddr* self);
 L_EXTERN int l_sockaddr_ipstring(l_sockaddr* self, l_string* out);
-L_EXTERN void l_socket_startup(); /* socket global init */
+
+L_EXTERN void l_socket_init(); /* socket global init */
 L_EXTERN l_filedesc l_socket_listen(const l_sockaddr* addr, int backlog);
 L_EXTERN void l_socket_accept(l_filedesc sock, void (*cb)(void*, l_sockconn*), void* ud);
 L_EXTERN void l_socket_close(l_filedesc sock);
@@ -29,17 +34,17 @@ L_EXTERN l_int l_socket_write(l_filedesc sock, const void* buf, l_int count, l_i
 L_EXTERN void l_socket_test();
 L_EXTERN void l_plat_sock_test();
 
-#define L_IOEVENT_READ  0x01
-#define L_IOEVENT_WRITE 0x02
-#define L_IOEVENT_RDWR  0x03
-#define L_IOEVENT_PRI   0x04
-#define L_IOEVENT_RDH   0x08
-#define L_IOEVENT_HUP   0x10
-#define L_IOEVENT_ERR   0x20
+#define L_SOCKET_READ  0x01
+#define L_SOCKET_WRITE 0x02
+#define L_SOCKET_RDWR  0x03
+#define L_SOCKET_PRI   0x04
+#define L_SOCKET_RDH   0x08
+#define L_SOCKET_HUP   0x10
+#define L_SOCKET_ERR   0x20
 
-#define L_IOEVENT_FLAG_ADDED   0x01
-#define L_IOEVENT_FLAG_LISTEN  0x02
-#define L_IOEVENT_FLAG_CONNECT 0x04
+#define L_SOCKET_FLAG_ADDED   0x01
+#define L_SOCKET_FLAG_LISTEN  0x02
+#define L_SOCKET_FLAG_CONNECT 0x04
 
 typedef struct {
   l_filedesc fd;

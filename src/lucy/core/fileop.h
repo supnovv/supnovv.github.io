@@ -57,7 +57,9 @@ L_EXTERN l_fileattr l_file_getAttr(const void* name);
 L_EXTERN int l_file_getCurrentDir(void (*func)(void* obj, l_strn str), void* obj);
 L_EXTERN l_filedesc l_filedesc_dirfd(const void* name);
 L_EXTERN void l_filedesc_close(l_filedesc* fd);
-L_EXTERN int l_filedesc_isValid(l_filedesc fd);
+L_EXTERN l_filedesc l_filedesc_empty();
+L_EXTERN int l_filedesc_isEmpty(l_filedesc* fd);
+L_EXTERN int l_filedesc_equal(l_filedesc* a, l_filedesc* b);
 
 typedef struct {
   void* stream;

@@ -176,6 +176,23 @@ l_strn_strt(const l_strn* s)
   return l_strt_n(s->start, s->len);
 }
 
+typedef struct {
+  const l_byte* s;
+  l_int hint;
+} l_from;
+
+L_INLINE l_from
+l_from_file(const void* filename)
+{
+  return (l_from){l_cstr(filename), -0xff};
+}
+
+L_INLINE l_from
+l_from_strn(const void* s, l_int n)
+{
+  return (l_from){l_cstr(s), (n < 0 ? 0 : n)};
+}
+
 #define l_zero(s, e) l_zero_n((s), l_cstr(e) - l_cstr(s))
 #define l_copy(s, e, to) l_copy_n((s), l_cstr(e) - l_cstr(s), (to))
 

@@ -63,31 +63,35 @@ l_msg_castfd(l_filedesc fd)
 #endif
 }
 
+L_INLINE l_filedesc
+l_msg_getfd(l_message* msg)
+{
+  l_filedesc fd;
+#if defined(l_plat_windows)
+  fd.winfd = (HANDLE)msg->extra;
+#else
+  fd.unifd = (int)msg->extra;
+#endif
+  return fd;
+}
+
 L_INLINE l_ulong
 l_msg_castfunc(int (*func)())
 {
   return (l_ulong)(l_uint)(void*)func;
 }
 
-L_EXTERN l_message* l_message_create(l_thread* thread, l_umedit type, l_int size);
-L_EXTERN void l_message_free(l_thread* thread, l_message* msg);
-L_EXTERN void l_message_freeQueue(l_thread* thread, l_squeue* mq);
-L_EXTERN void l_message_send(l_thread* thread, l_umedit destid, l_message* msg);
-L_EXTERN void l_message_sendType(l_thread* thread, l_umedit destid, l_umedit type);
-L_EXTERN void l_message_sendHandle(l_thread* thread, l_umedit destid, l_umedit type, l_filedesc fd);
-L_EXTERN void l_message_sendPtr(l_thread* thread, l_umedit destid, l_umedit type, void* ptr);
-L_EXTERN void l_message_sendU32(l_thread* thread, l_umedit destid, l_umedit type, l_umedit u32);
-L_EXTERN void l_message_sendU64(l_thread* thread, l_umedit destid, l_umedit type, l_ulong u64);
-L_EXTERN void l_message_sendS32(l_thread* thread, l_umedit destid, l_umedit type, l_medit s32);
-L_EXTERN void l_message_sendS64(l_thread* thread, l_umedit destid, l_umedit type, l_long s64);
-L_EXTERN void l_message_sendEvent(l_thread* thread, l_umedit destid, l_umedit type, l_filedesc fd, l_umedit masks);
-L_EXTERN void l_message_sendService(l_thread* thread, l_umedit destid, l_umedit type, l_umedit svid, l_filedesc fd);
-L_EXTERN void l_message_sendBootstrap(l_thread* thread, int (*bootstrap)());
+L_EXTERN l_message* l_message_create(l_int size, l_thread* thread);
+L_EXTERN void l_message_free(l_message* msg, l_thread* thread);
+L_EXTERN void l_message_freeQueue(l_squeue* mq, l_thread* thread);
+L_EXTERN void l_message_send(l_thread* from, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64, l_message* msg);
+L_EXTERN void l_message_sendData(l_thread* from, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64);
 
 L_EXTERN l_service* l_service_create(l_int size, int (*entry)(l_service*, l_message*), void (*destroy)(l_service*));
 L_EXTERN int l_service_free(l_service* srvc);
 L_EXTERN void l_service_start(l_service* srvc);
 L_EXTERN void l_service_startEx(l_service* srvc, l_thread* thread);
+L_EXTERN l_ulong l_service_id(l_service* srvc);
 L_EXTERN void l_start_listener_service(l_service* srvc, l_filedesc sock);
 L_EXTERN void l_start_initiator_service(l_service* srvc, l_filedesc sock);
 L_EXTERN void l_start_receiver_service(l_service* srvc, l_filedesc sock);
