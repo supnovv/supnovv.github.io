@@ -1,3 +1,9 @@
+// Epoch in microseconds since 01/01/0000.
+static const uint64_t BTSNOOP_EPOCH_DELTA = 0x00dcddb30f2f8000ULL;
+time_t t = time(NULL);
+struct tm tm_cur;
+localtime_r (&t, &tm_cur);
+LOG_INFO(LOG_TAG, "%s Time GMT offset %ld\n", __func__, tm_cur.tm_gmtoff);
 /*
 各任务可以生成新的子任务，新生成的任务挂接在空闲任务列表中。
 主线程负责对任务进行分配，每个任务由一个唯一的id来表示，可以跨越网络进行通信。

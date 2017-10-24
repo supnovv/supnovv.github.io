@@ -633,7 +633,7 @@ l_string_format_d(l_string* self, l_long a, l_umedit flags)
   l_string_format_u(self, n, flags);
 }
 
-L_EXTERN l_byte*
+L_PRIVAT l_byte*
 l_string_print_ulong(l_ulong n, l_byte* p)
 {
   l_byte a[80];

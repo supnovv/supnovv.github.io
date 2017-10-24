@@ -4,7 +4,12 @@
 #include <lauxlib.h>
 #include "core/base.h"
 
-#define l_luastate_popError(lua_State* L) l_loge_1("lua error %s", ls(lua_tostring(L, -1))); lua_pop(L, 1)
+L_INLINE void
+l_luastate_popError(lua_State* L)
+{
+  l_loge_1("lua error %s", ls(lua_tostring(L, -1)));
+  lua_pop(L, 1);
+}
 
 typedef struct l_luaextra l_luaextra;
 
@@ -20,10 +25,10 @@ L_EXTERN l_funcindex l_luastate_load(lua_State* L, l_from from); /* push a funct
 L_EXTERN int l_luastate_call(lua_State* L, l_funcindex func, int nresults); /* pop args and func, and push nresults if success */
 L_EXTERN int l_luastate_exec(lua_State* L, l_from from, int nresults); /* push nresults if success, otherwise unchanged */
 
-L_EXTERN l_int l_config_readInt(const void* name);
-L_EXTERN l_int l_config_readInt2(const void** s, l_int n);
-L_EXTERN int l_config_readString(const void* name, int (*read)(void* obj, l_strn s), void* obj);
-L_EXTERN int l_config_readString2(const void** s, l_int n, int (*read)(void* obj, l_strn s), void* obj);
+L_EXTERN l_int l_luaconf_int(lua_State* L, const void* name);
+L_EXTERN l_int l_luaconf_ints(lua_State* L, const void** s, l_int n);
+L_EXTERN int l_luaconf_str(lua_State* L, const void* name, int (*read)(void* obj, l_strn s), void* obj);
+L_EXTERN int l_luaconf_strs(lua_State* L, const void** s, l_int n, int (*read)(void* obj, l_strn s), void* obj);
 
 
 

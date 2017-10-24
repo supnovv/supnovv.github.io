@@ -7,6 +7,9 @@
 #include "core/socket.h"
 #include "core/thread.h"
 
+#define L_MSGID_SERVICE_START 0x01
+#define L_MSGID_SERVICE_CLOSE 0x02
+
 typedef struct lua_State lua_State;
 typedef struct l_service l_service;
 typedef struct l_thread l_thread;
@@ -24,10 +27,8 @@ l_thread_self()
 #endif
 }
 
-L_EXTERN int l_thread_join(l_thread* self);
-L_EXTERN void l_thread_exit();
 L_EXTERN l_thread* l_thread_master();
-L_EXTERN lua_State* l_thread_luaState();
+L_EXTERN void l_master_exit();
 
 typedef struct {
   l_smplnode node;
@@ -45,12 +46,42 @@ typedef struct {
 typedef struct {
   l_message head;
   l_byte addr[16];
-} l_ipv6connind_message;
+} l_connind_message;
+
+L_INLINE l_ushort
+l_msg_dest_tidx(l_message* msg)
+{
+  return (l_ushort)(msg->dest >> 48);
+}
+
+L_INLINE l_ushort
+l_msg_dest_cust(l_message* msg)
+{
+  return (l_ushort)((msg->dest & 0xffff00000000ull) >> 32);
+}
+
+L_INLINE l_umedit
+l_msg_dest_svid(l_message* msg)
+{
+  return (l_umedit)(msg->dest & 0xffffffff);
+}
+
+L_INLINE l_umedit
+l_msg_dest_high(l_message* msg)
+{
+  return (l_umedit)(msg->dest >> 32);
+}
 
 L_INLINE l_ulong
-l_msg_castp(void* p)
+l_msg_castptr(void* p)
 {
   return (l_ulong)(l_uint)p;
+}
+
+L_INLINE void*
+l_msg_getptr(l_message* msg)
+{
+  return (void*)(l_uint)msg->extra;
 }
 
 L_INLINE l_ulong
@@ -75,6 +106,18 @@ l_msg_getfd(l_message* msg)
   return fd;
 }
 
+L_INLINE l_filedesc
+l_msg_getfdFrom(l_ulong a)
+{
+  l_filedesc fd;
+#if defined(l_plat_windows)
+  fd.winfd = (HANDLE)a;
+#else
+  fd.unifd = (int)a;
+#endif
+  return fd;
+}
+
 L_INLINE l_ulong
 l_msg_castfunc(int (*func)())
 {
@@ -87,19 +130,21 @@ L_EXTERN void l_message_freeQueue(l_squeue* mq, l_thread* thread);
 L_EXTERN void l_message_send(l_thread* from, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64, l_message* msg);
 L_EXTERN void l_message_sendData(l_thread* from, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64);
 
-L_EXTERN l_service* l_service_create(l_int size, int (*entry)(l_service*, l_message*), void (*destroy)(l_service*));
-L_EXTERN int l_service_free(l_service* srvc);
+L_EXTERN l_service* l_service_create(l_int size, int (*entry)(l_service*, l_message*));
+L_EXTERN l_service* l_service_setListen(l_service* srvc, l_filedesc fd);
+L_EXTERN l_service* l_service_setConnect(l_service* srvc, l_filedesc fd);
+L_EXTERN l_service* l_service_setEvent(l_service* srvc, l_filedesc fd, l_ushort masks);
 L_EXTERN void l_service_start(l_service* srvc);
 L_EXTERN void l_service_startEx(l_service* srvc, l_thread* thread);
+L_EXTERN void l_service_delEvent(l_service* srvc);
+L_EXTERN void l_service_modEvent(l_service* srvc, l_filedesc fd, l_ushort masks);
+L_EXTERN void l_service_modListen(l_service* srvc, l_filedesc fd);
+L_EXTERN void l_service_modConnect(l_service* srvc, l_filedesc fd);
+L_EXTERN void l_service_close(l_service* srvc);
 L_EXTERN l_ulong l_service_id(l_service* srvc);
-L_EXTERN void l_start_listener_service(l_service* srvc, l_filedesc sock);
-L_EXTERN void l_start_initiator_service(l_service* srvc, l_filedesc sock);
-L_EXTERN void l_start_receiver_service(l_service* srvc, l_filedesc sock);
-L_EXTERN void l_close_service(l_service* srvc);
-L_EXTERN void l_close_event(l_service* srvc);
+
 L_EXTERN int startmainthread(int (*start)());
 L_EXTERN int startmainthreadcv(int (*start)(), int argc, char** argv);
-L_EXTERN void l_master_exit();
 
 #endif /* lucy_core_master_h */
 

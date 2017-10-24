@@ -1,3 +1,18 @@
+/**
+ * ## service
+ * service stored in the global hash table, the table can be only accessed by master
+ * service can be created by any thread, the related flow is:
+ * a. thread send L_MSGID_SRVC_START_REQ message to master and carried the allocated service object
+ * b. master handle the message, acquire a thread to handle the service, and add the service to the global table
+ * c. the master send the 1st message L_MSGID_SRVC_START_RSP (i.e. L_MSGID_SERVICE_START) to the service
+ * d. thread can call l_service_close(sv) to close a service, the service will be set as L_SERVICE_STOPRX
+ * e. the thread then send L_MSGID_SRVC_CLOSE_REQ to master, the message carried the service id
+ * f. master handle the message, delete the related service according to the id, and release the thread (count down the weight)
+ * g. the master then send L_MSGID_SRVC_CLOSE_RSP (i.e. L_MSGID_SERVICE_CLOSE) to service, carried the removed service object
+ * h. worker thread received this message, deliver it to service and then free the service object to its free memory pool
+ * i. note L_MSGID_SERVICE_CLOSE is the service's last message, if the service has extra resource need to free, this is the last chance
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stddef.h>
@@ -24,16 +39,15 @@ typedef struct {
 } l_config;
 
 static int
-l_set_logfile_prefix(void* pconf, l_strt name)
+l_set_logfile_prefix(void* pconf, l_strn name)
 {
   l_config* conf = (l_config*)pconf;
-  l_int len = name.end - name.start;
-  if (len <= 0 || len > FILENAME_MAX) {
+  if (name.len <= 0 || name.len > FILENAME_MAX) {
     return false;
   }
-  l_copy_n(name.start, len, conf->logfile);
-  conf->logfile[len] = 0;
-  conf->prefixend = conf->logfile + len;
+  l_copy_n(name.start, name.len, conf->logfile);
+  conf->logfile[name.len] = 0;
+  conf->prefixend = conf->logfile + name.len;
   return true;
 }
 
@@ -41,14 +55,14 @@ static l_config*
 l_config_create()
 {
   l_config* conf = (l_config*)l_raw_calloc(sizeof(l_config));
-  conf->L = l_new_luastate();
+  conf->L = l_luastate_new();
 
-  conf->workers = lucy_intconf(conf->L, "workers");
+  conf->workers = l_luaconf_int(conf->L, "workers");
   if (conf->workers < 0) {
     conf->workers = 0;
   }
 
-  conf->log_buffer_size = lucy_intconf(conf->L, "log_buffer_size");
+  conf->log_buffer_size = l_luaconf_int(conf->L, "log_buffer_size");
   if (conf->log_buffer_size < BUFSIZ) {
     conf->log_buffer_size = BUFSIZ;
   }
@@ -57,19 +71,19 @@ l_config_create()
   }
   conf->log_buffer_size = (((conf->log_buffer_size - 1) / BUFSIZ) + 1) * BUFSIZ;
 
-  conf->service_table_size = lucy_intconf(conf->L, "service_table_size");
+  conf->service_table_size = l_luaconf_int(conf->L, "service_table_size");
   if (conf->service_table_size < 10) {
     conf->service_table_size = 10;
   }
 
-  conf->thread_max_free_memory = lucy_intconf(conf->L, "thread_max_free_memory");
+  conf->thread_max_free_memory = l_luaconf_int(conf->L, "thread_max_free_memory");
   if (conf->thread_max_free_memory < 1024) {
     conf->thread_max_free_memory = 1024;
   }
 
-  if (!lucy_strconf(conf->L, l_set_logfile_prefix, conf, "logfile_prefix")) {
+  if (!l_luaconf_str(conf->L, "logfile_prefix", l_set_logfile_prefix, conf)) {
     /* if get from config file failed, set the default name prefix */
-    l_set_logfile_prefix(conf, l_strt_literal("logcat"));
+    l_set_logfile_prefix(conf, l_strn_literal("logcat"));
   }
 
   return conf;
@@ -79,7 +93,7 @@ static void
 l_config_free(l_config* conf)
 {
   if (conf->L) {
-    l_close_luastate(conf->L);
+    l_luastate_close(conf->L);
     conf->L = 0;
   }
 
@@ -154,7 +168,7 @@ l_thread_unlock(l_thread* self)
   l_mutex_unlock(self->mutex);
 }
 
-extern l_byte* l_string_print_ulong(l_ulong n, l_byte* p);
+L_PRIVAT l_byte* l_string_print_ulong(l_ulong n, l_byte* p);
 L_PRIVAT void l_string_initLog(l_string* log, l_int limit, l_thread* hint);
 
 static void
@@ -314,7 +328,7 @@ l_thread_free(l_thread* t)
   l_thread_freeLog(t);
 
   if (t->L) {
-    l_close_luastate(t->L);
+    l_luastate_close(t->L);
     t->L = 0;
   }
 
@@ -346,13 +360,7 @@ l_thread_start(l_thread* self, int (*start)())
   return l_raw_thread_create(&self->id, l_thread_func, self);
 }
 
-L_EXTERN void
-l_thread_exit()
-{
-  l_raw_thread_exit();
-}
-
-L_EXTERN int
+static int
 l_thread_join(l_thread* self)
 {
   return l_raw_thread_join(&self->id);
@@ -498,19 +506,21 @@ l_thread_release(l_thread* thread)
  */
 
 #define l_message_ptr(b) ((l_message*)(b)->p)
-#define L_MSGID_SRVC_START_REQ  0x01
-#define L_MSGID_SRVC_START_RSP  0x02
-#define L_MSGID_SRVC_CLOSE_REQ  0x03
-#define L_MSGID_SRVC_CLOSE_RSP  0x04
-#define L_MSGID_SRVC_CLOSE_SOCK 0x05
-#define L_MSGID_START_BOOTSTRAP 0x06
-#define L_MSGID_MASTER_EXIT_REQ 0x07
-#define L_MSGID_WORKER_EXIT_REQ 0x08
-#define L_MSGID_WORKER_EXIT_RSP 0x09
-#define L_MSGID_SOCK_EVENT_IND  0x0a
-#define L_MSGID_SOCK_CONN_RSP   0x0b
-#define L_MSGID_SOCK_CONN_IND   0x0c
-#define L_MSGID_SOCK_CONNV6_IND 0x0d
+#define L_MSGID_SRVC_START_RSP  L_MSGID_SERVICE_START
+#define L_MSGID_SRVC_CLOSE_RSP  L_MSGID_SERVICE_CLOSE
+#define L_MSGID_MIN_MASTER_MSG  0x10
+#define L_MSGID_SRVC_START_REQ  0x11
+#define L_MSGID_SRVC_CLOSE_REQ  0x12
+#define L_MSGID_SRVC_DEL_EVENT  0x13
+#define L_MSGID_SRVC_ADD_EVENT  0x14
+#define L_MSGID_MAX_MASTER_MSG  0x80
+#define L_MSGID_START_BOOTSTRAP 0x81
+#define L_MSGID_MASTER_EXIT_REQ 0x08
+#define L_MSGID_WORKER_EXIT_REQ 0x82
+#define L_MSGID_WORKER_EXIT_RSP 0x83
+#define L_MSGID_SOCK_EVENT_IND  0x84
+#define L_MSGID_SOCK_CONN_RSP   0x85
+#define L_MSGID_SOCK_CONN_IND   0x86
 #define L_MESSAGE_START_ID      0xffff+1
 
 #define L_SERVICE_MASTER    0x00
@@ -563,21 +573,21 @@ l_message_freeQueue(l_squeue* mq, l_thread* hint)
 }
 
 static void /* send message to dest service from current thread */
-l_message_send_msg_impl(l_thread* from, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64, l_message* msg)
+l_message_send_impl(l_thread* from, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64, l_message* msg)
 {
   msg->dest = destid;
   msg->msgid = msgid;
   msg->data = u32;
   msg->extra = u64;
 
-  if (from->index != 0 && (destid >> 32) == from->index) {
+  if (from->index != 0 && l_msg_dest_tidx(msg) == from->index) {
     l_thread_lock(from);
     l_squeue_push(from->rxmq, &msg->HEAD.node);
     l_thread_unlock(from);
     return;
   }
 
-  if ((destid & 0xffffffff) == 0) { /* master svid is 0 */
+  if ((msgid > L_MSGID_MIN_MASTER_MSG && msgid < L_MSGID_MAX_MASTER_MSG) || l_msg_dest_svid(msg) == 0) {
     l_squeue_push(from->txms, &msg->HEAD.node);
   } else {
     l_squeue_push(from->txmq, &msg->HEAD.node);
@@ -625,62 +635,62 @@ l_master_getMessages(l_thread* master, l_squeue* outq)
 L_EXTERN void
 l_message_send(l_thread* from, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64, l_message* msg)
 {
-  l_message_send_msg_impl(from, destid, msgid + L_MESSAGE_START_ID, u32, u64, msg);
+  l_message_send_impl(from, destid, msgid + L_MESSAGE_START_ID, u32, u64, msg);
 }
 
 static void
-l_message_send_to_master(l_thread* from, l_umedit msgid, l_umedit u32, l_ulong u64, l_message* msg)
-{
-  l_message_send_msg_impl(from, L_SERVICE_MASTER, msgid, u32, u64, msg);
-}
-
-static void
-l_message_send_impl(l_thread* thread, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64)
+l_message_senddata_impl(l_thread* thread, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64)
 {
   l_message* msg = l_message_create(sizeof(l_message), thread);
-  l_message_send_msg_impl(thread, destid, msgid, u32, u64, msg);
+  l_message_send_impl(thread, destid, msgid, u32, u64, msg);
 }
 
 L_EXTERN void
 l_message_sendData(l_thread* thread, l_ulong destid, l_umedit msgid, l_umedit u32, l_ulong u64)
 {
-  l_message_send_impl(thread, destid, msgid + L_MESSAGE_START_ID, u32, u64);
+  l_message_senddata_impl(thread, destid, msgid + L_MESSAGE_START_ID, u32, u64);
 }
 
 static void
-l_message_send_data_to_master(l_thread* thread, l_umedit msgid, l_umedit u32, l_ulong u64)
+l_message_sendtomaster_impl(l_thread* thread, l_umedit msgid, l_umedit u32, l_ulong u64)
 {
-  l_message_send_impl(thread, L_SERVICE_MASTER, msgid, u32, u64);
+  l_message_senddata_impl(thread, L_SERVICE_MASTER, msgid, u32, u64);
 }
 
 static void
 l_message_startService(l_thread* thread, l_service* srvc)
 {
-  l_message_send_data_to_master(thread, L_MSGID_SRVC_START_REQ, 0, l_msg_castp(srvc));
+  l_message_sendtomaster_impl(thread, L_MSGID_SRVC_START_REQ, 0, l_msg_castptr(srvc));
 }
 
 static void
-l_message_closeService(l_thread* thread, l_umedit svid, l_filedesc sock)
+l_message_closeService(l_thread* thread, l_umedit svid)
 {
-  l_message_send_data_to_master(thread, L_MSGID_SRVC_CLOSE_REQ, svid, l_msg_castfd(sock));
+  l_message_sendtomaster_impl(thread, L_MSGID_SRVC_CLOSE_REQ, svid, 0);
 }
 
 static void
-l_message_closeServiceSocket(l_thread* thread, l_umedit svid, l_filedesc sock)
+l_message_delServiceEvent(l_thread* thread, l_filedesc fd)
 {
-  l_message_send_data_to_master(thread, L_MSGID_SRVC_CLOSE_SOCK, svid, l_msg_castfd(sock));
+  l_message_sendtomaster_impl(thread, L_MSGID_SRVC_DEL_EVENT, 0, l_msg_castfd(fd));
+}
+
+static void
+l_message_addServiceEvent(l_thread* thread, l_filedesc fd, l_umedit svid, l_ushort masks)
+{
+  l_message_senddata_impl(thread, masks, L_MSGID_SRVC_ADD_EVENT, svid, l_msg_castfd(fd));
 }
 
 static void
 l_message_masterExit(l_thread* thread)
 {
-  l_message_send_data_to_master(thread, L_MSGID_MASTER_EXIT_REQ, 0, 0);
+  l_message_sendtomaster_impl(thread, L_MSGID_MASTER_EXIT_REQ, 0, 0);
 }
 
 static void
 l_message_startBootstrap(l_thread* thread, int (*bootstrap)())
 {
-  l_message_send_impl(thread, L_SERVICE_BOOTSTRAP, L_MSGID_START_BOOTSTRAP, 0, l_msg_castfunc(bootstrap));
+  l_message_senddata_impl(thread, L_SERVICE_BOOTSTRAP, L_MSGID_START_BOOTSTRAP, 0, l_msg_castfunc(bootstrap));
 }
 
 /**
@@ -690,10 +700,14 @@ l_message_startBootstrap(l_thread* thread, int (*bootstrap)())
  * service is freed as a free buffer after it is completed.
  */
 
+#define l_worker_svid(thread) ((((ulong)((thread)->index))<<32) | L_SERVICE_WORKER)
 #define L_SERVICE_STARTED   0x01
 #define L_SERVICE_CLOSING   0x02
 #define L_SERVICE_STOPRX    0x04
 #define L_SERVICE_SOCKET    0x08
+
+/* if custom service has any extra resource need to free,
+the only chance is to handle L_MSGID_SRVC_CLOSE_RSP message. */
 
 typedef struct l_service {
   L_BUFHEAD HEAD;
@@ -705,7 +719,6 @@ typedef struct l_service {
   l_ulong svid; /* only set once when init, so can freely access it */
   l_thread* thread; /* only set once when init, so can freely access it */
   int (*entry)(l_service*, l_message*); /* service entry function */
-  void (*destroy)(l_service*); /* destroy function for child structure's fields if necessary */
   /* coroutine */
   lua_State* co;
   int (*func)(l_service*);
@@ -736,7 +749,7 @@ l_service_id(l_service* srvc)
 static l_umedit
 l_service_id_for_lookup(l_service* srvc)
 {
-  return (srvc->svid & 0xffff);
+  return (l_umedit)(srvc->svid & 0xffffffff);
 }
 
 static int
@@ -808,17 +821,38 @@ l_srvctable_del(l_srvctable* self, l_umedit svid)
   return 0;
 }
 
+typedef struct {
+  l_service* srvc;
+  l_srvcslot* hint;
+} l_frontsrvc;
+
+static l_frontsrvc
+l_srvctable_delFront(l_srvctable* self, const l_frontsrvc* hint)
+{
+  l_srvcslot* start = (hint && hint->hint) ? hint->hint : self->slot;
+  l_srvcslot* end = self->slot + self->nslot;
+  l_smplnode* elem = 0;
+  for (; start < end; ++start) {
+    elem = start->node.next;
+    if (elem) {
+      start->node.next = elem->next;
+      return (l_frontsrvc){(l_service*)elem, start};
+    }
+  }
+  return (l_frontsrvc){0, 0};
+}
+
+
 static void
 l_srvctable_foreach(l_srvctable* self, void (*cb)(l_service*))
 {
   l_srvcslot* slot = self->slot;
   l_srvcslot* end = slot + self->nslot;
   l_smplnode* elem = 0;
-  if (self->slot == 0) return;
   for (; slot < end; ++slot) {
     elem = slot->node.next;
     while (elem) {
-      if (cb) cb((l_service*)elem);
+      cb((l_service*)elem);
       elem = elem->next;
     }
   }
@@ -870,8 +904,14 @@ l_master_delService(l_umedit svid)
   return l_srvctable_del(&l_srvc_table, svid);
 }
 
+static l_frontsrvc
+l_master_delFrontService(const l_frontsrvc* hint)
+{
+  return l_srvctable_delFront(&l_srvc_table, hint);
+}
+
 static l_umedit
-l_master_newSvid()
+l_master_new_svid()
 {
   l_mutex* mtx = &l_srvc_mtx;
   l_umedit svid = 0;
@@ -887,7 +927,8 @@ l_master_newSvid()
 }
 
 L_EXTERN l_service*
-l_service_create(l_int size, int (*entry)(l_service*, l_message*), void (*destroy)(l_service*)) {
+l_service_create(l_int size, int (*entry)(l_service*, l_message*))
+{
   l_buffer buffer;
   l_thread* thread = 0;
 
@@ -901,26 +942,21 @@ l_service_create(l_int size, int (*entry)(l_service*, l_message*), void (*destro
     return 0;
   }
 
-  l_service_ptr(&buffer)->svid = l_master_newSvid();
+  l_service_ptr(&buffer)->svid = l_master_new_svid();
   l_service_ptr(&buffer)->thread = thread;
   l_service_ptr(&buffer)->entry = entry;
-  l_service_ptr(&buffer)->destroy = destroy;
   return l_service_ptr(&buffer);
 }
 
-L_EXTERN int
-l_service_free(l_service* srvc)
+L_EXTERN void
+l_service_close(l_service* srvc)
 {
-  l_buffer buffer;
-
-  if (srvc->flags | L_SERVICE_STARTED) {
-    l_loge_s("already started");
-    return false;
+  if (srvc->flagw | L_SERVICE_STARTED) {
+    srvc->flagw |= L_SERVICE_CLOSING;
+  } else {
+    l_buffer buffer = {srvc};
+    l_buffer_free(&buffer, l_thread_self());
   }
-
-  buffer.p = &srvc->HEAD;
-  l_buffer_free(&buffer, l_thread_self());
-  return true;
 }
 
 L_EXTERN void
@@ -942,55 +978,70 @@ l_service_startEx(l_service* srvc, l_thread* thread)
 }
 
 static l_service*
-l_service_setSocket(l_service* srvc, l_filedesc sock, l_ushort masks, l_ushort flags)
+l_service_set_event_impl(l_service* srvc, l_filedesc fd, l_ushort masks, l_ushort flags)
 {
   srvc->ioev = &srvc->event;
   srvc->flagw |= L_SERVICE_SOCKET;
-  srvc->flags |= L_SERVICE_SOCKET;
 
-  srvc->ioev->fd = sock;
+  srvc->ioev->fd = fd;
   srvc->ioev->udata = l_service_id_for_lookup(srvc);
   srvc->ioev->masks = masks;
   srvc->ioev->flags = flags;
   return srvc;
 }
 
-L_EXTERN l_service*
-l_service_setListenSocket(l_service* srvc, l_filedesc sock)
+static l_service*
+l_service_setEventImpl(l_service* srvc, l_filedesc fd, l_ushort masks, l_ushort flags)
 {
-  return l_service_setSocket(srvc, sock, L_SOCKET_READ, L_SOCKET_FLAG_LISTEN);
+  if (srvc->flagw | L_SERVICE_STARTED) {
+    l_loge_1("already started %d", ld(srvc->svid));
+    return srvc;
+  }
+
+  if (l_filedesc_isEmpty(&fd)) {
+    return srvc;
+  }
+
+  return l_service_set_event_impl(srvc, fd, masks, flags);
 }
 
 L_EXTERN l_service*
-l_service_setInitiateSocket(l_service* srvc, l_filedesc sock)
+l_service_setEvent(l_service* srvc, l_filedesc fd, l_ushort masks)
 {
-  return l_service_setSocket(srvc, sock, L_SOCKET_RDWR, L_SOCKET_FLAG_CONNECT);
+  return l_service_setEventImpl(srvc, fd, masks, 0);
 }
 
 L_EXTERN l_service*
-l_service_setReceiveSocket(l_service* srvc, l_filedesc sock)
+l_service_setListen(l_service* srvc, l_filedesc fd)
 {
-  return l_service_setSocket(srvc, sock, L_SOCKET_RDWR, 0);
+  return l_service_setEventImpl(srvc, fd, L_SOCKET_READ, L_SOCKET_FLAG_LISTEN);
 }
 
-void l_service_close(l_service* srvc) {
-  srvc->flagw |= L_SERVICE_CLOSING;
+L_EXTERN l_service*
+l_service_setConnect(l_service* srvc, l_filedesc fd)
+{
+  return l_service_setEventImpl(srvc, fd, L_SOCKET_RDWR, L_SOCKET_FLAG_CONNECT);
 }
 
-void l_service_closeSocket(l_service* srvc) {
+L_EXTERN void
+l_service_delEvent(l_service* srvc)
+{
   l_thread* thread = srvc->thread;
-  l_filedesc sock = l_filedesc_empty();
+  l_filedesc fd = l_filedesc_empty();
+
+  if (!(srvc->flagw | L_SERVICE_STARTED)) {
+    l_loge_1("service not started %d", ld(srvc->svid));
+    return;
+  }
 
   if (srvc->flagw & L_SERVICE_SOCKET) {
     l_mutex* svmtx = thread->svmtx;
-    l_ioevent* ioev = 0;
 
     l_mutex_lock(svmtx);
-    ioev = srvc->ioev;
     /* store fd to send to mater to close */
-    sock = ioev->fd;
+    fd = srvc->ioev->fd;
     /* reset fd as closed */
-    ioev->fd = l_filedesc_empty();
+    srvc->ioev->fd = l_filedesc_empty();
     /* if thread still has io message in the pending queue,
     when to handle it, this message will be ignored due to
     no event attached to service from now */
@@ -1000,12 +1051,70 @@ void l_service_closeSocket(l_service* srvc) {
     srvc->flagw &= (~L_SERVICE_SOCKET);
   }
 
-  if (l_filedesc_isEmpty(&sock)) {
+  if (l_filedesc_isEmpty(&fd)) {
     return;
   }
 
-  l_message_closeServiceSocket(thread, srvc->svid, sock);
+  l_message_delServiceEvent(thread, fd);
 }
+
+L_EXTERN void
+l_service_mod_event_impl(l_service* srvc, l_filedesc fd, l_ushort masks, l_ushort flags)
+{
+  l_filedesc oldfd;
+  l_thread* thread = 0;
+  l_mutex* svmtx = 0;
+
+  if (!(srvc->flagw | L_SERVICE_STARTED)) {
+    l_loge_1("service not started %d", ld(srvc->svid));
+    return;
+  }
+
+  oldfd = l_filedesc_empty();
+  thread = srvc->thread;
+  svmtx = thread->svmtx;
+
+  l_mutex_lock(svmtx);
+  if (srvc->ioev) {
+    oldfd = srvc->ioev->fd;
+    srvc->ioev->fd = l_filedesc_empty();
+    srvc->ioev = 0;
+  }
+  srvc->flagw &= (~L_SERVICE_SOCKET);
+  if (!l_filedesc_isEmpty(&fd)) {
+    l_service_set_event_impl(srvc, fd, masks, flags);
+    srvc->ioev->masks = 0; /* clear masks, prepare to receive */
+  }
+  l_mutex_unlock(svmtx);
+
+  if (!l_filedesc_isEmpty(&oldfd)) {
+    l_message_delServiceEvent(thread, fd);
+  }
+
+  if (!l_filedesc_isEmpty(&fd)) {
+    l_message_addServiceEvent(srvc->thread, fd, l_service_id_for_lookup(srvc), masks);
+  }
+}
+
+L_EXTERN void
+l_service_modEvent(l_service* srvc, l_filedesc fd, l_ushort masks)
+{
+  l_service_mod_event_impl(srvc, fd, masks, 0);
+}
+
+L_EXTERN void
+l_service_modListen(l_service* srvc, l_filedesc fd)
+{
+  l_service_mod_event_impl(srvc, fd, L_SOCKET_READ, L_SOCKET_FLAG_LISTEN);
+}
+
+L_EXTERN void
+l_service_modConnect(l_service* srvc, l_filedesc fd)
+{
+  l_service_mod_event_impl(srvc, fd, L_SOCKET_RDWR, L_SOCKET_FLAG_CONNECT);
+}
+
+
 
 /**
  * task dispatch
@@ -1066,7 +1175,7 @@ l_master_init()
       thread = l_worker_thread + i;
       thread->index = i + 1; /* worker index should not 0 */
       l_thread_init(thread, conf);
-      thread->L = l_new_luastate();
+      thread->L = l_luastate_new();
       l_priorq_push(&l_thread_pool, &thread->node);
     }
 
@@ -1160,18 +1269,13 @@ l_thread_master()
 static void
 l_master_acceptConnection(void* ud, l_sockconn* conn)
 {
-  l_service* sv = (l_service*)ud;
   l_thread* master = l_thread_master();
-  int family = l_sockaddr_family(&conn->remote);
-  if (family == L_SOCKADDR_IPV4) {
-
-  } else if (family == L_SOCKADDR_IPV6) {
-    l_message* msg = l_message_create(sizeof(l_ipv6connind_message), master);
-    /* TODO: copy address data */
-    l_message_send_msg_impl(master, l_service_id(sv), L_MSGID_SOCK_CONNV6_IND, 0, 0, msg);
-  } else {
-    l_loge_s("invalid address family");
-  }
+  l_service* srvc = (l_service*)ud;
+  l_sockaddr* rmt = &conn->remote;
+  l_umedit family = l_sockaddr_family(rmt);
+  l_message* msg = l_message_create(sizeof(l_connind_message), master);
+  l_sockaddr_ip(rmt, ((l_connind_message*)msg)->addr, 16);
+  l_message_send_impl(master, l_service_id(srvc), L_MSGID_SOCK_CONN_IND, (family << 16) | l_sockaddr_port(rmt), l_msg_castfd(conn->sock), msg);
 }
 
 static void
@@ -1185,9 +1289,8 @@ l_master_dispatchEvent(l_ioevent* rxev)
 
   if (rxev->masks == 0) return;
   if (!(srvc = l_master_findService(rxev->udata))) return;
-  if (!(thread = srvc->thread)) return;
-  if (!(srvc->flags & L_SERVICE_SOCKET)) return;
 
+  thread = srvc->thread;
   svmtx = thread->svmtx;
 
   l_mutex_lock(svmtx);
@@ -1206,7 +1309,7 @@ l_master_dispatchEvent(l_ioevent* rxev)
   if (srev->flags & L_SOCKET_FLAG_CONNECT) {
     srev->flags &= (~L_SOCKET_FLAG_CONNECT);
     l_mutex_unlock(svmtx);
-    l_message_send_impl(master, l_service_id(srvc), L_MSGID_SOCK_CONN_RSP, srev->masks, l_msg_castfd(srev->fd));
+    l_message_senddata_impl(master, l_service_id(srvc), L_MSGID_SOCK_CONN_RSP, srev->masks, l_msg_castfd(srev->fd));
     return;
   }
 
@@ -1214,7 +1317,7 @@ l_master_dispatchEvent(l_ioevent* rxev)
     l_filedesc fd = srev->fd;
     l_umedit masks = srev->masks = rxev->masks;
     l_mutex_unlock(svmtx);
-    l_message_send_impl(master, l_service_id(srvc), L_MSGID_SOCK_EVENT_IND, masks, l_msg_castfd(fd));
+    l_message_senddata_impl(master, l_service_id(srvc), L_MSGID_SOCK_EVENT_IND, masks, l_msg_castfd(fd));
     return;
   }
 
@@ -1225,11 +1328,34 @@ l_master_dispatchEvent(l_ioevent* rxev)
 static int
 l_worker_handleMessage(l_thread* thread, l_message* msg)
 {
+  l_buffer buffer;
   l_service* srvc = 0;
   l_mutex* mtx = 0;
-  int threadExit = false;
+
+  if (msg->dest == L_SERVICE_WORKER) {
+    switch (msg->msgid) {
+    case L_MSGID_SRVC_CLOSE_RSP: /* master already remove the service out of the table */
+      srvc = (l_service*)l_msg_getptr(msg);
+      srvc->entry(srvc, msg); /* let service handle the last one msg L_MSGID_SRVC_CLOSE_RSP */
+      l_logm_1("service %d closed", ld(srvc->svid));
+      buffer.p = srvc;
+      l_buffer_free(&buffer, thread);
+      return true;
+    case L_MSGID_WORKER_EXIT_REQ:
+      l_logm_1("worker %d prepare exit", ld(thread->index));
+      l_message_senddata_impl(thread, L_SERVICE_MASTER, L_MSGID_WORKER_EXIT_RSP, thread->index, 0);
+      return false; /* worker exit */
+    default:
+      break;
+    }
+    l_loge_1("unknown worker message %d", ld(msg->msgid));
+    return true;
+  }
 
   srvc = (l_service*)msg->dest;
+  if (srvc->flagw & L_SERVICE_CLOSING) {
+    return true;
+  }
 
   switch (msg->msgid) {
   case L_MSGID_SOCK_CONN_IND: case L_MSGID_SOCK_CONN_RSP: case L_MSGID_SOCK_EVENT_IND:
@@ -1242,38 +1368,21 @@ l_worker_handleMessage(l_thread* thread, l_message* msg)
   case L_MSGID_SRVC_START_RSP:
     l_logm_1("service %d started", ld(srvc->svid));
     break;
-  case L_MSGID_SRVC_CLOSE_RSP: {
-      l_buffer buffer = {srvc};
-      l_logm_1("service %d closed", ld(srvc->svid));
-      l_buffer_free(&buffer, thread);
-      return true;
-    }
-  case L_MSGID_WORKER_EXIT_REQ:
-    l_logm_1("worker %d prepare exit", ld(thread->index));
-    threadExit = true;
-    l_message_send_impl(thread, L_SERVICE_MASTER, L_MSGID_WORKER_EXIT_RSP, thread->index, 0);
-    break;
   default:
     break;
   }
 
-  if (threadExit) {
-    return false;
-  }
-
-  if (!(srvc->flagw & L_SERVICE_CLOSING)) {
-    srvc->entry(srvc, msg);
-  }
+  srvc->entry(srvc, msg);
 
   if (srvc->flagw & L_SERVICE_CLOSING) {
-    l_service_free_state(srvc);
+    l_service_freeState(srvc);
 
     l_thread_lock(thread);
     srvc->flags |= L_SERVICE_STOPRX;
     l_thread_unlock(thread);
 
-    l_service_closeSocket(srvc);
-    l_message_closeService(thread, l_service_id_for_lookup(srvc), l_filedesc_empty());
+    l_service_delEvent(srvc);
+    l_message_closeService(thread, l_service_id_for_lookup(srvc));
   }
 
   return true;
@@ -1299,7 +1408,8 @@ l_master_handleMessage(l_squeue* frmq)
   while ((msg = (l_message*)l_squeue_pop(&msgq))) {
     switch (msg->msgid) {
     case L_MSGID_SRVC_START_REQ: {
-        l_service* srvc = (l_service*)msg->extra;
+        l_service* srvc = (l_service*)l_msg_getptr(msg);
+
         /* attach thread first */
         if (srvc->thread) {
           l_thread_acquireSpecific(srvc->thread);
@@ -1311,74 +1421,89 @@ l_master_handleMessage(l_squeue* frmq)
           srvc->thread = l_thread_master();
         }
 
-        srvc->svid = (((l_ulong)srvc->thread->index) << 32) | l_service_id_for_lookup(srvc);
+        srvc->svid = (((l_ulong)srvc->thread->index) << 48) | l_service_id_for_lookup(srvc);
 
         l_logm_1("start service %d", ld(srvc->svid));
 
-        /* then add event */
+        /* then add event, no need to lock mutex before started */
         if (srvc->ioev) {
           l_ioevent event = *srvc->ioev;
           srvc->ioev->masks = 0; /* clear masks, prepare to receive */
           l_eventmgr_add(&l_eventmgr_g, &event);
         }
+
         /* add service online to table */
         l_master_addService(srvc);
+
         /* send confirm back */
-        l_message_send_impl(master, l_service_id(srvc), L_MSGID_SRVC_START_RSP, 0, 0);
+        l_message_senddata_impl(master, l_service_id(srvc), L_MSGID_SRVC_START_RSP, 0, 0);
       }
       break;
-    case L_MSGID_SRVC_CLOSE_SOCK: {
+    case L_MSGID_SRVC_DEL_EVENT: {
         l_filedesc fd = l_msg_getfd(msg);
-        l_service* srvc = 0;
-        if ((srvc = l_master_findService(msg->data))) {
-          srvc->flags &= (~L_SERVICE_SOCKET);
-        }
-
         l_eventmgr_del(&l_eventmgr_g, fd);
-        l_socket_close(fd);
+        l_filedesc_close(&fd);
+      }
+      break;
+    case L_MSGID_SRVC_ADD_EVENT: {
+        l_ioevent event;
+        event.fd = l_msg_getfd(msg);
+        event.udata = msg->data; /* svid */
+        event.masks = (l_ushort)(msg->dest & 0xffff); /* l_ushort masks */
+        event.flags = 0;
+        l_eventmgr_add(&l_eventmgr_g, &event);
       }
       break;
     case L_MSGID_SRVC_CLOSE_REQ: {
         l_service* srvc = l_master_delService(msg->data);
-        l_filedesc fd = l_msg_getfd(msg);
-
         l_logm_1("close service %d", ld(msg->data));
-
-        if (!l_filedesc_isEmpty(&fd)) {
-          l_eventmgr_del(&l_eventmgr_g, fd);
-          l_socket_close(fd);
-        }
-
         if (!srvc) break;
-        l_thread_release(srvc->thread); /* L_MSGID_SRVC_CLOSE_RSP is the last msg */
-        l_message_send_impl(master, l_service_id(srvc), L_MSGID_SRVC_CLOSE_RSP, 0, l_msg_castp(srvc));
+        l_thread_release(srvc->thread); /* count down thread's weight, and L_MSGID_SRVC_CLOSE_RSP is service's last msg */
+        l_message_senddata_impl(master, l_worker_svid(srvc->thread), L_MSGID_SRVC_CLOSE_RSP, 0, l_msg_castptr(srvc));
       }
       break;
     case L_MSGID_MASTER_EXIT_REQ: {
         int i = 0;
+        l_frontsrvc front = {0, 0};
         l_thread* thread = l_worker_thread;
         l_logm_s("prepare exit");
 
-        if (!thread || l_num_workers <= 0) { /* no workers, exit directly */
-          masterExit = true;
+        while (((front = l_master_delFrontService(&front)), front.srvc)) { /* close all services first */
+          thread = front.srvc->thread;
+          l_thread_release(thread); /* count down thread's weight */
+          l_message_senddata_impl(master, l_worker_svid(thread), L_MSGID_SRVC_CLOSE_RSP, 0, l_msg_castptr(front.srvc));
+          /* TODO: if services are too many and there is not enough memory to alloc messages, consider to send multiple times */
+        }
+
+        if (front.srvc) { /* the services are not close completed */
+          l_master_addService(front.srvc);
+          l_thread_acquireSpecific(front.srvc->thread);
+          l_message_sendtomaster_impl(master, L_MSGID_MASTER_EXIT_REQ, 0, 0);
           break;
         }
 
-        for (; i < l_num_workers; ++i) {
-          if (thread[i].index == 0) continue; /* already exit */
-          /* TODO: how to send to worker without specified service id */
-          l_message_send_impl(master, (((l_ulong)thread[i].index) << 32) | L_SERVICE_WORKER, L_MSGID_WORKER_EXIT_REQ, 0, 0);
+        if (!l_worker_thread || l_num_workers <= 0) { /* no workers, exit directly */
+          l_message_sendtomaster_impl(master, L_MSGID_WORKER_EXIT_RSP, 0, 0);
+          break;
+        }
+
+        for (i = 0; i < l_num_workers; ++i) {
+          if (l_worker_thread[i].index == 0) continue; /* already exit */
+          l_message_senddata_impl(master, l_worker_svid(l_worker_thread+i), L_MSGID_WORKER_EXIT_REQ, 0, 0);
         }
       }
       break;
-    case L_MSGID_WORKER_EXIT_RSP: {
-        int i = msg->data;
-        l_worker_thread[i].index = 0;
+    case L_MSGID_WORKER_EXIT_RSP:
+      if (l_worker_thread) {
+        int index = msg->data;
+        l_worker_thread[index-1].index = 0;
         ++exited_workers;
-        l_logm_3("worker %d exited %d/%d", ld(i), ld(exited_workers), ld(l_num_workers));
+        l_logm_3("worker %d exited %d/%d", ld(index), ld(exited_workers), ld(l_num_workers));
         if (exited_workers == l_num_workers) {
           masterExit = true;
         }
+      } else {
+        masterExit = true;
       }
       break;
     default:
@@ -1402,8 +1527,11 @@ l_bootstrap_service_proc(l_service* self, l_message* msg)
 {
   (void)self;
   switch (msg->msgid) {
-  case L_MSGID_SRVC_START_RSP:
-    l_logm_s("bootstrap startup");
+  case L_MSGID_SERVICE_START:
+    l_logm_s("bootstrap started");
+    break;
+  case L_MSGID_SERVICE_CLOSE:
+    l_logm_s("bootstrap closed");
     break;
   case L_MSGID_START_BOOTSTRAP:
     l_logm_1("bootstrap service %d", ld(self->svid));
@@ -1418,7 +1546,8 @@ l_bootstrap_service_proc(l_service* self, l_message* msg)
   return 0;
 }
 
-void l_master_exit()
+L_EXTERN void
+l_master_exit()
 {
   l_message_masterExit(l_thread_self());
 }
@@ -1434,6 +1563,7 @@ l_master_loop(int (*start)())
   l_thread* thread = 0;
   l_uint waitCount = 0;
   l_squeue* mq = 0;
+  l_umedit destsvid = 0;
   int i = 0, n = 0;
   int exitCode = 0;
 
@@ -1450,20 +1580,18 @@ l_master_loop(int (*start)())
   l_squeue_init(&rxmq);
   l_squeue_init(&frmq);
 
-  srvc = l_service_create(sizeof(l_service), l_bootstrap_service_proc, 0);
+  srvc = l_service_create(sizeof(l_service), l_bootstrap_service_proc);
   srvc->svid = L_SERVICE_BOOTSTRAP;
   l_service_start(srvc); /* start bootstrap service */
   l_master_handleMessage(&frmq); /* handle bootstrap start message */
   l_message_startBootstrap(master, start); /* send BOOTSTRAP message */
 
   for (; ;) {
-    if (!l_squeue_isEmpty(master->txms) || !l_squeue_isEmpty(master->txmq)) {
-      l_master_wakeup();
+    if (l_squeue_isEmpty(master->txms) && l_squeue_isEmpty(master->txmq)) {
+      l_logm_1("master T%d wait", ld(++waitCount));
+      l_eventmgr_wait(&l_eventmgr_g, l_master_dispatchEvent);
+      l_logm_1("master T%d wakeup", ld(waitCount));
     }
-
-    l_logm_1("master T%d wait", ld(++waitCount));
-    l_eventmgr_wait(&l_eventmgr_g, l_master_dispatchEvent);
-    l_logm_1("master T%d wakeup", ld(waitCount));
 
     if (!l_master_handleMessage(&frmq)) {
       l_message_freeQueue(&frmq, master);
@@ -1474,31 +1602,35 @@ l_master_loop(int (*start)())
     l_master_getMessages(master, &rxmq); /* messages need send to workers */
 
     while ((msg = (l_message*)l_squeue_pop(&rxmq))) {
-      if (msg->msgid == L_MSGID_WORKER_EXIT_REQ) {
-        l_squeue_push(mq + msg->dest - 1, &msg->HEAD.node); /* msg->dest contains thread index */
-        continue;
-      }
+      destsvid = l_msg_dest_svid(msg);
 
-      srvc = l_master_findService((l_umedit)(msg->dest&0xffff));
-      if (!srvc && msg->msgid != L_MSGID_SRVC_CLOSE_RSP) {
-        l_squeue_push(&frmq, &msg->HEAD.node);
-        continue;
-      }
-
-      if (msg->msgid == L_MSGID_SRVC_CLOSE_RSP) {
-        srvc = (l_service*)msg->extra;
-        thread = srvc->thread;
+      if (destsvid == L_SERVICE_WORKER) {
+        l_uint index = l_msg_dest_tidx(msg);
+        srvc = (l_service*)(l_uint)L_SERVICE_WORKER;
+        if (index == 0) {
+          if (l_worker_thread) { /* already exit */
+            l_squeue_push(&frmq, &msg->HEAD.node);
+            l_loge_1("worker service message %d cannot handle", ld(msg->msgid));
+            continue;
+          }
+          thread = l_thread_master();
+        } else {
+          thread = worker + index - 1;
+        }
       } else {
-        l_mutex* svmtx = 0;
-        thread = srvc->thread;
-        svmtx = thread->svmtx;
-        l_mutex_lock(svmtx);
-        if (srvc->flags & L_SERVICE_STOPRX) {
-          l_mutex_unlock(svmtx);
+        srvc = l_master_findService(destsvid);
+        if (!srvc) {
           l_squeue_push(&frmq, &msg->HEAD.node);
           continue;
         }
-        l_mutex_unlock(svmtx);
+        thread = srvc->thread;
+        l_mutex_lock(thread->svmtx);
+        if (srvc->flags & L_SERVICE_STOPRX) { /* if this service is stopped to receive message */
+          l_mutex_unlock(thread->svmtx);
+          l_squeue_push(&frmq, &msg->HEAD.node);
+          continue;
+        }
+        l_mutex_unlock(thread->svmtx);
       }
 
       msg->dest = (l_ulong)(l_uint)srvc;
@@ -1508,8 +1640,8 @@ l_master_loop(int (*start)())
         continue;
       }
 
-      if (thread->index == 0) { /* dest thread already exit */
-        l_squeue_push(&frmq, &msg->HEAD.node);
+      if (thread->index == 0) { /* already exit */
+        l_squeue_pushQueue(&frmq, mq + i);
         continue;
       }
 
@@ -1580,12 +1712,11 @@ l_worker_start()
     }
 
     l_message_freeQueue(&frmq, thread);
+    l_worker_flushMessages(thread);
 
     if (threadExit) {
       break;
     }
-
-    l_worker_flushMessages(thread);
   }
 
   return 0;

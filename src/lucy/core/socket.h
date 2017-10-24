@@ -3,9 +3,6 @@
 #include "core/base.h"
 #include "core/fileop.h"
 
-#define L_SOCKADDR_IPV4 0x01
-#define L_SOCKADDR_IPV6 0x02
-
 typedef struct {
   L_PLAT_IMPL_SIZE(L_SOCKADDR_SIZE);
 } l_sockaddr;
@@ -15,9 +12,10 @@ typedef struct {
   l_sockaddr remote;
 } l_sockconn;
 
-L_EXTERN int l_sockaddr_family(l_sockaddr* self);
 L_EXTERN int l_sockaddr_init(l_sockaddr* self, l_strt ip, l_ushort port);
+L_EXTERN l_ushort l_sockaddr_family(l_sockaddr* self);
 L_EXTERN l_ushort l_sockaddr_port(l_sockaddr* self);
+L_EXTERN int l_sockaddr_ip(l_sockaddr* self, l_byte* out, l_int len);
 L_EXTERN int l_sockaddr_ipstring(l_sockaddr* self, l_string* out);
 
 L_EXTERN void l_socket_init(); /* socket global init */
