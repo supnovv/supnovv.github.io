@@ -4,18 +4,23 @@
 #include <lauxlib.h>
 #include "core/base.h"
 
+typedef struct {
+  int index;
+} l_funcindex;
+
+typedef struct {
+  int index;
+} l_tableindex;
+
+typedef struct l_luaextra l_luaextra;
+typedef struct l_service l_service;
+
 L_INLINE void
 l_luastate_popError(lua_State* L)
 {
   l_loge_1("lua error %s", ls(lua_tostring(L, -1)));
   lua_pop(L, 1);
 }
-
-typedef struct l_luaextra l_luaextra;
-
-typedef struct {
-  int index;
-} l_funcindex;
 
 L_EXTERN lua_State* l_luastate_new();
 L_EXTERN void l_luastate_close(lua_State* L);
@@ -26,11 +31,9 @@ L_EXTERN int l_luastate_call(lua_State* L, l_funcindex func, int nresults); /* p
 L_EXTERN int l_luastate_exec(lua_State* L, l_from from, int nresults); /* push nresults if success, otherwise unchanged */
 
 L_EXTERN l_int l_luaconf_int(lua_State* L, const void* name);
-L_EXTERN l_int l_luaconf_ints(lua_State* L, const void** s, l_int n);
+L_EXTERN l_int l_luaconf_intx(lua_State* L, const void** s, l_int n);
 L_EXTERN int l_luaconf_str(lua_State* L, const void* name, int (*read)(void* obj, l_strn s), void* obj);
-L_EXTERN int l_luaconf_strs(lua_State* L, const void** s, l_int n, int (*read)(void* obj, l_strn s), void* obj);
-
-
+L_EXTERN int l_luaconf_strx(lua_State* L, const void** s, l_int n, int (*read)(void* obj, l_strn s), void* obj);
 
 L_EXTERN int l_service_initState(l_service* srvc);
 L_EXTERN void l_service_freeState(l_service* srvc);

@@ -1,7 +1,7 @@
 #define L_LIBRARY_IMPL
 #include "core/state.h"
 
-static void l_luaconfig_init(lua_State* L);
+static void l_luaconf_init(lua_State* L);
 
 typedef struct l_luaextra　{
 
@@ -12,7 +12,7 @@ l_luaextra_init(lua_State* L)
 {
   l_luaextra** extra = (l_luaextra**)lua_getextraspace(L);
   *extra = (l_luaextra*)l_raw_malloc(sizeof(l_luaextra));
-  (*extra)->
+  /* TODO */
 }
 
 static void
@@ -43,7 +43,7 @@ l_luastate_new()
 
   luaL_openlibs(L); /* open all standard lus libraries */
   l_luaextra_init(L);
-  l_luaconfig_init(L);
+  l_luaconf_init(L);
   return L;
 }
 
@@ -204,10 +204,16 @@ l_luastate_exec(lua_State* L, l_from from, int nresults)
   return l_luastate_pcall(L, func, nresults);
 }
 
-L_EXTERN int
-l_luastate_setEnv(lua_State* L, l_funcindex func, const void* tablename)
-{
+/** lua globals
 
+---
+*/
+
+L_EXTERN int /* the env table is pushed onto stack, after this call the table is poped up */
+l_luastate_setenv(lua_State* L, l_funcindex func)
+{
+  lua_setupvalue(L, func.index, /* upvalue inex - _EVN is the 1st one */ 1); /* pop the table */
+  return true;
 }
 
 static int
@@ -227,29 +233,33 @@ lucy_settablefield(lua_State* L, const void* keyname)
   return true;
 }
 
-#define L_MAX_CONF_NAME_LEN 80
+#define L_LUACONF_TABLE_NAME "L_LUACONF_GLOBAL_TABLE"
+#define L_LUACONF_MAXLEN_FIELD_NAME 80
 
 static void
-l_luaconfig_init(lua_State* L)
+l_luaconf_init(lua_State* L)
 {
-  const char* libname = "LUCY_GLOBAL_TABLE";
+  l_funcindex func;
 
   lua_newtable(L); /* push a empty table */
   lua_pushliteral(L, L_ROOT_DIR); /* push a string */
   lucy_settablefield(L, "rootdir"); /* pop the string */
-  lua_setglobal(L, libname); /* pop the table */
+  lua_setglobal(L, L_LUACONF_TABLE_NAME); /* pop the table */
 
-  if (!lucy_dofile(L, L_ROOT_DIR "conf/init.lua", 0)) {
+  if (!l_luastate_exec(L, L_ROOT_DIR "conf/init.lua", 0)) {
     l_loge_s("execute init.lua failed");
     return;
   }
 
-  if (!lucy_loadfile(L, L_ROOT_DIR "conf/conf.lua")) { /* push loaded function */
+  func = l_luastate_load(L, L_ROOT_DIR "conf/conf.lua");
+  if (func.index == 0) {
     l_loge_s("load conf.lua failed");
     return;
   }
 
-  if (!lucy_setfuncenv(L, libname)) {
+  lua_getglobal(L, L_LUACONF_TABLE_NAME); /* push the table as env table */
+
+  if (!lucy_setfuncenv(L, )) {
     l_loge_s("set conf.lua _ENV failed ");
     return;
   }
@@ -272,7 +282,7 @@ l_luaconfig_init(lua_State* L)
 }
 
 static int
-lucy_loadconf(lua_State* L, const l_byte* name)
+l_luaconf_get(lua_State* L, const l_byte* name)
 {
   const char* libname = "LUCY_GLOBAL_TABLE";
   l_byte keyname[L_MAX_CONF_NAME_LEN+1] = {0};

@@ -1,16 +1,17 @@
 /**
  * ## service
- * service stored in the global hash table, the table can be only accessed by master
- * service can be created by any thread, the related flow is:
- * a. thread send L_MSGID_SRVC_START_REQ message to master and carried the allocated service object
- * b. master handle the message, acquire a thread to handle the service, and add the service to the global table
- * c. the master send the 1st message L_MSGID_SRVC_START_RSP (i.e. L_MSGID_SERVICE_START) to the service
- * d. thread can call l_service_close(sv) to close a service, the service will be set as L_SERVICE_STOPRX
- * e. the thread then send L_MSGID_SRVC_CLOSE_REQ to master, the message carried the service id
- * f. master handle the message, delete the related service according to the id, and release the thread (count down the weight)
- * g. the master then send L_MSGID_SRVC_CLOSE_RSP (i.e. L_MSGID_SERVICE_CLOSE) to service, carried the removed service object
- * h. worker thread received this message, deliver it to service and then free the service object to its free memory pool
- * i. note L_MSGID_SERVICE_CLOSE is the service's last message, if the service has extra resource need to free, this is the last chance
+ * services are stored in the global hash table, the table can be only accessed by the master.
+ * services can be created by any thread and can be closed by the service itself:
+ * a. thread allocates a service object and send L_MSGID_SRVC_START_REQ message to the master
+ * b. the message carried the allocated and initialized service object
+ * c. master handle the message, assign a thread to the service, and add the service to the global table
+ * d. the master then send L_MSGID_SERVICE_START to the service, this is the service's first message
+ * e. service can call l_service_close(srvc) to close itself, after the thread detected the service is closing
+ * f. the thread set the service as L_SERVICE_STOPRX and send L_MSGID_SRVC_CLOSE_REQ to master with the service id
+ * g. master handle the message, delete the service according to the id, and count down the thread's weight
+ * h. the master then send L_MSGID_SERVICE_CLOSE to service, carried the removed service object
+ * i. worker thread received the message, deliver it to the service and then free the service to its memory pool
+ * j. L_MSGID_SERVICE_CLOSE is the service's last message, if it has extra resource to free, this is the last chance
  */
 
 #include <stdio.h>
@@ -104,7 +105,7 @@ l_config_free(l_config* conf)
  * thread
  */
 
-typedef struct l_buffer {
+typedef struct {
   void* p;
 } l_buffer;
 
@@ -156,6 +157,22 @@ L_GLOBAL int l_num_workers;
 L_GLOBAL l_thread* l_worker_thread;
 L_GLOBAL l_priorq l_thread_pool;
 
+static l_thread*
+l_thread_self()
+{
+#if defined(L_THREAD_LOCAL_SUPPORTED)
+  return l_self_thread;
+#else
+  return (l_thread*)l_thrkey_getData(&l_thrkey_g);
+#endif
+}
+
+static l_thread*
+l_thread_master()
+{
+  return &l_master_thread;
+}
+
 static void
 l_thread_lock(l_thread* self)
 {
@@ -194,7 +211,7 @@ l_thread_initLog(l_thread* thread, l_config* conf)
   l_file_write(&thread->logfile, l_strt_literal("--------" L_NEWLINE));
 }
 
-L_EXTERN void
+static void
 l_thread_flushLog(l_thread* thread)
 {
   l_string* log = &thread->log;
@@ -700,7 +717,7 @@ l_message_startBootstrap(l_thread* thread, int (*bootstrap)())
  * service is freed as a free buffer after it is completed.
  */
 
-#define l_worker_svid(thread) ((((ulong)((thread)->index))<<32) | L_SERVICE_WORKER)
+#define l_worker_svid(thread) ((((ulong)((thread)->index))<<48) | L_SERVICE_WORKER)
 #define L_SERVICE_STARTED   0x01
 #define L_SERVICE_CLOSING   0x02
 #define L_SERVICE_STOPRX    0x04
@@ -1114,8 +1131,6 @@ l_service_modConnect(l_service* srvc, l_filedesc fd)
   l_service_mod_event_impl(srvc, fd, L_SOCKET_RDWR, L_SOCKET_FLAG_CONNECT);
 }
 
-
-
 /**
  * task dispatch
  */
@@ -1258,12 +1273,6 @@ l_master_clean()
 #endif
 
   l_initialized = false;
-}
-
-L_EXTERN l_thread*
-l_thread_master()
-{
-  return &l_master_thread;
 }
 
 static void

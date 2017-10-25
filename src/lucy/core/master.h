@@ -14,20 +14,6 @@ typedef struct lua_State lua_State;
 typedef struct l_service l_service;
 typedef struct l_thread l_thread;
 
-L_GLOBAL l_thrkey l_thrkey_g;
-L_THREAD_LOCAL_DECL(l_thread* l_the_thread);
-
-L_INLINE l_thread*
-l_thread_self()
-{
-#if defined(L_THREAD_LOCAL_SUPPORTED)
-  return l_the_thread;
-#else
-  return (l_thread*)l_thrkey_getData(&l_thrkey_g);
-#endif
-}
-
-L_EXTERN l_thread* l_thread_master();
 L_EXTERN void l_master_exit();
 
 typedef struct {
