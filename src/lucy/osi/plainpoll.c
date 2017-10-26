@@ -1,4 +1,3 @@
-
 struct l_epoll {
   l_array fdset;
   l_hashtbl fdud;

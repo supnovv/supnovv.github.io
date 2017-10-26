@@ -14,7 +14,7 @@
 #define L_WIDTH(n) (((n) & 0x7f) << 8)
 #define L_FILL(n) ((n) & 0x7f)
 
-#define lstring(s) lp(l_string_cstr(s))
+#define lstring(s) lp(l_string_start(s))
 
 typedef struct {
   void* p;

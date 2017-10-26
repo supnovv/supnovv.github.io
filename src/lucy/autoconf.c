@@ -87,8 +87,8 @@ int main(void) {
   l_write_line(file, "#undef L_CORE_AUTO_CONFIG");
   l_write_line(file, "#define _CRT_SECURE_NO_WARNINGS%s", L_NEWLINE);
 
-  l_write_line(file, "#undef l_root_dir");
-  l_write_current_dir(file, "#define l_root_dir \"%s%s\"" L_NEWLINE);
+  l_write_line(file, "#undef L_ROOT_DIR");
+  l_write_current_dir(file, "#define L_ROOT_DIR \"%s%s\"" L_NEWLINE);
 
   l_write_line(file, "/* platform bits */");
   l_write_line(file, "#undef l_arch_32bit");

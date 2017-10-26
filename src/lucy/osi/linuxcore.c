@@ -1,5 +1,7 @@
 #include "osi/linuxpref.h"
-#include "lucycore.h"
+#include "core/base.h"
+#include "core/fileop.h"
+#include "core/thread.h"
 
 /** The software clock, HZ, and jiffies **
 The accuracy of various time related system calls is limited
@@ -87,8 +89,11 @@ How is the clock affected when the system suspended?
  ** References **
 UEAP 6.10; USPM 10, 23; */
 
-#if defined(L_PLAT_APPLE)
-static l_time llsystemtime() {
+#if defined(l_plat_apple)
+
+static l_time
+llsystemtime()
+{
   /** gettimeofday **
   #include <sys/time.h>
   int gettimeofday(struct timeval* tv, struct timezone* tz);
@@ -119,9 +124,11 @@ static l_time llsystemtime() {
   return time;
 }
 
-#else
+#else /* linux */
 
-static l_time llgettime(clockid_t id) {
+static l_time
+llgettime(clockid_t id)
+{
   l_time time = {0};
   struct timespec spec = {0};
 
@@ -135,15 +142,21 @@ static l_time llgettime(clockid_t id) {
   return time;
 }
 
-l_time l_thread_time() {
+static l_time
+l_thread_time()
+{
   return llgettime(CLOCK_THREAD_CPUTIME_ID);
 }
 
-l_time l_process_time() {
+static l_time
+l_process_time()
+{
   return llgettime(CLOCK_PROCESS_CPUTIME_ID);
 }
 
-static l_long llgetres(clockid_t id) {
+static l_long
+llgetres(clockid_t id)
+{
   struct timespec spec = {0};
   if (clock_getres(id, &spec) != 0) {
     l_loge_1("clock_getres %s", lserror(errno));
@@ -152,11 +165,15 @@ static l_long llgetres(clockid_t id) {
   return ((l_long)spec.tv_sec)*1000000000LL + (l_long)spec.tv_nsec;
 }
 
-l_long l_system_time_res() {
+static l_long
+l_system_time_res()
+{
   return llgetres(CLOCK_REALTIME);
 }
 
-l_long l_monotonic_time_res() {
+static l_long
+l_monotonic_time_res()
+{
   clockid_t id = CLOCK_MONOTONIC;
 #ifdef L_PLAT_LINUX
   id = CLOCK_BOOTTIME;
@@ -164,24 +181,34 @@ l_long l_monotonic_time_res() {
   return llgetres(id);
 }
 
-l_long l_thread_time_res() {
+static l_long
+l_thread_time_res()
+{
   return llgetres(CLOCK_THREAD_CPUTIME_ID);
 }
 
-l_long l_process_time_res() {
+static l_long
+l_process_time_res()
+{
   return llgetres(CLOCK_PROCESS_CPUTIME_ID);
 }
-#endif
 
-l_time l_system_time() {
-#if defined(L_PLAT_APPLE)
+#endif /* end of apple & linux */
+
+
+L_EXTERN l_time
+l_system_time()
+{
+#if defined(l_plat_apple)
   return llsystemtime();
 #else
   return llgettime(CLOCK_REALTIME);
 #endif
 }
 
-l_time l_monotonic_time() {
+L_EXTERN l_time
+l_monotonic_time()
+{
   /** clock_gettime **
   #include <sys/time.h>
   int clock_gettime(clockid_t id, struct timespec* out);
@@ -215,8 +242,10 @@ l_time l_monotonic_time() {
 #endif
 }
 
-static void llsetyear(l_date* date, l_long year) {
-  if (year > l_max_umedit) {
+static void
+llsetyear(l_date* date, l_long year)
+{
+  if (year > L_MAX_UMEDIT) {
     date->year = l_cast(l_umedit, year & 0xffffffff);
     date->high = l_cast(l_byte, (year & 0xff00000000) >> 32);
   } else {
@@ -225,11 +254,15 @@ static void llsetyear(l_date* date, l_long year) {
   }
 }
 
-static void llsetwdaymonth(l_date* date, int wday, int month) {
+static void
+llsetwdaymonth(l_date* date, int wday, int month)
+{
   date->wdmon = (l_cast(l_byte, wday & 0x0f) << 4) | l_cast(l_byte, month & 0x0f);
 }
 
-static l_date llgetdate(time_t secs) {
+static l_date
+llgetdate(time_t secs)
+{
   struct tm st;
   l_date date = {0};
   l_zero_n(&st, sizeof(struct tm));
@@ -263,23 +296,29 @@ static l_date llgetdate(time_t secs) {
   return date;
 }
 
-l_date l_date_from_secs(l_long utcsecs) {
+L_EXTERN l_date
+l_date_fromUtcSecs(l_long utcsecs)
+{
   return llgetdate(utcsecs);
 }
 
-l_date l_date_from_time(l_time utc) {
+L_EXTERN l_date
+l_date_fromUtcTime(l_time utc)
+{
   l_date date = llgetdate(utc.sec);
   date.nsec = utc.nsec;
   return date;
 }
 
-l_date l_system_date() {
-  return l_date_from_time(l_system_time());
+L_EXTERN l_date
+l_system_date()
+{
+  return l_date_fromUtcTime(l_system_time());
 }
 
-/** File and attribute */
-
-int l_is_file_exist(const void* name) {
+L_EXTERN int
+l_file_isExist(const void* name)
+{
   /**
    * # access, faccessat - check user's permissions for a file
    *
@@ -348,7 +387,9 @@ int l_is_file_exist(const void* name) {
    return true;
 }
 
-int l_is_file_exist_in(l_filedescriptor dirfd, const void* name) {
+L_EXTERN int
+l_file_isExistIn(l_filedesc dirfd, const void* name)
+{
   if (faccessat(dirfd.unifd, (const void*)name, F_OK, AT_SYMLINK_NOFOLLOW) != 0) {
     l_loge_1("faccessat %s", lserror(errno));
     return false;
@@ -356,7 +397,9 @@ int l_is_file_exist_in(l_filedescriptor dirfd, const void* name) {
   return true;
 }
 
-l_filedescriptor l_get_dirfd(const void* name) {
+L_EXTERN l_filedesc
+l_filedesc_dirfd(const void* name)
+{
   /**
    * # open, openat, creat - open and possibly create a file
    *
@@ -375,7 +418,7 @@ l_filedescriptor l_get_dirfd(const void* name) {
    * if an error occurred (in which case, errno is set appropriately).
    *
    */
-   l_filedescriptor fd;
+   l_filedesc fd;
    fd.unifd = -1;
 
    if (!name) return fd;
@@ -387,19 +430,33 @@ l_filedescriptor l_get_dirfd(const void* name) {
    return fd;
 }
 
-void l_close_fd(l_filedescriptor fd) {
-  if (fd.unifd == -1) return;
-  if (close(fd.unifd) != 0) {
+L_EXTERN void
+l_filedesc_close(l_filedesc* fd)
+{
+  if (fd->unifd == -1) return;
+  if (close(fd->unifd) != 0) {
     l_loge_1("close %d", lserror(errno));
   }
-  fd.unifd = -1;
+  fd->unifd = -1;
 }
 
-int l_is_fd_valid(l_filedescriptor fd) {
+L_EXTERN l_filedesc
+l_filedesc_empty()
+{
+  l_filedesc fd;
+  fd.unifd = -1;
+  return fd;
+}
+
+L_EXTERN int
+l_filedesc_isEmpty(l_filedesc fd)
+{
   return (fd.unifd != -1);
 }
 
-l_long l_file_size(const void* name) {
+L_EXTERN l_long
+l_file_getSize(const void* name)
+{
   /** lstat **
   #include <sys/types.h>
   #include <sys/stat.h>
@@ -462,7 +519,9 @@ l_long l_file_size(const void* name) {
   return (l_long)st.st_size;
 }
 
-l_fileattr l_file_attr(const void* name) {
+L_EXTERN l_fileattr
+l_file_getAttr(const void* name)
+{
   struct stat st;
   l_fileattr fa = {0};
   if (!name) { l_loge_s("empty name"); return fa; }
@@ -484,7 +543,9 @@ l_fileattr l_file_attr(const void* name) {
   return fa;
 }
 
-l_dirstream l_open_dir(const void* name) {
+L_EXTERN l_dirstream
+l_dirstream_open(const void* name)
+{
   /** opendir **
   #include <sys/types.h>
   #include <dirent.h>
@@ -501,7 +562,9 @@ l_dirstream l_open_dir(const void* name) {
   return d;
 }
 
-void l_close_dir(l_dirstream* d) {
+L_EXTERN void
+l_dirstream_close(l_dirstream* d)
+{
   if (d->stream) {
     if (closedir((DIR*)d->stream) != 0) {
       l_loge_1("closedir %s", lserror(errno));
@@ -510,7 +573,9 @@ void l_close_dir(l_dirstream* d) {
   }
 }
 
-const l_rune* l_read_dir(l_dirstream* d) {
+L_EXTERN const l_byte*
+l_dirstream_read(l_dirstream* d)
+{
   /** readdir **
   struct dirent* readdir(DIR* d);
   It returns a pointer to a dirent structure representing the next
@@ -554,31 +619,38 @@ const l_rune* l_read_dir(l_dirstream* d) {
     if (errno != 0) { l_loge_1("readdir %s", lserror(errno)); }
     return 0;
   }
-  return l_rstr(entry->d_name);
+  return l_cstr(entry->d_name);
 }
 
-int l_print_current_dir(void* stream, int (*write)(void* stream, const void* str)) {
+L_EXTERN int /* return what write returned or 0 */
+l_file_getcwd(int (*write)(void* stream, const l_byte* dir), void* stream)
+{
   /** getcwd, get_current_dir_name - get current working directory
   #include <unistd.h>
   char *get_current_dir_name(void);
   it will malloc(3) an array big enough to hold the absolute pathname of the current
   working directory. if the environment variable PWD is set, and its value is correct,
   then that value will be returned. the caller should free(3) the returned buffer. */
-  char* curdir = get_current_dir_name();
-  int count = 0;
-  if (curdir == 0) {
+  char* curdir = 0;
+  int n = 0;
+
+  if ((curdir = get_current_dir_name()) == 0) {
     l_loge_1("get_current_dir_name %s", lserror(errno));
     return 0;
   }
-  count = write(stream, curdir);
+
+  n = write(stream, l_cstr(curdir));
   free(curdir);
-  return count;
+  return n;
 }
 
-int l_execute_shell_command(const void* command, void (*out)(void*, const l_byte*, l_int), void* userobj) {
+L_EXTERN int
+l_file_exec(const void* cmd, void (*out)(void* obj, l_strn result), void* obj)
+{
   /**
    * popen, pclose - pipe stream to or from a process
    * ```
+   * #include <stdio.h>
    * FILE* popen(const char* command, const char* type);
    * int pclose(FILE* stream);
    * ```
@@ -642,23 +714,23 @@ int l_execute_shell_command(const void* command, void (*out)(void*, const l_byte
    */
 
    int exitcode = 0;
-   l_filestream fs;
+   l_file fs;
    #define SHELL_OUTPUT_TEMP_BUFSZ 1024
    l_byte buffer[SHELL_OUTPUT_TEMP_BUFSZ+1];
    l_int readsize = 0;
 
-   fs.stream = popen((const char*)command, "r");
+   fs.stream = popen((const char*)cmd, "r");
    if (!fs.stream) {
      l_loge_1("popen failed %s", lserror(errno));
      return false;
    }
 
-   while ((readsize = l_read_file(&fs, buffer, SHELL_OUTPUT_TEMP_BUFSZ)) == SHELL_OUTPUT_TEMP_BUFSZ) {
-     out(userobj, buffer, readsize);
+   while ((readsize = l_file_read(&fs, buffer, SHELL_OUTPUT_TEMP_BUFSZ)) == SHELL_OUTPUT_TEMP_BUFSZ) {
+     if (out) out(obj, l_strn_n(buffer, readsize));
    }
 
    if (readsize > 0) {
-     out(userobj, buffer, readsize);
+     if (out) out(obj, l_strn_n(buffer, readsize));
    }
 
    exitcode = pclose(fs.stream);
@@ -675,7 +747,9 @@ int l_execute_shell_command(const void* command, void (*out)(void*, const l_byte
    return true;
 }
 
-void l_thrkey_init(l_thrkey* self) {
+L_EXTERN void
+l_thrkey_init(l_thrkey* self)
+{
   /** pthread_key_create - thread-specific data key creation **
   #include <pthread.h>
   int pthread_key_create(pthread_key_t* key, void (*destructor)(void*));
@@ -688,7 +762,9 @@ void l_thrkey_init(l_thrkey* self) {
   }
 }
 
-void l_thrkey_free(l_thrkey* self) {
+L_EXTERN void
+l_thrkey_free(l_thrkey* self)
+{
   /** pthread_key_delete - thread-specific data key deletion **
   #include <pthread.h>
   int pthread_key_delete(pthread_key_t key); */
@@ -698,7 +774,9 @@ void l_thrkey_free(l_thrkey* self) {
   }
 }
 
-void* l_thrkey_get_data(l_thrkey* self) {
+L_EXTERN void*
+l_thrkey_getData(l_thrkey* self)
+{
   /** thread-specific data management **
   #include <pthread.h>
   void* pthread_getspecific(pthread_key_t key);
@@ -709,7 +787,9 @@ void* l_thrkey_get_data(l_thrkey* self) {
   return pthread_getspecific(*(pthread_key_t*)self);
 }
 
-void l_thrkey_set_data(l_thrkey* self, const void* data) {
+L_EXTERN void
+l_thrkey_setData(l_thrkey* self, const void* data)
+{
   /* different threads may bind different values to the same key, the value
   is typically a pointer to blocks of dynamically allocated memory that have
   been reserved for use by the calling thread. */
@@ -719,7 +799,9 @@ void l_thrkey_set_data(l_thrkey* self, const void* data) {
   }
 }
 
-void l_mutex_init(l_mutex* self) {
+L_EXTERN void
+l_mutex_init(l_mutex* self)
+{
   pthread_mutex_t* mutex = (pthread_mutex_t*)self;
   int n = pthread_mutex_init(mutex, 0);
   if (n != 0) {
@@ -727,7 +809,9 @@ void l_mutex_init(l_mutex* self) {
   }
 }
 
-void l_mutex_free(l_mutex* self) {
+L_EXTERN void
+l_mutex_free(l_mutex* self)
+{
   pthread_mutex_t* mutex = (pthread_mutex_t*)self;
   int n = pthread_mutex_destroy(mutex);
   if (n != 0) {
@@ -735,7 +819,9 @@ void l_mutex_free(l_mutex* self) {
   }
 }
 
-void l_mutex_lock(l_mutex* self) {
+L_EXTERN void
+l_mutex_lock(l_mutex* self)
+{
   pthread_mutex_t* mutex = (pthread_mutex_t*)self;
   int n = pthread_mutex_lock(mutex);
   if (n != 0) {
@@ -743,7 +829,9 @@ void l_mutex_lock(l_mutex* self) {
   }
 }
 
-void l_mutex_unlock(l_mutex* self) {
+L_EXTERN void
+l_mutex_unlock(l_mutex* self)
+{
   pthread_mutex_t* mutex = (pthread_mutex_t*)self;
   int n = pthread_mutex_unlock(mutex);
   if (n != 0) {
@@ -751,7 +839,9 @@ void l_mutex_unlock(l_mutex* self) {
   }
 }
 
-int l_mutex_trylock(l_mutex* self) {
+L_EXTERN int
+l_mutex_tryLock(l_mutex* self)
+{
   pthread_mutex_t* mutex = (pthread_mutex_t*)self;
   int n = pthread_mutex_trylock(mutex);
   if (n == 0) {
@@ -763,7 +853,9 @@ int l_mutex_trylock(l_mutex* self) {
   return false;
 }
 
-void l_rwlock_init(l_rwlock* self) {
+L_EXTERN void
+l_rwlock_init(l_rwlock* self)
+{
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_init(lock, 0);
   if (n != 0) {
@@ -771,7 +863,9 @@ void l_rwlock_init(l_rwlock* self) {
   }
 }
 
-void l_rwlock_free(l_rwlock* self) {
+L_EXTERN void
+l_rwlock_free(l_rwlock* self)
+{
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_destroy(lock);
   if (n != 0) {
@@ -779,7 +873,9 @@ void l_rwlock_free(l_rwlock* self) {
   }
 }
 
-void l_rwlock_read(l_rwlock* self) {
+L_EXTERN void
+l_rwlock_read(l_rwlock* self)
+{
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_rdlock(lock);
   if (n != 0) {
@@ -787,7 +883,9 @@ void l_rwlock_read(l_rwlock* self) {
   }
 }
 
-void l_rwlock_write(l_rwlock* self) {
+L_EXTERN void
+l_rwlock_write(l_rwlock* self)
+{
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_wrlock(lock);
   if (n != 0) {
@@ -795,7 +893,9 @@ void l_rwlock_write(l_rwlock* self) {
   }
 }
 
-int l_rwlock_tryread(l_rwlock* self) {
+L_EXTERN int
+l_rwlock_tryRead(l_rwlock* self)
+{
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_tryrdlock(lock);
   if (n != 0) {
@@ -805,7 +905,9 @@ int l_rwlock_tryread(l_rwlock* self) {
   return true;
 }
 
-int l_rwlock_trywrite(l_rwlock* self) {
+L_EXTERN int
+l_rwlock_tryWrite(l_rwlock* self)
+{
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_trywrlock(lock);
   if (n != 0) {
@@ -815,7 +917,9 @@ int l_rwlock_trywrite(l_rwlock* self) {
   return true;
 }
 
-void l_rwlock_unlock(l_rwlock* self) {
+L_EXTERN void
+l_rwlock_unlock(l_rwlock* self)
+{
   pthread_rwlock_t* lock = (pthread_rwlock_t*)self;
   int n = pthread_rwlock_unlock(lock);
   if (n != 0) {
@@ -823,7 +927,9 @@ void l_rwlock_unlock(l_rwlock* self) {
   }
 }
 
-void l_condv_init(l_condv* self) {
+L_EXTERN void
+l_condv_init(l_condv* self)
+{
   pthread_cond_t* cond = (pthread_cond_t*)self;
   int n = pthread_cond_init(cond, 0);
   if (n != 0) {
@@ -831,7 +937,9 @@ void l_condv_init(l_condv* self) {
   }
 }
 
-void l_condv_free(l_condv* self) {
+L_EXTERN void
+l_condv_free(l_condv* self)
+{
   pthread_cond_t* cond = (pthread_cond_t*)self;
   int n = pthread_cond_destroy(cond);
   if (n != 0) {
@@ -839,7 +947,9 @@ void l_condv_free(l_condv* self) {
   }
 }
 
-void l_condv_wait(l_condv* self, l_mutex* mutex) {
+L_EXTERN void
+l_condv_wait(l_condv* self, l_mutex* mutex)
+{
   pthread_cond_t* c = (pthread_cond_t*)self;
   pthread_mutex_t* m = (pthread_mutex_t*)mutex;
   int n = pthread_cond_wait(c, m);
@@ -848,7 +958,9 @@ void l_condv_wait(l_condv* self, l_mutex* mutex) {
   }
 }
 
-int l_condv_timedwait(l_condv* self, l_mutex* mutex, l_long ns) {
+L_EXTERN int
+l_condv_timedWait(l_condv* self, l_mutex* mutex, l_long ns)
+{
   pthread_cond_t* c = (pthread_cond_t*)self;
   pthread_mutex_t* m = (pthread_mutex_t*)mutex;
   l_time curtime = l_system_time();
@@ -874,7 +986,9 @@ int l_condv_timedwait(l_condv* self, l_mutex* mutex, l_long ns) {
   return false;
 }
 
-void l_condv_signal(l_condv* self) {
+L_EXTERN void
+l_condv_signal(l_condv* self)
+{
   pthread_cond_t* cond = (pthread_cond_t*)self;
   /* pthread_cond_signal() shall unblock at least one of the threads
   that are blocked on the specified condition variable cond (if any
@@ -893,7 +1007,9 @@ void l_condv_signal(l_condv* self) {
   }
 }
 
-void l_condv_broadcast(l_condv* self) {
+L_EXTERN void
+l_condv_broadcast(l_condv* self)
+{
   pthread_cond_t* cond = (pthread_cond_t*)self;
   int n = pthread_cond_broadcast(cond);
   if (n != 0) {
@@ -901,13 +1017,17 @@ void l_condv_broadcast(l_condv* self) {
   }
 }
 
-l_thrid l_raw_thread_self() {
+L_EXTERN l_thrid
+l_raw_thread_self()
+{
   l_thrid thrid;
   *((pthread_t*)&thrid) = pthread_self();
   return thrid;
 }
 
-int l_raw_thread_create(l_thrid* thrid, void* (*start)(void*), void* para) {
+L_EXTERN int
+l_raw_thread_create(l_thrid* thrid, void* (*start)(void*), void* para)
+{
   pthread_t* thread = (pthread_t*)thrid;
   int n = pthread_create(thread, 0, start, para);
   if (n != 0) {
@@ -917,7 +1037,9 @@ int l_raw_thread_create(l_thrid* thrid, void* (*start)(void*), void* para) {
   return true;
 }
 
-void l_raw_thread_cancel(l_thrid* thrid) {
+L_EXTERN void
+l_raw_thread_cancel(l_thrid* thrid)
+{
   /* pthread_cancel - send a cancellation request to a thread
   #include <pthread.h>
   int pthread_cancel(pthread_t thread);
@@ -929,7 +1051,9 @@ void l_raw_thread_cancel(l_thrid* thrid) {
   }
 }
 
-void l_raw_thread_sleep(l_long us) {
+L_EXTERN void
+l_raw_thread_sleep(l_long us)
+{
   struct timespec req;
   req.tv_sec = (time_t)(us/1000000);
   req.tv_nsec = (long)(us%1000000*1000);
@@ -940,11 +1064,15 @@ void l_raw_thread_sleep(l_long us) {
   }
 }
 
-void l_raw_thread_exit() {
+L_EXTERN void
+l_raw_thread_exit()
+{
   pthread_exit((void*)1);
 }
 
-int l_raw_thread_join(l_thrid* thrid) {
+L_EXTERN int
+l_raw_thread_join(l_thrid* thrid)
+{
   int n = 0;
   void* exitcode = 0;
   pthread_t* thread = (pthread_t*)thrid;
@@ -957,15 +1085,17 @@ int l_raw_thread_join(l_thrid* thrid) {
   return (int)(l_int)exitcode;
 }
 
-#if defined(L_PLAT_LINUX)
-#include "linuxionf.c"
-#elif defined(L_PLAT_APPLE) || defined(L_PLAT_BSD)
+#if defined(l_plat_linux)
+#include "eventpoll.c"
+#elif defined(l_plat_apple) || defined(l_plat_bsd)
 #include "bsdkqueue.c"
 #else
-#include "linuxpoll.c"
+#include "plainpoll.c"
 #endif
 
-void l_plat_test() {
+L_EXTERN void
+l_plat_test()
+{
   l_assert(sizeof(l_mutex) >= sizeof(pthread_mutex_t));
   l_assert(sizeof(l_rwlock) >= sizeof(pthread_rwlock_t));
   l_assert(sizeof(l_condv) >= sizeof(pthread_cond_t));

@@ -1,11 +1,14 @@
 #include "osi/linuxpref.h"
 #include "osi/platsock.h"
-#include "lucycore.h"
+#include "core/base.h"
+#include "core/socket.h"
 
 #define L_SOCKET_BACKLOG  (32)
 #define L_SOCKET_IPSTRLEN (48)
 
-int l_sockaddr_init(l_sockaddr* self, l_strt ip, l_ushort port) {
+L_EXTERN int
+l_sockaddr_init(l_sockaddr* self, l_strt ip, l_ushort port)
+{
   /** inet_pton htons/l ntohs/l **
   #include <arpa/inet.h> // some systems require <netinet/in.h> instead of <arpa/inet.h>
   int inet_pton(int family, const char* str, void* dest); // convert ipv4 and ipv6 from text to binary
@@ -42,9 +45,9 @@ int l_sockaddr_init(l_sockaddr* self, l_strt ip, l_ushort port) {
     sa->addr.in6.sin6_port = htons(port);
     return true;
   }
-  if (l_strt_is_empty(&ip)) {
+  if (l_strt_isEmpty(&ip)) {
     l_logw_s("empty ip provided, try to use 0.0.0.0");
-    ip = l_literal_strt("0.0.0.0");
+    ip = l_strt_literal("0.0.0.0");
   }
   if ((n = inet_pton(AF_INET, (const char*)ip.start, &(sa->addr.in.sin_addr))) != 1) {
     goto errorlabel;
@@ -63,12 +66,52 @@ errorlabel:
   return false;
 }
 
-l_ushort l_sockaddr_port(l_sockaddr* self) {
+L_EXTERN l_ushort
+l_sockaddr_port(l_sockaddr* self)
+{
   llsockaddr* sa = (llsockaddr*)self;
   return ntohs(sa->addr.in.sin_port);
 }
 
-int l_sockaddr_ipstring(l_sockaddr* self, l_string* out) {
+L_EXTERN l_ushort
+l_sockaddr_family(l_sockaddr* self)
+{
+  sa_family_t fa = 0;
+  llsockaddr* sa = (llsockaddr*)self;
+  fa = sa->addr.sa.sa_family;
+  if (fa == AF_INET) return L_SOCKET_IPV4;
+  if (fa == AF_INET6) return L_SOCKET_IPV6;
+  return 0;
+}
+
+L_EXTERN int
+l_sockaddr_ip(l_sockaddr* self, l_byte* out, l_int len)
+{
+  llsockaddr* sa = (llsockaddr*)self;
+  if (l_sockaddr_family(self) == L_SOCKET_IPV6) {
+    l_byte* p = sa->addr.in6.sin6_addr.s6_addr;
+    if (len < 16) {
+      l_loge_1("small %d < 16", ld(len));
+      return false;
+    }
+    l_copy_n(p, 16, out);
+  } else {
+    uint32_t addr = ntohl(sa->addr.in.sin_addr.s_addr); /* network order */
+    if (len < 4) {
+      l_loge_1("small %d < 4", ld(len));
+      return false;
+    }
+    out[0] = (l_byte)(addr & 0xff);
+    out[1] = (l_byte)((addr & 0xff00) >> 8);
+    out[2] = (l_byte)((addr & 0xff0000) >> 16);
+    out[3] = (l_byte)(addr >> 24);
+  }
+  return true;
+}
+
+L_EXTERN int
+l_sockaddr_ipstring(l_sockaddr* self, l_string* out)
+{
   /** inet_ntop - convert ipv4 and ipv6 addresses from binary to text form **
   #include <arpa/inet.h>
   const char* inet_ntop(int family, const void* src, char* dest, socklen_t size);
@@ -111,7 +154,9 @@ int l_sockaddr_ipstring(l_sockaddr* self, l_string* out) {
   return false;
 }
 
-static int llsetnonblock(l_handle fd) {
+static int
+llsetnonblock(int fd)
+{
   /** fcntl - manipulate file descriptor **
   #include <unistd.h>
   #include <fcntl.h>
@@ -140,7 +185,9 @@ static int llsetnonblock(l_handle fd) {
   return true;
 }
 
-static int llsocketcreate(int domain, int type, int protocol, l_handle* out) {
+static int
+llsocketcreate(int domain, int type, int protocol, int* out)
+{
   /** socket - create an endpoint for communication **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -228,11 +275,9 @@ static int llsocketcreate(int domain, int type, int protocol, l_handle* out) {
   return true;
 }
 
-int l_socket_is_open(l_handle sock) {
-  return (sock != -1);
-}
-
-void l_socket_close(l_handle sock) {
+L_EXTERN void
+l_socket_close(l_filedesc* sock)
+{
   /** close - close a file descriptor **
   #include <unistd.h>
   int close (int fd);
@@ -257,13 +302,16 @@ void l_socket_close(l_handle sock) {
   关闭套接字只是导致相应描述符的引用计数减1，如果引用计数仍大于0，这个close调用
   并不会引发TCP断连流程。如果我们确实想在某个TCP连接上发送一个FIN，可以调用
   shutdown函数以代替close()，我们将在6.5节阐述这么做的动机。*/
-  if (sock == -1) return;
-  if (close(sock) != 0) {
+  if (sock->unifd == -1) return;
+  if (close(sock->unifd) != 0) {
     l_loge_1("close socket %d", lserror(errno));
   }
+  sock->unifd = -1;
 }
 
-void l_socket_shutdown(l_handle sock, l_rune r_w_a) {
+L_EXTERN void
+l_socket_shutdown(l_filedesc sock, l_byte r_w_a)
+{
   /** shutdown - shut down part of a full-duplex connection **
   #include <sys/socket.h>
   int shutdown(int sockfd, int how);
@@ -286,12 +334,14 @@ void l_socket_shutdown(l_handle sock, l_rune r_w_a) {
     l_loge_s("shutdown invalid argument");
     return;
   }
-  if (shutdown(sock, flag) != 0) {
+  if (shutdown(sock.unifd, flag) != 0) {
     l_loge_1("shutdown %s", lserror(errno));
   }
 }
 
-l_sockaddr l_socket_getlocaladdr(l_handle sock) {
+L_EXTERN l_sockaddr
+l_socket_localaddr(l_filedesc sock)
+{
   /** getsockname **
   #include <sys/socket.h>
   int getsockname(int sockfd, struct sockaddr *addr, socklen_t *addrlen);
@@ -304,7 +354,7 @@ l_sockaddr l_socket_getlocaladdr(l_handle sock) {
   llsockaddr* sa = (llsockaddr*)&addr;
   socklen_t providedlen = sizeof(ll_sock_addr);
   sa->len =  providedlen;
-  if (getsockname(sock, &(sa->addr.sa), &(sa->len)) != 0) {
+  if (getsockname(sock.unifd, &(sa->addr.sa), &(sa->len)) != 0) {
     l_loge_1("getsockname %s", lserror(errno));
     sa->len = 0;
   }
@@ -315,7 +365,9 @@ l_sockaddr l_socket_getlocaladdr(l_handle sock) {
   return addr;
 }
 
-static int llsocketbind(l_handle sock, const l_sockaddr* addr) {
+static int
+llsocketbind(int sock, const l_sockaddr* addr)
+{
   /** bind - bind a address to a socket **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -369,7 +421,9 @@ static int llsocketbind(l_handle sock, const l_sockaddr* addr) {
   return true;
 }
 
-static int llsocketlisten(l_handle sock, int backlog) {
+static int
+llsocketlisten(int sock, int backlog)
+{
   /** listen - listen for connections on a socket **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -433,26 +487,28 @@ static int llsocketlisten(l_handle sock, int backlog) {
   return true;
 }
 
-l_handle l_socket_listen(const l_sockaddr* addr, int backlog) {
-  l_handle sock = -1;
+L_EXTERN l_filedesc
+l_socket_listen(const l_sockaddr* addr, int backlog)
+{
+  l_filedesc sock = l_filedesc_empty();
   const llsockaddr* sa = (const llsockaddr*)addr;
   int domain = (addr == 0 ? AF_INET : sa->addr.sa.sa_family);
   if (domain != AF_INET && domain != AF_INET6) {
     l_loge_s("invalid address family");
-    return -1;
+    return l_filedesc_empty();
   }
-  if (!llsocketcreate(domain, SOCK_STREAM, IPPROTO_TCP, &sock)) {
-    return -1;
+  if (!llsocketcreate(domain, SOCK_STREAM, IPPROTO_TCP, &sock.unifd)) {
+    return l_filedesc_empty();
   }
   /* 如果一个TCP客户或服务器未曾调用bind绑定一个端口，当使用connect或
   listen 时，内核会为相应的套接字选择一个临时端口 */
-  if (addr && !llsocketbind(sock, addr)) {
-    l_socket_close(sock);
-    return -1;
+  if (addr && !llsocketbind(sock.unifd, addr)) {
+    l_socket_close(&sock);
+    return l_filedesc_empty();
   }
-  if (!llsocketlisten(sock, (backlog <= 0 ? L_SOCKET_BACKLOG : backlog))) {
-    l_socket_close(sock);
-    return -1;
+  if (!llsocketlisten(sock.unifd, (backlog <= 0 ? L_SOCKET_BACKLOG : backlog))) {
+    l_socket_close(&sock);
+    return l_filedesc_empty();
   }
   return sock;
 }
@@ -533,7 +589,9 @@ recvfrom。
 
 typedef void (*l_sigfunc)(int);
 
-static l_sigfunc llsigact(int sig, l_sigfunc func) {
+static l_sigfunc
+llsigact(int sig, l_sigfunc func)
+{
   /** sigaction - examine and change a signal action **
   #include <signal.h>
   int sigaction(int signum, const struct sigaction* act, struct sigaction* oldact);
@@ -624,11 +682,15 @@ static l_sigfunc llsigact(int sig, l_sigfunc func) {
   return oldact.sa_handler;
 }
 
-void l_sigign(int sig) {
+L_EXTERN void
+l_sigign(int sig)
+{
   llsigact(sig, SIG_IGN);
 }
 
-void l_socket_startup() {
+L_EXTERN void
+l_socket_init()
+{
   l_sigign(SIGPIPE);
 }
 
@@ -694,7 +756,9 @@ caused connection abort）。POSIX作出修正的理由在于，流子系统（s
 不把该错误传递给进程的做法所涉及的步骤在TCPv2中得到阐述，引发该错误的RST在第964
 页到达处理，导致tcp_close被调用。*/
 
-void l_socket_accept(l_handle sock, void (*cb)(void*, l_sockconn*), void* ud) {
+L_EXTERN void
+l_socket_accept(l_filedesc sock, void (*cb)(void*, l_sockconn*), void* ud)
+{
   int n = 0;
   l_sockconn conn;
   llsockaddr* sa = (llsockaddr*)&(conn.remote);
@@ -702,12 +766,12 @@ void l_socket_accept(l_handle sock, void (*cb)(void*, l_sockconn*), void* ud) {
 
   for (; ;) {
     sa->len = providedlen;
-    if ((conn.sock = accept(sock, &(sa->addr.sa), &(sa->len))) != -1) {
+    if ((conn.sock.unifd = accept(sock.unifd, &(sa->addr.sa), &(sa->len))) != -1) {
       if (sa->len > providedlen) {
         l_loge_s("accept address truncated");
         sa->len = providedlen;
       }
-      llsetnonblock(conn.sock);
+      llsetnonblock(conn.sock.unifd);
       cb(ud, &conn);
       continue;
     }
@@ -779,7 +843,9 @@ SIGKILL信号（该信号不能被捕获）。这么做留给所有运行进程�
 如5.12节所讨论的一样，我们必须在客户中使用select或poll函数，以防TCP断连时客户阻塞在
 其他的函数中而不能快速知道TCP已经断连了。*/
 
-static int llsocketconnect(l_handle sock, const l_sockaddr* addr) {
+static int
+llsocketconnect(int sock, const l_sockaddr* addr)
+{
   /** connect - initiate a conneciton on a socket **
   #include <sys/types.h>
   #include <sys/socket.h>
@@ -899,38 +965,44 @@ static int llsocketconnect(l_handle sock, const l_sockaddr* addr) {
   return false;
 }
 
-void l_socketconn_init(l_sockconn* self, l_strt ip, l_ushort port) {
-  self->sock = -1;
+L_EXTERN void
+l_socketconn_init(l_sockconn* self, l_strt ip, l_ushort port)
+{
+  self->sock = l_filedesc_empty();
   l_sockaddr_init(&(self->remote), ip, port);
 }
 
 /* return true if success, return false if inprocess or error (socket closed on error) */
-int l_socket_connect(l_sockconn* conn) {
-  l_handle sock = conn->sock;
+L_EXTERN int
+l_socket_connect(l_sockconn* conn)
+{
+  l_filedesc sock = conn->sock;
   l_sockaddr* addr = &(conn->remote);
-  if (!l_socket_is_open(sock)) {
+  if (sock.unifd == -1) {
     llsockaddr* sa = (llsockaddr*)addr;
     int domain = sa->addr.sa.sa_family;
     if (domain != AF_INET && domain != AF_INET6) {
       l_loge_s("connect invalid address");
       return false;
     }
-    if (!llsocketcreate(domain, SOCK_STREAM, IPPROTO_TCP, &sock)) {
+    if (!llsocketcreate(domain, SOCK_STREAM, IPPROTO_TCP, &sock.unifd)) {
       return false;
     }
   } else {
     /* socket already opened, it should be called 2nd time after EINPROGRESS */
   }
-  if (llsocketconnect(sock, addr)) {
+  if (llsocketconnect(sock.unifd, addr)) {
     return true;
   }
   if (errno != EINPROGRESS) {
-    l_socket_close(sock);
+    l_socket_close(&sock);
   }
   return false;
 }
 
-l_int ll_read(l_handle fd, void* out, l_int count) {
+L_PRIVAT l_int
+ll_read(int fd, void* out, l_int count)
+{
   /** read - read from a file descriptor **
   #include <unistd.h>
   ssize_t read(int fd, void *buf, size_t count);
@@ -970,7 +1042,7 @@ l_int ll_read(l_handle fd, void* out, l_int count) {
   Other errors may occurs, depending on the object connected to fd. */
   ssize_t n = 0;
 
-  if (count < 0 || count > l_max_rdwr_size) {
+  if (count < 0 || count > L_MAX_RWSIZE) {
     l_loge_s("read invalid argument");
     return -2;
   }
@@ -1003,7 +1075,9 @@ l_int ll_read(l_handle fd, void* out, l_int count) {
   return -2;
 }
 
-l_int ll_write(l_handle fd, const void* buf, l_int count) {
+L_PRIVAT l_int
+ll_write(int fd, const void* buf, l_int count)
+{
   /** write - write to a file descriptor **
   #include <unistd.h>
   ssize_t write(int fd, const void *buf, size_t count);
@@ -1067,7 +1141,7 @@ l_int ll_write(l_handle fd, const void* buf, l_int count) {
   Other errors may occur, depending on the object connected to fd. */
   ssize_t n = 0;
 
-  if (count < 0 || count > l_max_rdwr_size) {
+  if (count < 0 || count > L_MAX_RWSIZE) {
     l_loge_s("write invalid argument");
     return -2;
   }
@@ -1100,11 +1174,12 @@ l_int ll_write(l_handle fd, const void* buf, l_int count) {
   return -2;
 }
 
-/* *status >=0 success, <0 L_STATUS_ERROR */
-l_int l_socket_read(l_handle sock, void* out, l_int count, l_int* status) {
+L_EXTERN l_int /* *status >=0 success, <0 L_ERROR */
+l_socket_read(l_filedesc sock, void* out, l_int count, l_int* status)
+{
   l_byte* buf = (l_byte*)out;
   l_int n = 0, sum = 0;
-  while ((n = ll_read(sock, buf, count)) > 0) {
+  while ((n = ll_read(sock.unifd, buf, count)) > 0) {
     sum += n;
     buf += n;
     count -= n;
@@ -1113,16 +1188,17 @@ l_int l_socket_read(l_handle sock, void* out, l_int count, l_int* status) {
     }
   }
   if (status) {
-    *status = (count == 0 ? 0 : (n == -2 ? L_STATUS_ERROR : count));
+    *status = (count == 0 ? 0 : (n == -2 ? L_ERROR : count));
   }
   return sum;
 }
 
-/* *status >=0 success, <0 L_STATUS_ERROR */
-l_int l_socket_write(l_handle sock, const void* from, l_int count, l_int* status) {
+L_EXTERN l_int /* *status >=0 success, <0 L_STATUS_ERROR */
+l_socket_write(l_filedesc sock, const void* from, l_int count, l_int* status)
+{
   l_int n = 0, sum = 0;
   const l_byte* buf = (const l_byte*)from;
-  while ((n = ll_write(sock, buf, count)) > 0) {
+  while ((n = ll_write(sock.unifd, buf, count)) > 0) {
     sum += n;
     buf += n;
     count -= n;
@@ -1131,14 +1207,16 @@ l_int l_socket_write(l_handle sock, const void* from, l_int count, l_int* status
     }
   }
   if (status) {
-    *status = (count == 0 ? 0 : (n == -2 ? L_STATUS_ERROR : count));
+    *status = (count == 0 ? 0 : (n == -2 ? L_ERROR : count));
   }
   return sum;
 }
 
-void l_plat_sock_test() {
+L_EXTERN void
+l_plat_sock_test()
+{
   l_sockaddr sa;
-  l_string ip = l_create_string_from(l_empty_strt());
+  l_string ip = l_string_createFrom(l_strn_empty());
   /* all kind of socket address size */
   l_logd_1("socklen_t %d-byte", ld(sizeof(socklen_t)));
   l_logd_1("struct in_addr %d-byte", ld(sizeof(struct in_addr)));
@@ -1152,21 +1230,21 @@ void l_plat_sock_test() {
   l_logd_1("INET_ADDRSTRLEN ipv4 string max len %d", ld(INET_ADDRSTRLEN));
   l_logd_1("INET6_ADDRSTRLEN ipv6 string max len %d", ld(INET6_ADDRSTRLEN));
   /* ipv4 string convert */
-  l_sockaddr_init(&sa, l_literal_strt("127.0.0.1"), 1024);
+  l_sockaddr_init(&sa, l_strt_literal("127.0.0.1"), 1024);
   l_sockaddr_ipstring(&sa, &ip);
   l_assert(l_sockaddr_port(&sa) == 1024);
-  l_assert(l_string_equal(&ip, l_literal_strt("127.0.0.1")));
+  l_assert(l_string_equal(&ip, l_strt_literal("127.0.0.1")));
   /* ipv6 string convert */
-  l_sockaddr_init(&sa, l_literal_strt("::3742:204.152.189.116"), 2048);
+  l_sockaddr_init(&sa, l_strt_literal("::3742:204.152.189.116"), 2048);
   l_sockaddr_ipstring(&sa, &ip);
   l_assert(l_sockaddr_port(&sa) == 2048);
-  l_assert(l_string_equal(&ip, l_literal_strt("::3742:cc98:bd74")));
+  l_assert(l_string_equal(&ip, l_strt_literal("::3742:cc98:bd74")));
   l_logd_1("l_sockaddr ip string %s", lstring(&ip));
-  l_sockaddr_init(&sa, l_literal_strt("::3742:4723:5525"), 4096);
+  l_sockaddr_init(&sa, l_strt_literal("::3742:4723:5525"), 4096);
   l_sockaddr_ipstring(&sa, &ip);
   l_assert(l_sockaddr_port(&sa) == 4096);
-  l_assert(l_string_equal(&ip, l_literal_strt("::3742:4723:5525")));
-  l_string_free(&ip);
+  l_assert(l_string_equal(&ip, l_strt_literal("::3742:4723:5525")));
+  l_string_free(&ip, 0);
   /* protocol number */
   l_logd_1("IPPROTO_IP(0) is %d", ld(IPPROTO_IP));
   l_logd_1("IPPROTO_IPV6(41) is %d", ld(IPPROTO_IPV6));

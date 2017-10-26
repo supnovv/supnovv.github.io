@@ -1,6 +1,8 @@
 #include "osi/linuxpref.h"
 #include "osi/plationf.h"
-#include "lucycore.h"
+#include "core/base.h"
+#include "core/string.h"
+#include "core/socket.h"
 
 /** eventfd - create a file descriptor for event notification **
 #include <sys/eventfd.h>
@@ -92,8 +94,9 @@ monitor the readiness of "traditonal" files and the readiness of other kernel
 mechanisms that support the eventfd interface. (Without the eventfd() interface, these
 mechanisms could not be multiplexed via select(2), poll(2), or epoll(7)). */
 
-/* return -1 failed, others success */
-static int ll_event_fd() {
+static int /* return -1 failed, others success */
+ll_event_fd()
+{
   int n = eventfd(0, EFD_NONBLOCK);
   if (n == -1) {
     l_loge_1("eventfd %s", lserror(n));
@@ -101,17 +104,20 @@ static int ll_event_fd() {
   return n;
 }
 
-static void ll_event_fd_close(l_handle fd) {
+static void
+ll_event_fd_close(int fd)
+{
   if (close(fd) != 0) {
     l_loge_1("eventfd close %s", lserror(errno));
   }
 }
 
-l_int ll_read(l_handle fd, void* out, l_int count);
-l_int ll_write(l_handle fd, const void* buf, l_int count);
+L_PRIVAT l_int ll_read(int fd, void* out, l_int count);
+L_PRIVAT l_int ll_write(int fd, const void* buf, l_int count);
 
-/* return > 0 success, -1 block, -2 error */
-static int ll_event_fd_write(int fd) {
+static int /* return > 0 success, -1 block, -2 error */
+ll_event_fd_write(int fd)
+{
   l_ulong count = 1;
   int n = ll_write(fd, &count, sizeof(l_ulong));
   if (n == sizeof(l_ulong)) {
@@ -121,8 +127,9 @@ static int ll_event_fd_write(int fd) {
   return -2;
 }
 
-/* return > 0 success, -1 block, -2 error */
-static int ll_event_fd_read(int fd) {
+static int /* return > 0 success, -1 block, -2 error */
+ll_event_fd_read(int fd)
+{
   l_ulong count = 0;
   int n = ll_read(fd, &count, sizeof(l_ulong));
   if (n == sizeof(l_ulong)) {
@@ -221,7 +228,9 @@ example, FreeBSD has kqueue, and Solaris has /dev/poll.
 The set of fds that is being monitored via an epoll fd can be viewed the entry for the
 epoll fd in the process's /proc/[pid]/fdinfo directory. */
 
-static int ll_epoll_create() {
+static int
+ll_epoll_create()
+{
   /** epoll_create **
   #include <sys/epoll.h>
   int epoll_create(int size);
@@ -261,13 +270,17 @@ static int ll_epoll_create() {
   return epfd;
 }
 
-static void llepollmgr_close(int epfd) {
+static void
+llepollmgr_close(int epfd)
+{
   if (close(epfd) != 0) {
     l_loge_1("close epoll %s", lserror(errno));
   }
 }
 
-static int llepollmgr_ctl(int epfd, int op, int fd, struct epoll_event* event) {
+static int
+llepollmgr_ctl(int epfd, int op, int fd, struct epoll_event* event)
+{
   if (epfd == -1 || fd == -1 || epfd == fd) {
     l_loge_s("llepollmgr_ctl invalid fd");
     return false;
@@ -309,7 +322,9 @@ static int llepollmgr_ctl(int epfd, int op, int fd, struct epoll_event* event) {
   return (epoll_ctl(epfd, op, fd, event) == 0);
 }
 
-static int llepollmgr_add(int epfd, int fd, struct epoll_event* event) {
+static int
+llepollmgr_add(int epfd, int fd, struct epoll_event* event)
+{
   if (llepollmgr_ctl(epfd, EPOLL_CTL_ADD, fd, event)) return true;
   if (errno == EEXIST && llepollmgr_ctl(epfd, EPOLL_CTL_MOD, fd, event)) {
     return true;
@@ -318,7 +333,9 @@ static int llepollmgr_add(int epfd, int fd, struct epoll_event* event) {
   return false;
 }
 
-static int llepollmgr_mod(int epfd, int fd, struct epoll_event* event) {
+static int
+llepollmgr_mod(int epfd, int fd, struct epoll_event* event)
+{
   if (!llepollmgr_ctl(epfd, EPOLL_CTL_MOD, fd, event)) {
     l_loge_1("llepollmgr_mod %s", lserror(errno));
     return false;
@@ -326,7 +343,9 @@ static int llepollmgr_mod(int epfd, int fd, struct epoll_event* event) {
   return true;
 }
 
-static int llepollmgr_del(int epfd, int fd) {
+static int
+llepollmgr_del(int epfd, int fd)
+{
   /* In kernel versions before 2.6.9, the EPOLL_CTL_DEL
   operation required a non-null pointer in event, even
   though this argument is ignored. Since Linux 2.6.9, event
@@ -342,7 +361,9 @@ static int llepollmgr_del(int epfd, int fd) {
   return true;
 }
 
-static void llepollmgr_wait(llepollmgr* self, int ms) {
+static void
+llepollmgr_wait(llepollmgr* self, int ms)
+{
   /** epoll_wait **
   #include <sys/epoll.h>
   int epoll_wait(int epfd, struct epoll_event* events, int maxevents, int timeout);
@@ -401,7 +422,9 @@ static void llepollmgr_wait(llepollmgr* self, int ms) {
   }
 }
 
-int l_ionfmgr_init(l_ionfmgr* self) {
+L_EXTERN int
+l_eventmgr_init(l_eventmgr* self)
+{
   llepollmgr* mgr = (llepollmgr*)self;
   l_zero_n(mgr, sizeof(llepollmgr));
   l_mutex_init((l_mutex*)&(mgr->mutex));
@@ -414,7 +437,9 @@ int l_ionfmgr_init(l_ionfmgr* self) {
   return true;
 }
 
-void l_ionfmgr_free(l_ionfmgr* self) {
+L_EXTERN void
+l_eventmgr_free(l_eventmgr* self)
+{
   llepollmgr* mgr = (llepollmgr*)self;
   mgr->wakeupfd_added = false;
   mgr->wakeup_count = 0;
@@ -450,40 +475,53 @@ static uint32_t llepollmasks[] = {
   /* 0x11 */ 0
 };
 
-static l_ushort llionfrd[] = {0, L_IOEVENT_READ};
-static l_ushort llionfwr[] = {0, L_IOEVENT_WRITE};
-static l_ushort llionfpri[] = {0, L_IOEVENT_PRI};
-static l_ushort llionfrdh[] = {0, L_IOEVENT_RDH};
-static l_ushort llionfhup[] = {0, L_IOEVENT_HUP};
-static l_ushort llionferr[] = {0, L_IOEVENT_ERR};
+static l_ushort llionfrd[] = {0, L_SOCKET_READ};
+static l_ushort llionfwr[] = {0, L_SOCKET_WRITE};
+static l_ushort llionfpri[] = {0, L_SOCKET_PRI};
+static l_ushort llionfrdh[] = {0, L_SOCKET_RDH};
+static l_ushort llionfhup[] = {0, L_SOCKET_HUP};
+static l_ushort llionferr[] = {0, L_SOCKET_ERR};
 
-static uint32_t llgetepollmasks(l_ioevent* event) {
-  return (llepollmasks[event->masks & L_IOEVENT_READ] | llepollmasks[event->masks & L_IOEVENT_WRITE] |
-    llepollmasks[event->masks & L_IOEVENT_PRI] | llepollmasks[event->masks & L_IOEVENT_RDH]);
+static uint32_t
+llgetepollmasks(l_ioevent* event)
+{
+  return (llepollmasks[event->masks & L_SOCKET_READ] | llepollmasks[event->masks & L_SOCKET_WRITE] |
+    llepollmasks[event->masks & L_SOCKET_PRI] | llepollmasks[event->masks & L_SOCKET_RDH]);
 }
 
-static l_ushort llgetionfmasks(struct epoll_event* event) {
+static l_ushort
+llgetionfmasks(struct epoll_event* event)
+{
   uint32_t masks = event->events;
   return (llionfrd[(masks&EPOLLIN)!=0] | llionfwr[(masks&EPOLLOUT)!=0] | llionfpri[(masks&EPOLLPRI)!=0] |
-    llionfrdh[(masks&EPOLLRDHUP)!=0] | llionfhup[(masks&EPOLLHUP)!=0] | llionferr[(masks&L_IOEVENT_ERR)!=0]);
+    llionfrdh[(masks&EPOLLRDHUP)!=0] | llionfhup[(masks&EPOLLHUP)!=0] | llionferr[(masks&L_SOCKET_ERR)!=0]);
 }
 
-static uint64_t llgetepolludata(l_ioevent* event) {
-  uint32_t fd = event->fd;
+static uint64_t
+llgetepolludata(l_ioevent* event)
+{
+  uint32_t fd = (uint32_t)event->fd.unifd;
   uint64_t udata = event->udata;
   return ((udata << 32) | fd);
 }
 
-static l_handle llgetionfhandle(struct epoll_event* event) {
-  uint32_t fd = (uint32_t)(event->data.u64 & 0xFFFFFFFF);
-  return (l_handle)fd;
+static l_filedesc
+llgetionfhandle(struct epoll_event* event)
+{
+  l_filedesc fd;
+  fd.unifd = (int)(event->data.u64 & 0xFFFFFFFF);
+  return fd;
 }
 
-static l_umedit llgetionfudata(struct epoll_event* event) {
+static l_umedit
+llgetionfudata(struct epoll_event* event)
+{
   return (l_umedit)(event->data.u64 >> 32);
 }
 
-int l_ionfmgr_add(l_ionfmgr* self, l_ioevent* event) {
+L_EXTERN int
+l_eventmgr_add(l_eventmgr* self, l_ioevent* event)
+{
   /** event masks **
   The bit masks can be composed using the following event types:
   EPOLLIN - The associated file is available for read operations.
@@ -550,24 +588,29 @@ int l_ionfmgr_add(l_ionfmgr* self, l_ioevent* event) {
   struct epoll_event e;
   e.events = (EPOLLHUP | EPOLLERR | llgetepollmasks(event));
   e.data.u64 = llgetepolludata(event);
-  return llepollmgr_add(mgr->epfd, event->fd, &e);
+  return llepollmgr_add(mgr->epfd, event->fd.unifd, &e);
 }
 
-int l_ionfmgr_mod(l_ionfmgr* self, l_ioevent* event) {
+L_EXTERN int
+l_eventmgr_mod(l_eventmgr* self, l_ioevent* event)
+{
   llepollmgr* mgr = (llepollmgr*)self;
   struct epoll_event e;
   e.events = (EPOLLHUP | EPOLLERR | llgetepollmasks(event));
   e.data.u64 = llgetepolludata(event);
-  return llepollmgr_mod(mgr->epfd, event->fd, &e);
+  return llepollmgr_mod(mgr->epfd, event->fd.unifd, &e);
 }
 
-int l_ionfmgr_del(l_ionfmgr* self, l_handle fd) {
+L_EXTERN int
+l_eventmgr_del(l_eventmgr* self, l_filedesc fd)
+{
   llepollmgr* mgr = (llepollmgr*)self;
-  return llepollmgr_del(mgr->epfd, fd);
+  return llepollmgr_del(mgr->epfd, fd.unifd);
 }
 
-/* return > 0 success, -1 block, -2 error, -3 already signaled */
-int l_ionfmgr_wakeup(l_ionfmgr* self) {
+L_EXTERN int /* return > 0 success, -1 block, -2 error, -3 already signaled */
+l_eventmgr_wakeup(l_eventmgr* self)
+{
   llepollmgr* mgr = (llepollmgr*)self;
   l_mutex* mtx = (l_mutex*)&(mgr->mutex);
 
@@ -591,8 +634,8 @@ int l_ionfmgr_wakeup(l_ionfmgr* self) {
   return ll_event_fd_write(mgr->wakeupfd);
 }
 
-/* return number of events waited and handled */
-int l_ionfmgr_timedwait(l_ionfmgr* self, int ms, void (*cb)(l_ioevent*)) {
+L_EXTERN int /* return number of events waited and handled */
+l_eventmgr_timedWait(l_eventmgr* self, int ms, void (*cb)(l_ioevent*)) {
   llepollmgr* mgr = (llepollmgr*)self;
   struct epoll_event* start = 0;
   struct epoll_event* beyond = 0;
@@ -645,15 +688,21 @@ int l_ionfmgr_timedwait(l_ionfmgr* self, int ms, void (*cb)(l_ioevent*)) {
   return mgr->nready;
 }
 
-int l_ionfmgr_wait(l_ionfmgr* self, void (*cb)(l_ioevent*)) {
-  return l_ionfmgr_timedwait(self, -1, cb);
+L_EXTERN int
+l_eventmgr_wait(l_eventmgr* self, void (*cb)(l_ioevent*))
+{
+  return l_eventmgr_timedWait(self, -1, cb);
 }
 
-int l_ionfmgr_trywait(l_ionfmgr* self, void (*cb)(l_ioevent*)) {
-  return l_ionfmgr_timedwait(self, 0, cb);
+L_EXTERN int
+l_eventmgr_tryWait(l_eventmgr* self, void (*cb)(l_ioevent*))
+{
+  return l_eventmgr_timedWait(self, 0, cb);
 }
 
-void l_plat_ionf_test() {
-  l_assert(sizeof(l_handle) <= 4);
+L_EXTERN void
+l_plat_event_test()
+{
+  l_assert(sizeof(l_filedesc) <= 4);
 }
 

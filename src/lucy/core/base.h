@@ -65,7 +65,7 @@
 #define L_CONTREAD (3)
 
 #define L_ERROR  (-1)
-#define L_ELUA   (-2)
+#define L_ERRLUA (-2)
 #define L_EREAD  (-3)
 #define L_EWRITE (-4)
 #define L_ELIMIT (-5)
@@ -180,6 +180,10 @@ typedef struct {
   const l_byte* s;
   l_int hint;
 } l_from;
+
+#define l_from_literal(s) l_from_strn(l_cstr("" s), sizeof(s) / sizeof(char) - 1)
+#define l_from_empty() ((l_from){0,0})
+#define l_from_cstr(s) l_from_strn((s), strlen((char*)(s)))
 
 L_INLINE l_from
 l_from_file(const void* filename)

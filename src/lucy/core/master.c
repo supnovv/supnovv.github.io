@@ -82,7 +82,7 @@ l_config_create()
     conf->thread_max_free_memory = 1024;
   }
 
-  if (!l_luaconf_str(conf->L, "logfile_prefix", l_set_logfile_prefix, conf)) {
+  if (!l_luaconf_str(conf->L, l_set_logfile_prefix, conf, "logfile_prefix")) {
     /* if get from config file failed, set the default name prefix */
     l_set_logfile_prefix(conf, l_strn_literal("logcat"));
   }
@@ -743,6 +743,238 @@ typedef struct l_service {
   int coref;
 } l_service;
 
+L_EXTERN int
+l_service_initState(l_service* srvc)
+{
+  lua_State* L = srvc->thread->L;
+  srvc->coref = LUA_NOREF;
+  /**
+   * lua_State* lua_newthread(lua_State* L);
+   *
+   * Creates a new thread, pushes it on the stack, and returns a ponter to
+   * lua_State that represents this new thread. The new thread returned by
+   * this function shares with the original thread its global environment,
+   * but has an independent execution stack.
+   *
+   * There is no explicit function to close or to destroy a thread. Threads
+   * are subject to garbage collection, like any Lua object.
+   *
+   */
+  if (!(srvc->co = lua_newthread(L))) {
+    l_loge_s("lua_newthread failed");
+    return false;
+  }
+  /**
+   * int luaL_ref(lua_State* L, int t);
+   *
+   * Creates and returns a reference, in the table at index t, for the object
+   * at the top of the stack (and pops the object).
+   *
+   * A reference is a unique integer key. As long as you do not manually add
+   * integer keys into table t, luaL_ref ensures the uniqueness of the key it
+   * returns. You can retrieve an object referred by reference r by calling
+   * lua_rawgeti(L, t, r). Function luaL_unref frees a reference and its
+   * associated object.
+   *
+   * If the object at the top of the stack is nil, luaL_ref returns the
+   * constant LUA_REFNIL. The constant LUA_NOREF is guaranteed to be different
+   * from any reference returned by luaL_ref.
+   *
+   */
+  srvc->coref = luaL_ref(L, LUA_REGISTRYINDEX);
+  return true;
+}
+
+L_EXTERN void
+l_service_freeState(l_service* srvc)
+{
+  if (srvc->coref == LUA_NOREF) return;
+  luaL_unref(srvc->thread->L, LUA_REGISTRYINDEX, srvc->coref); /* do nothing if LUA_NOREF/LUA_REFNIL */
+  srvc->co = 0;
+  srvc->coref = LUA_NOREF;
+}
+
+static int /* return 0 OK, 1 YIELD, <0 L_STATUS_LUAERR or error code */
+llstateresume(l_service* srvc, int nargs)
+{
+  /** lua_resume **
+  int lua_resume(lua_State* L, lua_State* from, int nargs);
+  Starts and resumes a coroutine in the given thread L.
+  The parameter 'from' represents the coroutine that is resuming L.
+  If there is no such coroutine, this parameter can be NULL.
+  All arguments and the function value are popped from the stack when
+  the function is called. The function results are pushed onto the
+  stack when the function returns, and the last result is on the top
+  of the stack. */
+  int nelems = 0;
+  int n = lua_resume(srvc->co, srvc->thread->L, nargs);
+  if (n == LUA_OK) {
+    /* coroutine finishes its execution without errors, the stack in L contains
+    all values returned by the coroutine main function 'func'. */
+    if ((nelems = lua_gettop(srvc->co)) > 0) {
+      lua_Integer nerror = lua_tointeger(srvc->co, -1); /* error code is on top */
+      lua_pop(srvc->co, nelems);
+      l_assert(nelems == 1);
+      if (nerror < 0) {
+        /* user program error code */
+        return (int)nerror;
+      }
+    }
+    return L_SUCCESS;
+  }
+
+  if (n == LUA_YIELD) {
+    /* coroutine yields, the stack in L contains all values passed to lua_yield. */
+    if ((nelems = lua_gettop(srvc->co)) > 0) {
+      lua_Integer code = lua_tointeger(srvc->co, -1); /* the code is on top */
+      lua_pop(srvc->co, nelems);
+      l_assert(nelems == 1);
+      if (code > 0) {
+        return (int)code;
+      }
+    }
+    return L_LUAYIELD;
+  }
+
+  /* error code is returned and the stack in L contains the error object on the top.
+  Lua itself only generates errors whose error object is a string, but programs may
+  generate errors with any value as the error object. in case of errors, the stack
+  is not unwound, so you can use the debug api over it.
+  LUA_ERRRUN: a runtime error.
+  LUA_ERRMEM: memory allocation error. For such errors, Lua does not call the message handler.
+  LUA_ERRERR: error while running the message handler.
+  LUA_ERRGCMM: error while running a __gc metamethod. For such errors, Lua does not call
+  the message handler (as this kind of error typically has no relation with the function
+  being called). */
+  l_loge_1("lua_resume %s", ls(lua_tostring(srvc->co, -1)));
+  lua_pop(srvc->co, lua_gettop(srvc->co)); /* pop elems exist including the error object */
+  return L_ERRLUA;
+}
+
+static int
+llstatefunc(lua_State* co)
+{
+  int status = 0;
+  l_service* srvc = 0;
+  srvc = (l_service*)lua_touserdata(co, -1);
+  lua_pop(srvc->co, 1);
+  status = srvc->func(srvc);
+  /* never goes here if ccco->func is yield inside */
+  if (status < 0) {
+    lua_pushinteger(srvc->co, status);
+    return 1; /* return one result */
+  }
+  return 0;
+}
+
+L_EXTERN int
+l_service_isYield(l_service* srvc)
+{
+  /**
+   * int lua_status(lua_State* L);
+   *
+   * Returns the status of the thread L. The status can be 0 (LUA_OK) for a normal thread,
+   * an error code if the thread finished the execution of a lua_resume with an error, or
+   * LUA_YIELD if the thread is suspended.
+   *
+   * You can only call functions in threads with status LUA_OK. You can resume threads with
+   * status LUA_OK (to start a new coroutine) or LUA_YIELD (to resume a coroutine).
+   *
+   */
+  return lua_status(srvc->co) == LUA_YIELD;
+}
+
+L_EXTERN int
+l_service_setResume(l_service* srvc, int (*func)(l_service*))
+{
+  int status = 0;
+
+  if (srvc->co == 0) {
+    l_service_initState(srvc);
+  }
+
+  srvc->func = func;
+
+  if ((status = lua_status(srvc->co)) != LUA_OK) {
+    l_loge_1("lua_State is not in LUA_OK status %d", ld(status));
+    return false;
+  }
+
+  return true;
+}
+
+L_EXTERN int
+l_service_resume(l_service* srvc)
+{
+  int nargs = 0;
+  int costatus = 0;
+
+  /** int lua_status(lua_State* L) **
+  LUA_OK - start a new coroutine or restart it, or can call functions
+  LUA_YIELD - can resume a suspended coroutine */
+  if ((costatus = lua_status(srvc->co)) == LUA_OK) {
+    /* start or restart coroutine, need to provide coroutine function */
+    lua_pushcfunction(srvc->co, llstatefunc);
+    lua_pushlightuserdata(srvc->co, srvc);
+    return llstateresume(srvc, nargs+1);
+  }
+
+  if (costatus == LUA_YIELD) {
+    /* no need to provide func again when coroutine is suspended */
+    return llstateresume(srvc, 0);
+  }
+
+  l_loge_s("coroutine cannot be resumed");
+  return L_ERRLUA;
+}
+
+static int
+llstatekfunc(lua_State* co, int status, lua_KContext ctx)
+{
+  l_service* srvc = (l_service*)ctx;
+  l_assert(co == srvc->co); /* co passed here should be equal to srvc->co */
+  (void)status; /* status always is LUA_YIELD when kfunc is called after lua_yieldk */
+  status = srvc->kfunc(srvc);
+  /* never goes here if srvc->func is yield inside */
+  if (status < 0) {
+    lua_pushinteger(co, status);
+    return 1; /* return one result */
+  }
+  return 0;
+}
+
+L_EXTERN int
+l_service_yieldWith(l_service* srvc, int (*kfunc)(l_service*), int code)
+{
+  int status = 0;
+  int nresults = 0;
+  srvc->kfunc = kfunc;
+  /* int lua_yieldk(lua_State* co, int nresults, lua_KContext ctx, lua_KFunction k);
+  Usually, this function does not return; when the coroutine eventually resumes, it
+  continues executing the continuation function. However, there is one special case,
+  which is when this function is called from inside a line or a count hook. In that
+  case, lua_yielkd should be called with no continuation (probably in the form of
+  lua_yield) and no results, and the hook should return immediately after the call.
+  Lua will yield and, when the coroutine resumes again, it will continue the normal
+  execution of the (Lua) function that triggered the hook.
+  This function can raise an error if it is called from a thread with a pending C
+  call with no continuation function, or it is called from a thread that is not
+  running inside a resume (e.g., the main thread). */
+  if (code > 0) {
+    lua_pushinteger(srvc->co, code);
+    nresults += 1;
+  }
+  status = lua_yieldk(srvc->co, nresults, (lua_KContext)srvc, llstatekfunc);
+  l_loge_s("lua_yieldk never returns to here"); /* the code never goes here */
+  return status;
+}
+
+L_EXTERN int
+l_service_yield(l_service* srvc, int (*kfunc)(l_service*))
+{
+  return l_service_yieldWith(srvc, kfunc, 0);
+}
+
 typedef struct {
   l_smplnode node;
 } l_srvcslot;
@@ -1015,7 +1247,7 @@ l_service_setEventImpl(l_service* srvc, l_filedesc fd, l_ushort masks, l_ushort 
     return srvc;
   }
 
-  if (l_filedesc_isEmpty(&fd)) {
+  if (l_filedesc_isEmpty(fd)) {
     return srvc;
   }
 
@@ -1068,7 +1300,7 @@ l_service_delEvent(l_service* srvc)
     srvc->flagw &= (~L_SERVICE_SOCKET);
   }
 
-  if (l_filedesc_isEmpty(&fd)) {
+  if (l_filedesc_isEmpty(fd)) {
     return;
   }
 
@@ -1098,17 +1330,17 @@ l_service_mod_event_impl(l_service* srvc, l_filedesc fd, l_ushort masks, l_ushor
     srvc->ioev = 0;
   }
   srvc->flagw &= (~L_SERVICE_SOCKET);
-  if (!l_filedesc_isEmpty(&fd)) {
+  if (!l_filedesc_isEmpty(fd)) {
     l_service_set_event_impl(srvc, fd, masks, flags);
     srvc->ioev->masks = 0; /* clear masks, prepare to receive */
   }
   l_mutex_unlock(svmtx);
 
-  if (!l_filedesc_isEmpty(&oldfd)) {
+  if (!l_filedesc_isEmpty(oldfd)) {
     l_message_delServiceEvent(thread, fd);
   }
 
-  if (!l_filedesc_isEmpty(&fd)) {
+  if (!l_filedesc_isEmpty(fd)) {
     l_message_addServiceEvent(srvc->thread, fd, l_service_id_for_lookup(srvc), masks);
   }
 }
@@ -1304,7 +1536,7 @@ l_master_dispatchEvent(l_ioevent* rxev)
 
   l_mutex_lock(svmtx);
   srev = srvc->ioev;
-  if (!srev || !l_filedesc_equal(&srev->fd, &rxev->fd)) {
+  if (!srev || !l_filedesc_equal(srev->fd, rxev->fd)) {
     l_mutex_unlock(svmtx);
     return;
   }
@@ -1785,5 +2017,98 @@ l_master_test()
   l_assert(sizeof(void*) <= 8);
   l_assert(udata == ((l_ulong)-100));
   l_assert(((l_long)udata) == -100);
+}
+
+static int
+llstatetestfunc(l_service* srvc)
+{
+  static int i = 0;
+  switch (i) {
+  case 0:
+    ++i;
+    return l_service_yield(srvc, llstatetestfunc);
+  case 1:
+    ++i;
+    return l_service_yieldWith(srvc, llstatetestfunc, 3);
+  case 2:
+    ++i;
+    return l_service_yield(srvc, llstatetestfunc);
+  case -1:
+    --i;
+    return l_service_yieldWith(srvc, llstatetestfunc, 5);
+  case -2:
+    --i;
+    return l_service_yield(srvc, llstatetestfunc);
+  case -3:
+    i = 0;
+    return -3;
+  default:
+    i = -1;
+    break;
+  }
+  return 0;
+}
+
+static int
+llstatenoyield(l_service* srvc)
+{
+  static int i = 0;
+  (void)srvc;
+  switch (i) {
+  case 0:
+    ++i;
+    return 0;
+  case 1:
+    ++i;
+    return -2;
+  case 2:
+    ++i;
+    return -3;
+  default:
+    i = 0;
+    break;
+  }
+  return 0;
+}
+
+L_EXTERN void
+l_service_test()
+{
+  lua_State* L = l_luastate_new();
+  l_service srvc;
+  l_thread thread;
+  srvc.thread = &thread;
+  thread.L = L;
+  l_service_initState(&srvc);
+
+  l_service_setResume(&srvc, llstatetestfunc);
+  l_assert(l_service_resume(&srvc) == L_LUAYIELD);
+  l_assert(l_service_resume(&srvc) == 3); /* yield */
+  l_assert(l_service_resume(&srvc) == L_LUAYIELD);
+  l_assert(l_service_resume(&srvc) == 0);
+  l_assert(l_service_resume(&srvc) == 5); /* yield */
+  l_assert(l_service_resume(&srvc) == L_LUAYIELD);
+  l_assert(l_service_resume(&srvc) == -3);
+
+  l_service_setResume(&srvc, llstatenoyield);
+  l_assert(l_service_resume(&srvc) == 0);
+  l_assert(l_service_resume(&srvc) == -2);
+  l_assert(l_service_resume(&srvc) == -3);
+  l_assert(l_service_resume(&srvc) == 0);
+
+  l_assert(sizeof(lua_KContext) >= sizeof(void*));
+
+  l_assert(l_luaconf_int(L, "test.a") == 10);
+  l_assert(l_luaconf_int(L, "test.t.b") == 20);
+  l_assert(l_luaconf_int(L, "test.t.c") == 30);
+  l_assert(l_luaconf_int(L, "test.d") == 40);
+
+  /* srvc->co shared with L's global environment */
+  l_assert(l_luaconf_int(srvc.co, "test.a") == 10);
+  l_assert(l_luaconf_int(srvc.co, "test.t.b") == 20);
+  l_assert(l_luaconf_int(srvc.co, "test.t.c") == 30);
+  l_assert(l_luaconf_int(srvc.co, "test.d") == 40);
+
+  l_service_freeState(&srvc);
 }
 
