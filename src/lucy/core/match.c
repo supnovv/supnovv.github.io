@@ -1,5 +1,3 @@
-#include <stdio.h>
-
 #define L_LIBRARY_IMPL
 #include "core/string.h"
 #include "core/match.h"
@@ -379,7 +377,7 @@ l_string_skipSpaceAndMatchSub(l_strt sub, l_strt s)
 }
 
 L_EXTERN void
-l_match_test()
+l_string_match_test()
 {
   const l_strn methods[] = {l_strn_literal("GET"), l_strn_literal("HEAD"), l_strn_literal("POST")};
   const l_strn orderedchice[] = {l_strn_literal("mankind"), l_strn_literal("man"), l_strn_literal("got"),
@@ -391,7 +389,6 @@ l_match_test()
 
   l_string_format_1(&str, "%f", lf(3.1415926));
   l_logd_1("%f", lf(3.1415926));
-  printf("[D] %.80f\n", 3.1415926);
   l_assert(l_string_equal(&str, l_strt_literal("3.14159260000000006840537025709636509418487548828125")));
 
   l_assert(l_right_most_bit(0x0000) == 0x0000);

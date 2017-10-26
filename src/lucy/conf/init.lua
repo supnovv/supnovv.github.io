@@ -1,4 +1,4 @@
-local lucy = LUCY_GLOBAL_TABLE
+local lucy = L_LUACONF_GLOBAL_TABLE
 local root = lucy.rootdir
 assert(root, "lucy root dir doesn't exist")
 package.path = package.path .. ";" .. root .. "?.lua"

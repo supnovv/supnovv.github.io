@@ -255,8 +255,9 @@ l_core_base_test()
 #else
   l_logd_s("L_BUILD_DEBUG false");
 #endif
-  l_assert(l_check_alloc_size(-1) == 0);
-  l_assert(l_check_alloc_size(0) == 0);
+  l_logd_1("L_ROOT_DIR: %s", ls(L_ROOT_DIR));
+  l_assert(l_check_alloc_size(-1) == 8);
+  l_assert(l_check_alloc_size(0) == 8);
   l_assert(l_check_alloc_size(1) == 8);
   l_assert(l_check_alloc_size(2) == 8);
   l_assert(l_check_alloc_size(7) == 8);

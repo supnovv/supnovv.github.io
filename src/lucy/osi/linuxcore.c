@@ -1094,7 +1094,7 @@ l_raw_thread_join(l_thrid* thrid)
 #endif
 
 L_EXTERN void
-l_plat_test()
+l_plat_core_test()
 {
   l_assert(sizeof(l_mutex) >= sizeof(pthread_mutex_t));
   l_assert(sizeof(l_rwlock) >= sizeof(pthread_rwlock_t));

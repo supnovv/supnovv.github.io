@@ -133,5 +133,7 @@ l_check_is_alphanum_underscore_hyphen(l_byte ch)
   return l_char_class_table[ch] & 0x20;
 }
 
+L_EXTERN void l_string_test();
+
 #endif /* lucy_string_h */
 

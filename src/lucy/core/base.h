@@ -176,27 +176,6 @@ l_strn_strt(const l_strn* s)
   return l_strt_n(s->start, s->len);
 }
 
-typedef struct {
-  const l_byte* s;
-  l_int hint;
-} l_from;
-
-#define l_from_literal(s) l_from_strn(l_cstr("" s), sizeof(s) / sizeof(char) - 1)
-#define l_from_empty() ((l_from){0,0})
-#define l_from_cstr(s) l_from_strn((s), strlen((char*)(s)))
-
-L_INLINE l_from
-l_from_file(const void* filename)
-{
-  return (l_from){l_cstr(filename), -0xff};
-}
-
-L_INLINE l_from
-l_from_strn(const void* s, l_int n)
-{
-  return (l_from){l_cstr(s), (n < 0 ? 0 : n)};
-}
-
 #define l_zero(s, e) l_zero_n((s), l_cstr(e) - l_cstr(s))
 #define l_copy(s, e, to) l_copy_n((s), l_cstr(e) - l_cstr(s), (to))
 
@@ -218,13 +197,12 @@ L_EXTERN const l_byte* l_strn_contain(l_strn s, int ch);
 
 #if defined(L_BUILD_DEBUG)
   #define L_DEBUG_HERE(...) { __VA_ARGS__ }
-  #define l_assert_pass_func(expr) l_logger_func_impl("41[D] " L_MKFLSTR, "assert pass: %s", lp(expr))
-  #define l_assert_fail_func(expr) l_logger_func_impl("01[E] " L_MKFLSTR, "assert fail: %s", lp(expr))
 #else
   #define L_DEBUG_HERE(...)
-  #define l_assert_pass_func(expr) ((void)0)
-  #define l_assert_fail_func(expr) l_logger_func_impl("01[E] " L_MKFLSTR, "assert fail: %s", lp(expr))
 #endif
+
+#define l_assert_pass_func(expr) l_logger_func_impl("41[D] " L_MKFLSTR, "assert pass: %s", lp(expr))
+#define l_assert_fail_func(expr) l_logger_func_impl("01[E] " L_MKFLSTR, "assert fail: %s", lp(expr))
 
 #define l_assert(e) ((e) ? l_assert_pass_func(#e) : l_assert_fail_func(#e)) /* 0:assert */
 #define l_loge_s(s)                   l_logger_func_s("10[E] " L_MKFLSTR, (s)) /* 1:error */
@@ -514,7 +492,9 @@ l_right_most_bit(l_umedit n)
 
 L_EXTERN void l_process_exit();
 L_EXTERN void l_process_atexit(void (*func)(void));
+
 L_EXTERN void l_core_base_test();
+L_EXTERN void l_plat_core_test();
 
 #endif /* lucy_core_base_h */
 

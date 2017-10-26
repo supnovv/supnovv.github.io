@@ -15,19 +15,16 @@ typedef struct {
 typedef struct l_luaextra l_luaextra;
 typedef struct l_service l_service;
 
-L_INLINE void
-l_luastate_popError(lua_State* L)
-{
-  l_loge_1("lua error %s", ls(lua_tostring(L, -1)));
-  lua_pop(L, 1);
-}
+#define l_luastate_popError(L) l_loge_1("lua error %s", ls(lua_tostring((L), -1))); lua_pop((L), 1)
 
 L_EXTERN lua_State* l_luastate_new();
 L_EXTERN void l_luastate_close(lua_State* L);
 L_EXTERN void l_luastate_empty(lua_State* L); /* empty the stack */
-L_EXTERN l_funcindex l_luastate_load(lua_State* L, l_from from); /* [-0, +(1|0), -] */
+L_EXTERN l_funcindex l_luastate_load(lua_State* L, l_strn code); /* [-0, +(1|0), -] */
+L_EXTERN l_funcindex l_luastate_loadfile(lua_State* L, l_strn filename); /* [-0, +(1|0), -] */
 L_EXTERN int l_luastate_call(lua_State* L, l_funcindex func, int nresults); /* [-(nargs+1), +(nresults|0), -] */
-L_EXTERN int l_luastate_exec(lua_State* L, l_from from, int nresults); /* [-0, +(nresults|0), -] */
+L_EXTERN int l_luastate_exec(lua_State* L, l_strn code, int nresults); /* [-0, +(nresults|0), -] */
+L_EXTERN int l_luastate_execfile(lua_State* L, l_strn filename, int nresults); /* [-0, +(nresults|0), -] */
 L_EXTERN void l_luastate_setenv(lua_State* L, l_funcindex func); /* the env table is on the top of the stack [-1, +0, -] */
 L_EXTERN void l_luastate_setfield(lua_State* L, l_tableindex table, const void* keyname); /* the value is on the top of the stack [-1, +0, e] */
 L_EXTERN l_tableindex l_luastate_newtable(lua_State* L);

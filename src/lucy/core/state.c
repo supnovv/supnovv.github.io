@@ -128,27 +128,30 @@ This function returns the same results as lua_load, but it has an extra error co
 */
 
 L_EXTERN l_funcindex /* sucess - a function pushed on the top, fail - stack remain unchanged */
-l_luastate_load(lua_State* L, l_from from)
+l_luastate_load(lua_State* L, l_strn code)
 {
   l_funcindex func = {0};
 
-  if (!from.s) return func;
-
-  if (from.hint < 0) {
-    if (luaL_loadfile(L, (const char*)from.s) != LUA_OK) {
-      l_luastate_popError(L);
-      return func;
-    }
-
-    func.index = lua_gettop(L);
+  if (!code.start || code.len <= 0 || code.len > L_MAX_RWSIZE) {
     return func;
   }
 
-  if (from.hint == 0 || from.hint > L_MAX_RWSIZE) {
+  if (luaL_loadbuffer(L, (const char*)code.start, (size_t)code.len, 0) != LUA_OK) {
+    l_luastate_popError(L);
     return func;
   }
 
-  if (luaL_loadbuffer(L, (const char*)from.s, (size_t)from.hint, 0) != LUA_OK) {
+  func.index = lua_gettop(L);
+  return func;
+}
+
+L_EXTERN l_funcindex /* sucess - a function pushed on the top, fail - stack remain unchanged */
+l_luastate_loadfile(lua_State* L, l_strn filename)
+{
+  l_funcindex func = {0};
+  if (!filename.start || filename.len <= 0) return func;
+
+  if (luaL_loadfile(L, (const char*)filename.start) != LUA_OK) {
     l_luastate_popError(L);
     return func;
   }
@@ -202,9 +205,16 @@ l_luastate_call(lua_State* L, l_funcindex func, int nresults)
 }
 
 L_EXTERN int /* load and call the function with no arguments */
-l_luastate_exec(lua_State* L, l_from from, int nresults)
+l_luastate_exec(lua_State* L, l_strn code, int nresults)
 {
-  l_funcindex func = l_luastate_load(L, from);
+  l_funcindex func = l_luastate_load(L, code);
+  return l_luastate_call(L, func, nresults);
+}
+
+L_EXTERN int /* load and call the function with no arguments */
+l_luastate_execfile(lua_State* L, l_strn filename, int nresults)
+{
+  l_funcindex func = l_luastate_loadfile(L, filename);
   return l_luastate_call(L, func, nresults);
 }
 
@@ -296,12 +306,12 @@ l_luaconf_init(lua_State* L)
   l_luastate_setfield(L, table, "rootdir"); /* pop value */
   lua_setglobal(L, L_LUACONF_TABLE_NAME); /* pop table */
 
-  if (!l_luastate_exec(L, l_from_literal(L_ROOT_DIR "conf/init.lua"), 0)) {
+  if (!l_luastate_execfile(L, l_strn_literal(L_ROOT_DIR "conf/init.lua"), 0)) {
     l_loge_s("execute init.lua failed");
     return;
   }
 
-  func = l_luastate_load(L, l_from_literal(L_ROOT_DIR "conf/conf.lua")); /* push func if success */
+  func = l_luastate_loadfile(L, l_strn_literal(L_ROOT_DIR "conf/conf.lua")); /* push func if success */
   if (func.index == 0) {
     l_loge_s("load conf.lua failed");
     return;

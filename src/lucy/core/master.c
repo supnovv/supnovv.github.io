@@ -1386,19 +1386,15 @@ l_master_init()
 
   l_thrkey_init(&l_thrkey_g);
 
-  /* config */
-
-  conf = l_config_create();
-  prefix = l_strt_from(conf->logfile, conf->prefixend);
-  l_logm_5("workers %d log_buffer_size %d service_table_size 2^%d thread_max_free_memory %d logfile_prefix %strt",
-      ld(conf->workers), ld(conf->log_buffer_size), ld(conf->service_table_size), ld(conf->thread_max_free_memory), lstrt(&prefix));
-
   /* master thread */
 
 #if defined(L_THREAD_LOCAL_SUPPORTED)
   l_self_thread = 0;
 #endif
   l_thrkey_setData(&l_thrkey_g, 0);
+
+  conf = l_config_create();
+  prefix = l_strt_from(conf->logfile, conf->prefixend);
 
   l_thread_init(master, conf);
   master->id = l_raw_thread_self(); /* master thread created by os */
@@ -1447,11 +1443,14 @@ l_master_init()
   l_svid_seed = L_SERVICE_START_ID;
   l_srvctable_init(&l_srvc_table, conf->service_table_size);
 
+  l_initialized = true;
+
   /* others */
 
-  l_config_free(conf);
+  l_logm_5("workers %d log_buffer_size %d service_table_size 2^%d thread_max_free_memory %d logfile_prefix %strt",
+      ld(conf->workers), ld(conf->log_buffer_size), ld(conf->service_table_size), ld(conf->thread_max_free_memory), lstrt(&prefix));
 
-  l_initialized = true;
+  l_config_free(conf);
 }
 
 static void
@@ -1999,8 +1998,6 @@ startmainthreadcv(int (*start)(), int argc, char** argv)
   l_logm_s("workers exited");
 
   l_master_clean();
-  l_logm_s("cleaned up");
-
   return 0;
 }
 

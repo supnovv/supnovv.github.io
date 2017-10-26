@@ -34,6 +34,7 @@ L_EXTERN l_sockaddr l_socket_localaddr(l_filedesc sock);
 L_EXTERN l_int l_socket_read(l_filedesc sock, void* out, l_int count, l_int* status);
 L_EXTERN l_int l_socket_write(l_filedesc sock, const void* buf, l_int count, l_int* status);
 L_EXTERN void l_socket_test();
+L_EXTERN void l_plat_event_test();
 L_EXTERN void l_plat_sock_test();
 
 #define L_SOCKET_READ  0x01

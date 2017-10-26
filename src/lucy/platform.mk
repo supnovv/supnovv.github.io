@@ -52,7 +52,7 @@ COREOBJ = core/base$(O) \
           osi/linuxsock$(O)
 
 HTTPOBJ = net/http$(O)
-TESTOBJ = $(COREOBJ) # core/test$(O) $(COREOBJ) #  $(HTTPOBJ)
+TESTOBJ = $(COREOBJ) core/test$(O) # $(COREOBJ) #  $(HTTPOBJ)
 ALLOBJS = $(AUTOOBJ) $(TESTOBJ)
 
 AUTOCONF = autoconf$(E)

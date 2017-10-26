@@ -23,6 +23,7 @@ L_EXTERN const l_byte* l_string_skipSpaceAndMatchUntil(const l_stringmap* map, l
 L_EXTERN const l_byte* l_string_skipSpaceAndMatch(const l_stringmap* map, l_strt s, l_int* strid, l_int* mlen);
 L_EXTERN const l_byte* l_string_trimHead(l_strt s);
 L_EXTERN const l_byte* l_string_skipSpaceAndMatchSub(l_strt sub, l_strt s);
+L_EXTERN void l_string_match_test();
 
 #endif /* lucy_core_match_h */
 
