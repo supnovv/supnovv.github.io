@@ -149,8 +149,10 @@ typedef struct l_service {
 } l_service;
 
 #define L_SERVICE_CREATE(name) (name*)l_service_create(sizeof(name), name##_proc)
+#define L_SERVICE_CREATEFROM(srvc, name) (name*)l_service_createFrom((srvc), sizeof(name), name##_proc)
 
 L_EXTERN l_service* l_service_create(l_int size, int (*entry)(l_service*, l_message*));
+L_EXTERN l_service* l_service_createFrom(l_service* from, l_int size, int (*entry)(l_service*, l_message*));
 L_EXTERN l_service* l_service_setListen(l_service* srvc, l_filedesc fd);
 L_EXTERN l_service* l_service_setConnect(l_service* srvc, l_filedesc fd);
 L_EXTERN l_service* l_service_setEvent(l_service* srvc, l_filedesc fd, l_ushort masks);

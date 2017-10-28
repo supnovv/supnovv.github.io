@@ -11,7 +11,7 @@ L_PRIVAT int
 l_http_server_receive_conn(l_http_server_listen_service* ss, l_connind_message* msg)
 {
   l_http_server_receive_server* ssrx = 0;
-  ssrx = L_SERVICE_CREATE(l_http_server_receive_service);
+  ssrx = L_SERVICE_CREATEFROM(ss, l_http_server_receive_service);
   ssrx->ss = ss;
   ssrx->rmtFamily = l_connind_getFamily(msg);
   ssrx->rmtPort = l_connind_getPort(msg);

@@ -1161,7 +1161,7 @@ l_master_new_svid()
 }
 
 L_EXTERN l_service*
-l_service_create(l_int size, int (*entry)(l_service*, l_message*))
+l_service_createFrom(l_service* from, l_int size, int (*entry)(l_service*, l_message*))
 {
   l_buffer buffer;
   l_thread* thread = 0;
@@ -1171,7 +1171,12 @@ l_service_create(l_int size, int (*entry)(l_service*, l_message*))
     return 0;
   }
 
-  thread = l_thread_self();
+  if (from && from->thread) {
+    thread = from->thread;
+  } else {
+    thread = l_thread_self();
+  }
+
   if (!l_buffer_init(&buffer, size, thread)) {
     return 0;
   }
@@ -1181,6 +1186,12 @@ l_service_create(l_int size, int (*entry)(l_service*, l_message*))
   l_service_ptr(&buffer)->thread = thread;
   l_service_ptr(&buffer)->entry = entry;
   return l_service_ptr(&buffer);
+}
+
+L_EXTERN l_service*
+l_service_create(l_int size, int (*entry)(l_service*, l_message*))
+{
+  return l_service_createFrom(0, size, entry);
 }
 
 L_EXTERN void
