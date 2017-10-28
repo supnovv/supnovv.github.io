@@ -1,5 +1,5 @@
-#ifndef lucy_core_match_h
-#define lucy_core_match_h
+#ifndef l_core_match_h
+#define l_core_match_h
 #include "core/base.h"
 
 typedef struct {
@@ -25,5 +25,5 @@ L_EXTERN const l_byte* l_string_trimHead(l_strt s);
 L_EXTERN const l_byte* l_string_skipSpaceAndMatchSub(l_strt sub, l_strt s);
 L_EXTERN void l_string_match_test();
 
-#endif /* lucy_core_match_h */
+#endif /* l_core_match_h */
 

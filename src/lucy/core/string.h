@@ -1,5 +1,5 @@
-#ifndef lucy_string_h
-#define lucy_string_h
+#ifndef l_core_string_h
+#define l_core_string_h
 #include "core/base.h"
 
 #define L_FORMAT_HEX     0x01000000
@@ -135,5 +135,5 @@ l_check_is_alphanum_underscore_hyphen(l_byte ch)
 
 L_EXTERN void l_string_test();
 
-#endif /* lucy_string_h */
+#endif /* l_core_string_h */
 

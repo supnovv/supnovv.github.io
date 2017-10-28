@@ -1,5 +1,5 @@
-#ifndef lucy_core_h
-#define lucy_core_h
+#ifndef l_core_lib_h
+#define l_core_lib_h
 #include "autoconf.h"
 #include "core/prefix.h"
 
@@ -553,4 +553,4 @@ l_extern void l_luac_test();
 l_specif void l_plat_test();
 l_specif void l_plat_ionf_test();
 
-#endif /* lucy_core_h */
+#endif /* l_core_lib_h */

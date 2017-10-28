@@ -1,5 +1,5 @@
-#ifndef lucy_core_queue_h
-#define lucy_core_queue_h
+#ifndef l_core_queue_h
+#define l_core_queue_h
 #include "core/base.h"
 
 /**
@@ -47,6 +47,5 @@ L_EXTERN void l_priorq_remove(l_priorq* self, l_linknode* elem);
 L_EXTERN int l_priorq_isEmpty(l_priorq* self);
 L_EXTERN l_linknode* l_priorq_pop(l_priorq* self);
 
-
-#endif /* lucy_core_queue_h */
+#endif /* l_core_queue_h */
 

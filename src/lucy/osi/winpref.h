@@ -1,5 +1,5 @@
-#ifndef lucy_windows_h
-#define lucy_windows_h
+#ifndef l_osi__windows_h
+#define l_osi_windows_h
 #define UNICODE
 #define _UNICODE
 #define WIN32_LEAN_AND_MEAN
@@ -63,4 +63,4 @@
 #define ARCHITECTURE_IA64 0
 #endif
 
-#endif /* lucy_windows_h */
+#endif /* l_osi_windows_h */

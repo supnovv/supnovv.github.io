@@ -1,8 +1,8 @@
 #include "core/base.h"
 #include "core/string.h"
 #include "core/match.h"
-#include "core/master.h"
 #include "core/socket.h"
+#include "core/service.h"
 
 int l_test_start() {
   l_core_base_test();
@@ -11,7 +11,6 @@ int l_test_start() {
   l_plat_core_test();
   l_plat_event_test();
   l_plat_sock_test();
-  l_service_test();
   l_master_test();
   l_master_exit();
   return 0;

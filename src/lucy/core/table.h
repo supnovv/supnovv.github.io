@@ -1,5 +1,5 @@
-#ifndef lucy_core_table_h
-#define lucy_core_table_h
+#ifndef l_core_table_h
+#define l_core_table_h
 #include "core/base.h"
 
 typedef struct l_hashtable l_hashtable;
@@ -12,5 +12,5 @@ L_EXTERN void l_hashtable_foreach(l_hashtable* self, void (*func)(void*, l_smpln
 L_EXTERN void l_hashtable_clear(l_hashtable* self, l_allocfunc func);
 L_EXTERN void l_hashtable_free(l_hashtable** self, l_allocfunc func);
 
-#endif /* lucy_core_table_h */
+#endif /* l_core_table_h */
 

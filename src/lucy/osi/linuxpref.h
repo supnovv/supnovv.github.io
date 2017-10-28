@@ -1,5 +1,5 @@
-#ifndef lucy_linuxcore_h
-#define lucy_linuxcore_h
+#ifndef l_osi_linuxcore_h
+#define l_osi_linuxcore_h
 #define _POSIX_C_SOURCE 200809L
 #define _GNU_SOURCE
 #include <unistd.h>
@@ -19,5 +19,5 @@
 #include <dirent.h>
 #include <time.h>
 #include <errno.h>
-#endif /* lucy_linuxcore_h */
+#endif /* l_osi_linuxcore_h */
 

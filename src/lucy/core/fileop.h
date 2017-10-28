@@ -1,5 +1,5 @@
-#ifndef lucy_core_fileop_h
-#define lucy_core_fileop_h
+#ifndef l_core_fileop_h
+#define l_core_fileop_h
 #include "core/base.h"
 
 typedef struct {
@@ -34,6 +34,28 @@ l_filedesc_equal(l_filedesc a, l_filedesc b)
   return a.winfd == b.winfd;
 #else
   return a.unifd == b.unifd;
+#endif
+}
+
+L_INLINE l_filedesc
+l_filedesc_empty()
+{
+  l_filedesc fd;
+#if defined(l_plat_windows)
+
+#else
+  fd.unifd = -1;
+  return fd;
+#endif
+}
+
+L_INLINE int
+l_filedesc_isEmpty(l_filedesc fd)
+{
+#if defined(l_plat_windows)
+
+#else
+  return (fd.unifd == -1);
 #endif
 }
 
@@ -81,5 +103,5 @@ L_EXTERN l_dirstream l_dirstream_open(const void* name);
 L_EXTERN void l_dirstream_close(l_dirstream* d);
 L_EXTERN const l_byte* l_dirstream_read(l_dirstream* d);
 
-#endif /* lucy_core_fileop_h */
+#endif /* l_core_fileop_h */
 

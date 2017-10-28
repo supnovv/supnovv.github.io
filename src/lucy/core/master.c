@@ -22,8 +22,13 @@
 #define L_LIBRARY_IMPL
 #define l_buffer_ptr(b) ((L_BUFHEAD*)b->p)
 #define l_service_ptr(b) ((l_service*)((b)->p))
-#include "core/master.h"
 #include "core/state.h"
+#include "core/queue.h"
+#include "core/string.h"
+#include "core/fileop.h"
+#include "core/socket.h"
+#include "core/thread.h"
+#include "core/service.h"
 
 /**
  * config
@@ -718,30 +723,10 @@ l_message_startBootstrap(l_thread* thread, int (*bootstrap)())
  */
 
 #define l_worker_svid(thread) ((((ulong)((thread)->index))<<48) | L_SERVICE_WORKER)
-#define L_SERVICE_STARTED   0x01
-#define L_SERVICE_CLOSING   0x02
-#define L_SERVICE_STOPRX    0x04
-#define L_SERVICE_SOCKET    0x08
-
-/* if custom service has any extra resource need to free,
-the only chance is to handle L_MSGID_SRVC_CLOSE_RSP message. */
-
-typedef struct l_service {
-  L_BUFHEAD HEAD;
-  l_ioevent* ioev; /* guard by svmtx */
-  l_ioevent event; /* guard by svmtx */
-  l_uint flags; /* shared flags stop_rx_msg service is closing, guard by svmtx */
-  /* thread own use */
-  l_umedit flagw; /* only accessed by a worker */
-  l_ulong svid; /* only set once when init, so can freely access it */
-  l_thread* thread; /* only set once when init, so can freely access it */
-  int (*entry)(l_service*, l_message*); /* service entry function */
-  /* coroutine */
-  lua_State* co;
-  int (*func)(l_service*);
-  int (*kfunc)(l_service*);
-  int coref;
-} l_service;
+#define L_SERVICE_STARTED   0x0100
+#define L_SERVICE_CLOSING   0x0200
+#define L_SERVICE_STOPRX    0x0400
+#define L_SERVICE_SOCKET    0x0800
 
 L_EXTERN int
 l_service_initState(l_service* srvc)
@@ -1191,6 +1176,7 @@ l_service_create(l_int size, int (*entry)(l_service*, l_message*))
     return 0;
   }
 
+  l_service_ptr(&buffer)->evfd = l_filedesc_empty();
   l_service_ptr(&buffer)->svid = l_master_new_svid();
   l_service_ptr(&buffer)->thread = thread;
   l_service_ptr(&buffer)->entry = entry;
@@ -1229,13 +1215,10 @@ l_service_startEx(l_service* srvc, l_thread* thread)
 static l_service*
 l_service_set_event_impl(l_service* srvc, l_filedesc fd, l_ushort masks, l_ushort flags)
 {
-  srvc->ioev = &srvc->event;
+  srvc->evfd = fd;
+  srvc->evmk = masks;
+  srvc->flags = flags;
   srvc->flagw |= L_SERVICE_SOCKET;
-
-  srvc->ioev->fd = fd;
-  srvc->ioev->udata = l_service_id_for_lookup(srvc);
-  srvc->ioev->masks = masks;
-  srvc->ioev->flags = flags;
   return srvc;
 }
 
@@ -1287,14 +1270,8 @@ l_service_delEvent(l_service* srvc)
     l_mutex* svmtx = thread->svmtx;
 
     l_mutex_lock(svmtx);
-    /* store fd to send to mater to close */
-    fd = srvc->ioev->fd;
-    /* reset fd as closed */
-    srvc->ioev->fd = l_filedesc_empty();
-    /* if thread still has io message in the pending queue,
-    when to handle it, this message will be ignored due to
-    no event attached to service from now */
-    srvc->ioev = 0;
+    fd = srvc->evfd;
+    srvc->evfd = l_filedesc_empty();
     l_mutex_unlock(svmtx);
 
     srvc->flagw &= (~L_SERVICE_SOCKET);
@@ -1324,16 +1301,15 @@ l_service_mod_event_impl(l_service* srvc, l_filedesc fd, l_ushort masks, l_ushor
   svmtx = thread->svmtx;
 
   l_mutex_lock(svmtx);
-  if (srvc->ioev) {
-    oldfd = srvc->ioev->fd;
-    srvc->ioev->fd = l_filedesc_empty();
-    srvc->ioev = 0;
+  if (!l_filedesc_isEmpty(srvc->evfd)) {
+    oldfd = srvc->evfd;
+    srvc->evfd = l_filedesc_empty();
   }
   srvc->flagw &= (~L_SERVICE_SOCKET);
   if (!l_filedesc_isEmpty(fd)) {
     l_service_set_event_impl(srvc, fd, masks, flags);
-    srvc->ioev->masks = 0; /* clear masks, prepare to receive */
   }
+  srvc->evmk = 0; /* clear masks, prepare to receive */
   l_mutex_unlock(svmtx);
 
   if (!l_filedesc_isEmpty(oldfd)) {
@@ -1525,43 +1501,42 @@ l_master_dispatchEvent(l_ioevent* rxev)
   l_service* srvc = 0;
   l_thread* thread = 0;
   l_mutex* svmtx = 0;
-  l_ioevent* srev = 0;
 
-  if (rxev->masks == 0) return;
+  if (l_filedesc_isEmpty(rxev->fd) || rxev->masks == 0) return;
   if (!(srvc = l_master_findService(rxev->udata))) return;
 
   thread = srvc->thread;
   svmtx = thread->svmtx;
 
   l_mutex_lock(svmtx);
-  srev = srvc->ioev;
-  if (!srev || !l_filedesc_equal(srev->fd, rxev->fd)) {
+  if (!l_filedesc_equal(rxev->fd, srvc->evfd)) {
     l_mutex_unlock(svmtx);
     return;
   }
 
-  if (srev->flags & L_SOCKET_FLAG_LISTEN) {
+  if (srvc->flags & L_SOCKET_FLAG_LISTEN) {
     l_mutex_unlock(svmtx);
-    l_socket_accept(srev->fd, l_master_acceptConnection, srvc);
+    /* TODO: error check */
+    l_socket_accept(rxev->fd, l_master_acceptConnection, srvc);
     return;
   }
 
-  if (srev->flags & L_SOCKET_FLAG_CONNECT) {
-    srev->flags &= (~L_SOCKET_FLAG_CONNECT);
+  if (srvc->flags & L_SOCKET_FLAG_CONNECT) {
+    srvc->flags &= (~L_SOCKET_FLAG_CONNECT);
     l_mutex_unlock(svmtx);
-    l_message_senddata_impl(master, l_service_id(srvc), L_MSGID_SOCK_CONN_RSP, srev->masks, l_msg_castfd(srev->fd));
+    /* TODO: error check and what if current the data from remote can be read */
+    l_message_senddata_impl(master, l_service_id(srvc), L_MSGID_SOCK_CONN_RSP, rxev->masks, l_msg_castfd(rxev->fd));
     return;
   }
 
-  if (srev->masks == 0) {
-    l_filedesc fd = srev->fd;
-    l_umedit masks = srev->masks = rxev->masks;
+  if (srvc->evmk == 0) {
+    srvc->evmk = rxev->masks;
     l_mutex_unlock(svmtx);
-    l_message_senddata_impl(master, l_service_id(srvc), L_MSGID_SOCK_EVENT_IND, masks, l_msg_castfd(fd));
+    l_message_senddata_impl(master, l_service_id(srvc), L_MSGID_SOCK_EVENT_IND, rxev->masks, l_msg_castfd(rxev->fd));
     return;
   }
 
-  srev->masks |= rxev->masks;
+  srvc->evmk |= rxev->masks;
   l_mutex_unlock(svmtx);
 }
 
@@ -1598,11 +1573,11 @@ l_worker_handleMessage(l_thread* thread, l_message* msg)
   }
 
   switch (msg->msgid) {
-  case L_MSGID_SOCK_CONN_IND: case L_MSGID_SOCK_CONN_RSP: case L_MSGID_SOCK_EVENT_IND:
+  case L_MSGID_SOCK_EVENT_IND:
     mtx = thread->svmtx;
     l_mutex_lock(mtx);
-    msg->data = srvc->ioev->masks;
-    srvc->ioev->masks = 0;
+    msg->data = srvc->evmk;
+    srvc->evmk = 0;
     l_mutex_unlock(mtx);
     break;
   case L_MSGID_SRVC_START_RSP:
@@ -1666,9 +1641,13 @@ l_master_handleMessage(l_squeue* frmq)
         l_logm_1("start service %d", ld(srvc->svid));
 
         /* then add event, no need to lock mutex before started */
-        if (srvc->ioev) {
-          l_ioevent event = *srvc->ioev;
-          srvc->ioev->masks = 0; /* clear masks, prepare to receive */
+        if (!l_filedesc_isEmpty(srvc->evfd)) {
+          l_ioevent event;
+          event.fd = srvc->evfd;
+          event.udata = l_service_id_for_lookup(srvc);
+          event.masks = srvc->evmk;
+          event.flags = 0;
+          srvc->evmk = 0; /* clear masks, prepare to receive */
           l_eventmgr_add(&l_eventmgr_g, &event);
         }
 
@@ -2001,21 +1980,6 @@ startmainthreadcv(int (*start)(), int argc, char** argv)
   return 0;
 }
 
-L_EXTERN void
-l_master_test()
-{
-  l_long data = -100;
-  l_ulong udata = data;
-  l_assert(sizeof(l_mutex) >= L_MUTEX_SIZE);
-  l_assert(sizeof(l_rwlock) >= L_RWLOCK_SIZE);
-  l_assert(sizeof(l_condv) >= L_CONDV_SIZE);
-  l_assert(sizeof(l_thrkey) >= L_THKEY_SIZE);
-  l_assert(sizeof(l_thrid) >= L_THRID_SIZE);
-  l_assert(sizeof(void*) <= 8);
-  l_assert(udata == ((l_ulong)-100));
-  l_assert(((l_long)udata) == -100);
-}
-
 static int
 llstatetestfunc(l_service* srvc)
 {
@@ -2068,8 +2032,8 @@ llstatenoyield(l_service* srvc)
   return 0;
 }
 
-L_EXTERN void
-l_service_test()
+static void
+l_resume_test()
 {
   lua_State* L = l_luastate_new();
   l_service srvc;
@@ -2107,5 +2071,21 @@ l_service_test()
   l_assert(l_luaconf_int(srvc.co, "test.d") == 40);
 
   l_service_freeState(&srvc);
+}
+
+L_EXTERN void
+l_master_test()
+{
+  l_long data = -100;
+  l_ulong udata = data;
+  l_assert(sizeof(l_mutex) >= L_MUTEX_SIZE);
+  l_assert(sizeof(l_rwlock) >= L_RWLOCK_SIZE);
+  l_assert(sizeof(l_condv) >= L_CONDV_SIZE);
+  l_assert(sizeof(l_thrkey) >= L_THKEY_SIZE);
+  l_assert(sizeof(l_thrid) >= L_THRID_SIZE);
+  l_assert(sizeof(void*) <= 8);
+  l_assert(udata == ((l_ulong)-100));
+  l_assert(((l_long)udata) == -100);
+  l_resume_test();
 }
 

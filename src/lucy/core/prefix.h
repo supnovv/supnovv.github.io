@@ -1,5 +1,5 @@
-#ifndef lucy_prefix_h
-#define lucy_prefix_h
+#ifndef l_core_prefix_h
+#define l_core_prefix_h
 
 #undef l_cmpl_clang
 #undef l_cmpl_icc
@@ -76,4 +76,4 @@ typedef union {
   void* pval;
 } l_eightbyte;
 
-#endif /* lucy_prefix_h */
+#endif /* l_core_prefix_h */

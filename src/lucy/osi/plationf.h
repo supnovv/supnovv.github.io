@@ -1,5 +1,5 @@
-#ifndef lucy_plationf_h
-#define lucy_plationf_h
+#ifndef l_osi_plationf_h
+#define l_osi_plationf_h
 #include "core/prefix.h"
 
 #if defined(l_plat_linux)
@@ -36,5 +36,5 @@ typedef struct {
 /** Windows IO **/
 
 #endif
-#endif /* lucy_plationf_h */
+#endif /* l_osi_plationf_h */
 

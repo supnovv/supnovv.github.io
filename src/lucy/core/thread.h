@@ -1,5 +1,5 @@
-#ifndef lucy_core_thread_h
-#define lucy_core_thread_h
+#ifndef l_core_thread_h
+#define l_core_thread_h
 #include "core/base.h"
 
 typedef struct {
@@ -51,5 +51,5 @@ L_EXTERN void l_raw_thread_cancel(l_thrid* thrid);
 L_EXTERN void l_raw_thread_exit();
 L_EXTERN l_thrid l_raw_thread_self();
 
-#endif /* lucy_core_thread_h */
+#endif /* l_core_thread_h */
 

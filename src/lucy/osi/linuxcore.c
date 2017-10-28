@@ -1,4 +1,6 @@
 #include "osi/linuxpref.h"
+
+#define L_LIBRARY_IMPL
 #include "core/base.h"
 #include "core/fileop.h"
 #include "core/thread.h"
@@ -438,20 +440,6 @@ l_filedesc_close(l_filedesc* fd)
     l_loge_1("close %d", lserror(errno));
   }
   fd->unifd = -1;
-}
-
-L_EXTERN l_filedesc
-l_filedesc_empty()
-{
-  l_filedesc fd;
-  fd.unifd = -1;
-  return fd;
-}
-
-L_EXTERN int
-l_filedesc_isEmpty(l_filedesc fd)
-{
-  return (fd.unifd != -1);
 }
 
 L_EXTERN l_long

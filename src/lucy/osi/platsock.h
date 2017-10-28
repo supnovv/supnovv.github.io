@@ -1,5 +1,5 @@
-#ifndef lucy_platsock_h
-#define lucy_platsock_h
+#ifndef l_osi_platsock_h
+#define l_osi_platsock_h
 #include "core/prefix.h"
 
 #if defined(l_plat_windows)
@@ -42,5 +42,5 @@ typedef struct {
 #endif
 
 #endif
-#endif /* lucy_platsock_h */
+#endif /* l_osi_platsock_h */
 

@@ -1,9 +1,9 @@
-#ifndef lucy_net_http_h
-#define lucy_net_http_h
-#include "lucycore.h"
+#ifndef l_net_http_h
+#define l_net_http_h
+#include "core/base.h"
 
-l_extern int l_start_http_server(const void* http_conf_name, int (*client_request_handler)(l_service*));
+L_EXTERN int l_http_startServer(const void* http_conf_name, int (*client_request_handler)(l_service*));
 
 
-#endif /* lucy_net_http_h */
+#endif /* l_net_http_h */
 

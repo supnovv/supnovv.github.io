@@ -1,3 +1,5 @@
+#define L_LIBRARY_IMPL
+
 struct l_epoll {
   l_array fdset;
   l_hashtbl fdud;

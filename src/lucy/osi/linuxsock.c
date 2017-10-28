@@ -1,5 +1,7 @@
 #include "osi/linuxpref.h"
 #include "osi/platsock.h"
+
+#define L_LIBRARY_IMPL
 #include "core/base.h"
 #include "core/socket.h"
 

@@ -1,5 +1,7 @@
 #include "osi/linuxpref.h"
 #include "osi/plationf.h"
+
+#define L_LIBRARY_IMPL
 #include "core/base.h"
 #include "core/string.h"
 #include "core/socket.h"
@@ -329,7 +331,7 @@ llepollmgr_add(int epfd, int fd, struct epoll_event* event)
   if (errno == EEXIST && llepollmgr_ctl(epfd, EPOLL_CTL_MOD, fd, event)) {
     return true;
   }
-  l_loge_1("epoll add %s", lserror(errno));
+  l_loge_s("llepollmgr_add failed");
   return false;
 }
 

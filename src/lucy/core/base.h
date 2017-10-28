@@ -1,5 +1,5 @@
-#ifndef lucy_core_base_h
-#define lucy_core_base_h
+#ifndef l_core_base_h
+#define l_core_base_h
 #include "autoconf.h"
 #include "core/prefix.h"
 
@@ -496,5 +496,5 @@ L_EXTERN void l_process_atexit(void (*func)(void));
 L_EXTERN void l_core_base_test();
 L_EXTERN void l_plat_core_test();
 
-#endif /* lucy_core_base_h */
+#endif /* l_core_base_h */
 

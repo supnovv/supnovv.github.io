@@ -1,5 +1,5 @@
-#ifndef lucy_core_heap_h
-#define lucy_core_heap_h
+#ifndef l_core_heap_h
+#define l_core_heap_h
 #include "core/base.h"
 
 /**
@@ -124,5 +124,5 @@ void* l_mmheap_del(l_mmheap* self, l_umedit i) {
   return elem;
 }
 
-#endif /* lucy_core_heap_h */
+#endif /* l_core_heap_h */
 

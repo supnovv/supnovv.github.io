@@ -1,3 +1,4 @@
+#define L_LIBRARY_IMPL
 #include "lucycore.h"
 
 typedef struct {
