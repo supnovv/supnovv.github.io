@@ -1,5 +1,5 @@
 #define L_LIBRARY_IMPL
-#include "core/net/http/http_read_socket.h"
+#include "core/net/http/http_socket_util.h"
 
 #define L_HTTP_ESTIMATED_LINE_LENGTH (128)
 

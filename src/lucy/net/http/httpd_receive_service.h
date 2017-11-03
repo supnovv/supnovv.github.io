@@ -1,6 +1,6 @@
-#ifndef l_net_http_server_receive_service_h
-#define l_net_http_server_receive_service_h
-#include "core/net/http/http_server_listen_service.h"
+#ifndef l_net_httpd_receive_service_h
+#define l_net_httpd_receive_service_h
+#include "core/net/http/httpd_listen_service.h"
 
 #define L_HTTP_BACKLOG (32)
 #define L_HTTP_RDREQ_STAGE (1)
@@ -32,7 +32,7 @@ typedef struct {
 
 typedef struct {
   l_service head;
-  l_http_server_listen_service* ss;
+  l_httpd_listen_service* ss;
   l_ushort rmtFamily;
   l_ushort rmtPort;
   l_byte rmtAddr[16];
@@ -53,7 +53,7 @@ typedef struct {
   l_startend reqhead[32];
   l_string txbuf;
   l_byte* txcur;
-} l_http_server_receive_service;
+} l_httpd_receive_service;
 
-#endif /* l_net_http_server_receive_service_h */
+#endif /* l_net_httpd_receive_service_h */
 

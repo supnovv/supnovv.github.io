@@ -1,17 +1,17 @@
 #define L_LIBRARY_IMPL
-#include "core/net/http/http_read_socket.h"
-#include "core/net/http/http_server_receive_service.h"
+#include "core/net/http/http_socket_util.h"
+#include "core/net/http/httpd_receive_service.h"
 
-static int l_http_server_receive_service_proc(l_service* srvc, l_message* msg);
-static void l_http_server_discard_data(l_http_server_receive_service* ssrx);
-static int l_http_server_read_request(l_service* srvc);
-static int l_http_server_read_headers(l_service* srvc);
+static int l_httpd_receive_service_proc(l_service* srvc, l_message* msg);
+static void l_httpd_discard_data(l_httpd_receive_service* ssrx);
+static int l_httpd_read_request(l_service* srvc);
+static int l_httpd_read_headers(l_service* srvc);
 
 L_PRIVAT int
-l_http_server_receive_conn(l_http_server_listen_service* ss, l_connind_message* msg)
+l_httpd_receive_conn(l_httpd_listen_service* ss, l_connind_message* msg)
 {
-  l_http_server_receive_server* ssrx = 0;
-  ssrx = L_SERVICE_CREATEFROM(ss, l_http_server_receive_service);
+  l_httpd_receive_service* ssrx = 0;
+  ssrx = L_SERVICE_CREATEFROM(ss, l_httpd_receive_service);
   ssrx->ss = ss;
   ssrx->rmtFamily = l_connind_getFamily(msg);
   ssrx->rmtPort = l_connind_getPort(msg);
@@ -22,16 +22,16 @@ l_http_server_receive_conn(l_http_server_listen_service* ss, l_connind_message* 
   ssrx->rxbuf = l_string_createEx(ss->rx_init_size, ss->thread);
   ssrx->txbuf = l_string_createEx(ss->tx_init_size, ss->thread);
   l_string_setLimit(&ssrx->rxbuf, ss->rx_limit);
-  l_service_setResume(&ssrx->head, l_http_server_read_request);
+  l_service_setResume(&ssrx->head, l_httpd_read_request);
   l_service_setEvent(&ssrx->head, ssrx->comm.sock, L_SOCKET_RDWR);
   l_service_start(&ssrx->head);
   return 0;
 }
 
 static int
-l_http_server_receive_service_proc(l_service* srvc, l_message* msg)
+l_httpd_receive_service_proc(l_service* srvc, l_message* msg)
 {
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
+  l_httpd_receive_service* ssrx = (l_httpd_receive_service*)srvc;
   l_umedit masks = 0;
   int n = 0;
 
@@ -42,7 +42,7 @@ l_http_server_receive_service_proc(l_service* srvc, l_message* msg)
     return 0;
   default:
     if (msg->msgid != L_MSGID_SOCK_EVENT_IND) {
-      l_loge_1("http_server_receive_service_proc msg %d", ld(msg->msgid));
+      l_loge_1("httpd_receive_service_proc msg %d", ld(msg->msgid));
       return L_STATUS_EINVAL;
     }
     break;
@@ -71,7 +71,7 @@ l_http_server_receive_service_proc(l_service* srvc, l_message* msg)
     if (masks & L_IOEVENT_READ) {
       /* read event received at writing response stage, read it out and discard */
       l_loge_s("read and discard data at WRRES_STAGE");
-      l_http_server_discard_data(ssrx);
+      l_httpd_discard_data(ssrx);
     }
     if (!(masks & L_IOEVENT_WRITE)) {
       return 0;
@@ -92,7 +92,7 @@ l_http_server_receive_service_proc(l_service* srvc, l_message* msg)
 }
 
 static void
-l_http_server_discard_data(l_http_server_receive_service* ssrx)
+l_httpd_discard_data(l_httpd_receive_service* ssrx)
 {
   l_int n = 0;
   l_int status = 0;
@@ -108,10 +108,10 @@ ContinueRead:
 }
 
 static int
-l_http_server_read_request(l_service* srvc)
+l_httpd_read_request(l_service* srvc)
 {
   /* <method> <request-url> HTTP/<major>.<minor><crlf> #CarriageReturn(CR) 13 '\r' #LineFeed(LF) 10 '\n' */
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
+  l_httpd_receive_service* ssrx = (l_httpd_receive_service*)srvc;
   l_http_read_common* comm = &ssrx->comm;
   l_string* rxbuf = &ssrx->rxbuf;
   const l_rune* buff_start = 0;
@@ -126,7 +126,7 @@ l_http_server_read_request(l_service* srvc)
   }
 
   if (status == L_STATUS_WAITMORE) {
-    return l_service_yield(srvc, l_http_server_read_request);
+    return l_service_yield(srvc, l_httpd_read_request);
   }
 
   /* a line is read, parse <method> first */
@@ -154,16 +154,16 @@ l_http_server_read_request(l_service* srvc)
   ssrx->httpver = strid;
 
   /* start to parse headers */
-  return l_http_server_read_headers(srvc);
+  return l_httpd_read_headers(srvc);
 }
 
-static int l_http_server_read_headers(l_service* srvc) {
+static int l_httpd_read_headers(l_service* srvc) {
   /* <name>: <value><crlf>
      ...
      <name>: <value><crlf>
      <crlf>
      <entity-body>  */
-  l_http_server_receive_service* ssrx = (l_http_server_receive_service*)srvc;
+  l_httpd_receive_service* ssrx = (l_httpd_receive_service*)srvc;
   l_http_read_common* comm = &ssrx->comm;
   l_string* rxbuf = &ssrx->rxbuf;
   const l_rune* buff_start = 0;
@@ -179,7 +179,7 @@ static int l_http_server_read_headers(l_service* srvc) {
     }
 
     if (status == L_STATUS_WAITMORE) {
-      return l_service_yield(srvc, l_http_server_read_headers);
+      return l_service_yield(srvc, l_httpd_read_headers);
     }
 
     buff_start = l_string_start(rxbuf);

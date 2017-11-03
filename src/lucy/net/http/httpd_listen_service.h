@@ -1,5 +1,5 @@
-#ifndef l_net_http_server_listen_service_h
-#define l_net_http_server_listen_service_h
+#ifndef l_net_httpd_listen_service_h
+#define l_net_httpd_listen_service_h
 #include "core/service.h"
 
 typedef struct {
@@ -14,9 +14,9 @@ typedef struct {
   int (*client_request_handler)(l_service*);
   l_int slots;
   l_hashtable* strpool;
-} l_http_server_listen_service;
+} l_httpd_listen_service;
 
-L_PRIVAT int l_http_server_receive_conn(l_http_server_listen_service* ss, l_connind_message* msg);
+L_PRIVAT int l_httpd_receive_conn(l_httpd_listen_service* ss, l_connind_message* msg);
 
-#endif /* l_net_http_server_listen_service_h */
+#endif /* l_net_httpd_listen_service_h */
 
