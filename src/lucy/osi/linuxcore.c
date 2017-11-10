@@ -535,7 +535,7 @@ L_EXTERN int
 l_file_isFolderExist(const void* name)
 {
   struct stat st;
-  if (!name || !name[0]) return false;
+  if (!name || !(l_cstr(name)[0])) return false;
   return (lstat((const char*)name, &st) == 0 && S_ISDIR(st.st_mode));
 }
 
