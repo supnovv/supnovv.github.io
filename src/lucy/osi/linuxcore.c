@@ -531,6 +531,14 @@ l_file_getAttr(const void* name)
   return fa;
 }
 
+L_EXTERN int
+l_file_isFolderExist(const void* name)
+{
+  struct stat st;
+  if (!name || !name[0]) return false;
+  return (lstat((const char*)name, &st) == 0 && S_ISDIR(st.st_mode));
+}
+
 L_EXTERN l_dirstream
 l_dirstream_open(const void* name)
 {

@@ -84,6 +84,7 @@ L_EXTERN void l_file_seekFromBegin(l_file* self, long offset);
 L_EXTERN void l_file_seekFromCurPos(l_file* self, long offset);
 L_EXTERN int l_file_isExist(const void* name);
 L_EXTERN int l_file_isExistIn(l_filedesc dirfd, const void* name);
+L_EXTERN int l_file_isFolderExist(const void* name);
 L_EXTERN l_long l_file_getSize(const void* name);
 L_EXTERN l_fileattr l_file_getAttr(const void* name);
 L_EXTERN int l_file_getcwd(int (*write)(void* stream, const l_byte* dir), void* stream);
