@@ -97,11 +97,23 @@ ll_handle_url_request(l_http_fileread_service* srvc, l_http_url_parts* url)
   }
 }
 
-static void
-ll_handle_url_request_impl(l_http_fileread_service* srvc, l_strn path, l_strn query)
+static int
+ll_check_string_equal(l_strn* filename, l_smplnode* node)
 {
-  l_umedit hash = l_string_hash(path, srvc->seed);
+}
 
+typedef struct {
+} l_supertext;
+
+static void
+ll_handle_url_request_impl(l_http_fileread_service* srvc, l_strn completeFileName, l_strn query)
+{
+  l_umedit hash = l_string_hash(completeFileName, srvc->seed);
+  l_supertext* text = (l_string*)l_hashtable_find(srvc->stbl, hash, ll_check_string_equal, &completeFileName);
+  if (text) {
+    /* TODO: response back */
+    return;
+  }
 }
 
 static int
