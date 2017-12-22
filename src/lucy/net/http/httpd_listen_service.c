@@ -47,7 +47,8 @@ l_httpd_listen_service_getmod(void* self, l_strt str)
 }
 
 L_EXTERN int
-l_httpd_start(const void* http_conf_name, int (*client_request_handler)(l_service*)) {
+l_httpd_start(const void* http_conf_name, int (*client_request_handler)(l_service*))
+{
   l_sockaddr sa;
   l_httpd_listen_service* ss = 0;
   lua_State* L = l_get_luastate();

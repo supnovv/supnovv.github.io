@@ -1029,6 +1029,11 @@ void l_http_server_handle_get_method(l_http_server_receive_service* ssrx) {
    /path/file?item=value
    /path/file?item=value&color=blue
 
+   request path - [path, filename)
+   file name - [filename, suffix)
+   file suffix - [suffix, query)
+   query - [query, urlend)
+
    只能包含 /?=_-0~9a~zA~Z 除非最后一个参数是 jump=xxxxx
 
    URL编码机制，为了使用不安全字符，使用%和两个两个十六进制字符表示，例如空格可使用%20表示，根据浏览器的不同组合成的字符可能使用不同的编码

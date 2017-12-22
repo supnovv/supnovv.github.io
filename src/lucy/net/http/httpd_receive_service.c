@@ -6,6 +6,7 @@ static int l_httpd_receive_service_proc(l_service* srvc, l_message* msg);
 static void l_httpd_discard_data(l_httpd_receive_service* ssrx);
 static int l_httpd_read_request(l_service* srvc);
 static int l_httpd_read_headers(l_service* srvc);
+static int l_httpd_write_response(l_service* srvc);
 
 L_PRIVAT int
 l_httpd_receive_conn(l_httpd_listen_service* ss, l_connind_message* msg)
@@ -66,7 +67,7 @@ l_httpd_receive_service_proc(l_service* srvc, l_message* msg)
       return 0;
     }
     ssrx->stage = L_HTTP_WRRES_STAGE;
-    l_service_setResume(srvc, ssrx->server->client_request_handler);
+    l_service_setResume(srvc, l_httpd_write_response);
   } else {
     if (masks & L_IOEVENT_READ) {
       /* read event received at writing response stage, read it out and discard */
@@ -222,5 +223,11 @@ static int l_httpd_read_headers(l_service* srvc) {
   }
 
   return l_http_read_body(srvc);
+}
+
+
+static int l_httpd_write_response(l_service* srvc)
+{
+  l_httpd_receive_service* rxsv = (l_httpd_receive_service*)srvc;
 }
 

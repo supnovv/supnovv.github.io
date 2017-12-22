@@ -119,13 +119,16 @@ typedef struct {
 L_INLINE l_strt
 l_strt_from(const void* s, const void* e)
 {
-  return (l_strt){l_cstr(s), l_cstr(e)};
+  if (s && l_cstr(s) < l_cstr(e)) {
+    return (l_strt){l_cstr(s), l_cstr(e)};
+  }
+  return (l_strt){l_cstr(s), l_cstr(s)};
 }
 
 L_INLINE l_strt
 l_strt_n(const void* s, l_int len)
 {
-  return (l_strt){l_cstr(s), l_cstr(s) + len};
+  return l_strt_from(s, l_cstr(s) + len);
 }
 
 L_INLINE l_strt
@@ -137,25 +140,22 @@ l_strt_sub(const void* s, l_int from, l_int to)
 L_INLINE int
 l_strt_isEmpty(const l_strt* s)
 {
-  return !(s->start != 0 && s->start < s->end);
-}
-
-L_INLINE l_strn
-l_strt_strn(const l_strt* s)
-{
-  return (l_strn){s->start, s->end - s->start};
-}
-
-L_INLINE l_strn
-l_strn_from(const void* s, const void* e)
-{
-  return (l_strn){l_cstr(s), l_cstr(e) - l_cstr(s)};
+  return !(s->start && s->start < s->end);
 }
 
 L_INLINE l_strn
 l_strn_n(const void* s, l_int len)
 {
-  return (l_strn){l_cstr(s), len};
+  if (s && len > 0) {
+    return (l_strn){l_cstr(s), len};
+  }
+  return (l_strn){l_cstr(s), 0};
+}
+
+L_INLINE l_strn
+l_strn_from(const void* s, const void* e)
+{
+  return l_strn_n(s, l_cstr(e) - l_cstr(s)};
 }
 
 L_INLINE l_strn
@@ -170,6 +170,12 @@ l_strn_isEmpty(const l_strn* s)
   return !(s->start && s->len > 0);
 }
 
+L_INLINE l_strn
+l_strt_strn(const l_strt* s)
+{
+  return (l_strn){s->start, s->end - s->start};
+}
+
 L_INLINE l_strt
 l_strn_strt(const l_strn* s)
 {
@@ -182,6 +188,7 @@ l_strn_strt(const l_strn* s)
 L_EXTERN void l_zero_n(void* s, l_int n);
 L_EXTERN l_byte* l_copy_n(const void* s, l_int n, void* to);
 L_EXTERN l_byte* l_copy_from(l_strt from, void* to);
+L_EXTERN l_byte* l_copy_strn(l_strn strn, void* to);
 L_EXTERN int l_strt_equal(l_strt a, l_strt b);
 L_EXTERN int l_strn_equal(l_strn a, l_strn b);
 L_EXTERN const l_byte* l_strt_contain(l_strt s, int ch);
