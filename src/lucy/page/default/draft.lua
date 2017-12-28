@@ -104,61 +104,26 @@
   </body>
 </html>
 
-@typeCSS
-<link rel="stylesheet" href="(@URL)">
-
-@typeJS
-<script src="(@URL)"></script>
-
-@typeLANG
-  -- language code: http://xml.coverpages.org/iso639a.html
-  -- contry code: http://xml.coverpages.org/country3166.html
-  -- language subtag: http://www.iana.org/assignments/language-subtag-registry/language-subtag-registry
-  -- lang attrubute value format: primary-subcode-subcode-...
-  -- chinese english french italian japanese russian arabic german spanish portugueses hebrew hindi
-  LANG.zh.en.fr.it.ja.ru.ar.de.es.pt.he.hi
-  LANG.cn = "zh-CN"
-  LANG.us = "en-US"
-
-@typeHTML
-<!DOCTYPE html>
-<html(@space+LANG)>
-  <head>
-    <meta charset="(@CHARSET)">
-    <meta http-equiv="X-UA-Compatible" content="IE=Edge">(@break+METAs)
-    <title>(@tt)</title>(@break+CSSs)(@break+JSs)
-  </head>
-  <body>
-    <div id="root-container">
-    <header id="page-header">(@break+header)</header>
-    <main id="page-main">(@break+main)</main>
-    <nav id="page-nav">(@break+nav)</nav>
-    <aside id="page-console" class="hidden"></aside>
-    <footer id="page-footer">(@break+footer)</footer>
-    </div>
-  </body>
-</html>
-
-@typeCHARSET
-  charset = "utf-8"
-  charset.latin = "ISO-8859-1" -- latin alphabet part 1
-
 @HTML.default{
   LANG.zh
   CHARSET.utf8
 }
 
-(@HTML.default|LANG.en)
+(@HTML.smplgrid|LANG.en)
 
 1.内嵌指令以(@head开始以)结束并可以使用多个括号例如以((@head开始以))结束
 2.其中head的内容可以是space+variable/break+variable/variable
 3.space+variable表示先加一个空格然后扩展变量的内容
 4.break+variable表示先添加一个换行再扩展变量的内容
 5.只有variable的情况表示在内嵌指令位置直接扩展变量的内容
-6.变量variable的格式可以是TYPE/TYPEs/TYPE:name/TYPEs:name/text
-7.如果当前上下文只有一处使用该类型可以用类型名当做变量名写成TYPE如果有多处使用必须为每一处声明一个变量名称写成TYPE:name
-8.类型后面如果加一个s表示该变量是一个该类型的数组注意类型名称只使用大写字母
+6.变量variable的格式可以是TYPE/TYPES/TYPESname/TYPESname/text
+7.如果当前上下文只有一处使用该类型可以用类型名当做变量名写成TYPE如果有多处使用必须为每一处声明一个变量名称写成TYPEname
+8.类型后面如果加一个S表示该变量是一个该类型的数组注意类型名称只使用大写字母
 9.如果variable以小写字母开始表示这是一个纯文本变量会按照元素所允许的字符扩展其中的字符串
+0.@@HTML定义类型HTML该类型是一个模板定义开头可以有以--开始的注释行
+1.@@LANG:定义类型LANG能拥有的值每个值都以点.开头例如.zh表示LANG有一个名称为zh值为"zh"的值
+2.另外.cn="zh-CN"表示LANG有一个名称为cn值为"zh-CN"的值值定义开头也可以有以--开始的注释行
+3.模板类型和值类型的定义以空行结束
 
 @tmpl.css
 ---

@@ -71,6 +71,7 @@
 #define L_ELIMIT (-5)
 #define L_EMATCH (-6)
 #define L_EINVAL (-7)
+#define L_ENOMEM (-8)
 
 /**
  * memory operations
@@ -93,6 +94,8 @@
 
 typedef void* (*l_allocfunc)(void* userdata, void* buffer, l_int oldsize, l_int newsize);
 L_EXTERN void* l_raw_alloc_func(void* userdata, void* buffer, l_int oldsize, l_int newsize);
+
+
 
 /**
  * basic string

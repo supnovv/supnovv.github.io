@@ -208,10 +208,6 @@ int main(void) {
   l_write_line(file, "#undef l_cent");
   l_write_line(file, "#undef l_ucent");
 
-  l_write_line(file, "%s/* float point */", L_NEWLINE);
-  l_write_line(file, "#undef l_float");
-  l_write_line(file, "#define l_float float");
-
   l_write_line(file, "%s/* platform specific */", L_NEWLINE);
   l_write_line(file, "#undef L_MUTEX_SIZE");
   l_write_line(file, "#undef L_RWLOCK_SIZE");
